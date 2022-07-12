@@ -65,12 +65,46 @@ public:
 	int             m_retry_delay;
     HNZClient*      m_client;
 
+
+    //debut
+    int m_remote_station_addr;
+    int m_local_station_addr;
+    int m_remote_addr_in_local_station;
+    int m_inacc_timeout;
+    int m_max_sarm;
+    int m_to_socket;
+    int m_repeat_path_A;
+    int m_repeat_path_B;
+    int m_repeat_timeout;
+    int m_anticipation;
+    int m_default_msg_period;
+    std::string m_Test_msg_send;
+    std::string m_Test_msg_receive;
+    //fin
+
+
+
     std::mutex loopLock;
     std::atomic<bool> loopActivated;
     std::thread loopThread;
 	
 	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
+      //debut :
+    void setremote_station_addr(int remote_station_addr);
+    void setlocal_station_addr(int local_station_addr);
+    void setremote_addr_in_local_station(int remote_addr_in_local_station);
+    void setinacc_timeout(int inacc_timeout);
+    void setmax_sarm(int max_sarm);
+    void setto_socket(int to_socket);
+    void setrepeat_path_A(int repeat_path_A);
+    void setrepeat_path_B(int repeat_path_B);
+    void setrepeat_timeout(int repeat_timeout);
+    void setanticipation(int anticipation);
+    void setdefault_msg_period(int default_msg_period);
+    void settest_msg_send(std::string test_msg_send);
+    void settest_msg_receive(std::string test_msg_receive);
 
+    // fin 
 
 private:
     INGEST_CB			m_ingest;     // Callback function used to send data to south service

@@ -41,6 +41,59 @@ HNZ::HNZ(const char *ip, int port)
     }
 }
 
+//debut
+ void HNZ::setremote_station_addr(int remote_station_addr){
+   
+ m_remote_station_addr = (remote_station_addr>0)?remote_station_addr:12;
+ };
+ void HNZ::setlocal_station_addr(int local_station_addr){
+    m_local_station_addr = (local_station_addr>0)?local_station_addr:12;
+
+ };
+ void HNZ::setremote_addr_in_local_station(int remote_addr_in_local_station){
+    m_remote_addr_in_local_station = (remote_addr_in_local_station==int(remote_addr_in_local_station))?remote_addr_in_local_station:0;
+ };
+ void HNZ::setinacc_timeout(int inacc_timeout){
+    m_inacc_timeout = (inacc_timeout>0)?inacc_timeout:180;
+ };
+ void HNZ::setmax_sarm(int max_sarm){
+    m_max_sarm = (max_sarm>0)?max_sarm:30;
+ };
+ void HNZ::setto_socket(int to_socket){
+    m_to_socket = (to_socket>0)?to_socket:1;
+ };
+ void HNZ::setrepeat_path_A(int repeat_path_A){
+    m_repeat_path_A = (repeat_path_A>0)?repeat_path_A:3;
+ };
+ void HNZ::setrepeat_path_B(int repeat_path_B){
+    m_repeat_path_B = (repeat_path_B>0)?repeat_path_B:3;
+ };
+ void HNZ::m_repeat_timeout(int repeat_timeout){
+    m_repeat_timeout = (repeat_timeout>0)?repeat_timeout:3;
+ };
+void HNZ::setanticipation(int anticipation){
+    m_anticipation = (anticipation>0)?anticipation:3;
+ };
+ void HNZ::setdefault_msg_period(int default_msg_period){
+    m_default_msg_period = (default_msg_period==int(default_msg_period))?default_msg_period:0;
+ };
+ void HNZ::m_Test_msg_send(const char* Test_msg_send){
+    if (strlen(Test_msg_send)>1)
+        m_Test_msg_send = Test_msg_send;
+    else
+        m_Test_msg_send = "1304";
+ };
+ void HNZ::m_Test_msg_receive(const char* Test_msg_receive){
+    if (strlen(Test_msg_receive)>1)
+        m_Test_msg_receive = Test_msg_receive;
+    else
+        m_Test_msg_receive = "1304";
+ };
+
+
+
+//fin 
+
 void HNZ::setJsonConfig(const std::string &stack_configuration, const std::string &msg_configuration, const std::string &pivot_configuration)
 {
     Logger::getLogger()->info("Reading json config string...");

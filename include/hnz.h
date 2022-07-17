@@ -66,7 +66,7 @@ public:
     HNZClient*      m_client;
 
 
-    //debut
+    ////this part is created by Hamza Otmani
     int m_remote_station_addr;
     int m_local_station_addr;
     int m_remote_addr_in_local_station;
@@ -80,7 +80,7 @@ public:
     int m_default_msg_period;
     std::string m_Test_msg_send;
     std::string m_Test_msg_receive;
-    //fin
+    ////
 
 
 
@@ -89,7 +89,9 @@ public:
     std::thread loopThread;
 	
 	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
-      //debut :
+    //this part is created by Hamza Otmani
+    void setretry_number(int retry_number);
+    void setretry_delay(int retry_delay);
     void setremote_station_addr(int remote_station_addr);
     void setlocal_station_addr(int local_station_addr);
     void setremote_addr_in_local_station(int remote_addr_in_local_station);
@@ -103,8 +105,7 @@ public:
     void setdefault_msg_period(int default_msg_period);
     void settest_msg_send(std::string test_msg_send);
     void settest_msg_receive(std::string test_msg_receive);
-
-    // fin 
+    //// 
 
 private:
     INGEST_CB			m_ingest;     // Callback function used to send data to south service

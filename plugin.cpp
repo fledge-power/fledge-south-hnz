@@ -29,7 +29,10 @@ using namespace std;
                "srv_ip":"192.168.0.11",
                "port":6002
             }
-         ]
+         ],
+         "llevel":1,
+         "retry_number":5,
+         "retry_delay":5
       },
       "application_layer":{
          "remote_station_addr":12,

@@ -15,43 +15,42 @@ using namespace std;
 #define DEFAULT_PORT 6001
 
 // PLUGIN DEFAULT PROTOCOL STACK CONF
-#define PROTOCOL_STACK_DEF QUOTE({         
-    "protocol_stack":{
-      "name":"hnzclient",
-      "version":"1.0",
-      "transport_layer":{
-         "connections":[
-            {
-               "srv_ip":"192.168.0.10",
-               "port":6001
-            },
-            {
-               "srv_ip":"192.168.0.11",
-               "port":6002
-            }
-         ],
-         "llevel":1,
-         "retry_number":5,
-         "retry_delay":5
-      },
-      "application_layer":{
-         "remote_station_addr":12,
-         "local_station_addr":12,
-         "remote_addr_in_local_station":0,
-         "inacc_timeout":180,
-         "max_sarm":30,
-         "to_socket":1,
-         "repeat_path_A":3,
-         "repeat_path_B":3,
-         "repeat_timeout":3000,
-         "anticipation":3,
-         "default_msg_period":0,
-         "Test_msg_send":"1304",
-         "Test_msg_receive":"1304"
-      }
-   }        
-     }                                   
-)
+#define PROTOCOL_STACK_DEF QUOTE({        \      
+    "protocol_stack":{                    \
+      "name":"hnzclient",                 \
+      "version":"1.0",                    \
+      "transport_layer":{                 \
+         "connections":[                  \
+            {                             \
+               "srv_ip":"192.168.0.10",   \
+               "port":6001                \
+            },                            \
+            {                             \
+               "srv_ip":"192.168.0.11",   \
+               "port":6002                \
+            }                             \
+         ],                               \
+         "llevel":1,                      \
+         "retry_number":5,                \
+         "retry_delay":5                  \
+      },                                  \
+      "application_layer":{               \
+         "remote_station_addr":12,        \
+         "local_station_addr":12,         \
+         "remote_addr_in_local_station":0,\
+         "inacc_timeout":180,             \
+         "max_sarm":30,                   \
+         "to_socket":1,                   \
+         "repeat_path_A":3,               \
+         "repeat_path_B":3,               \
+         "repeat_timeout":3000,           \
+         "anticipation":3,                \
+         "default_msg_period":0,          \
+         "Test_msg_send":"1304",          \
+         "Test_msg_receive":"1304"        \
+      }                                   \
+   }                                      \
+ })
 
 
 // PLUGIN DEFAULT EXCHANGED DATA CONF
@@ -172,6 +171,8 @@ extern "C"
     {
         HNZ *hnz;
         Logger::getLogger()->info("Initializing the plugin");
+
+
 
         hnz = new HNZ(DEFAULT_IP, DEFAULT_PORT);
 

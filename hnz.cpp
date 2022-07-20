@@ -83,18 +83,34 @@ void HNZ::setanticipation(int anticipation){
  void HNZ::setdefault_msg_period(int default_msg_period){
     m_default_msg_period = (default_msg_period==int(default_msg_period))?default_msg_period:0;
  }
- void HNZ::m_Test_msg_send(const char* Test_msg_send){
+ void HNZ:settest_msg_send(const char* Test_msg_send){
     if (strlen(Test_msg_send)>1)
         m_Test_msg_send = Test_msg_send;
     else
         m_Test_msg_send = "1304";
  }
- void HNZ::m_Test_msg_receive(const char* Test_msg_receive){
+ void HNZ::settest_msg_receive(const char* Test_msg_receive){
     if (strlen(Test_msg_receive)>1)
         m_Test_msg_receive = Test_msg_receive;
     else
         m_Test_msg_receive = "1304";
  }
+ void HNZ::PrepareParameters({
+     m_remote_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_station_addr"_json_pointer);
+     m_local_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/local_station_addr"_json_pointer);
+     m_remote_addr_in_local_station= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_addr_in_local_station"_json_pointer);
+     m_inacc_timeout= m_getConfigValue<int>(m_stack_configuration, "/application_layer/inacc_timeout"_json_pointer);  
+     m_max_sarm= m_getConfigValue<int>(m_stack_configuration, "/application_layer/max_sarm"_json_pointer);
+     m_to_socket= m_getConfigValue<int>(m_stack_configuration, "/application_layer/to_socket"_json_pointer);
+     m_repeat_path_A= m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_path_A"_json_pointer);
+     m_repeat_path_B= m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_path_B"_json_pointer);
+     m_repeat_timeout= m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_timeout"_json_pointer);
+     m_anticipation= m_getConfigValue<int>(m_stack_configuration, "/application_layer/anticipation"_json_pointer);
+     m_default_msg_period= m_getConfigValue<int>(m_stack_configuration, "/application_layer/default_msg_period"_json_pointer);
+     m_Test_msg_send= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_send"_json_pointer);
+     m_Test_msg_receive= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_receive"_json_pointer);
+
+ })
 ////////
 
 
@@ -175,6 +191,7 @@ int HNZ::connect()
 void HNZ::start()
 {
     m_fledge = new HNZFledge(this, &m_pivot_configuration);
+    
 
     // Fledge logging level setting
     switch (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer))
@@ -196,10 +213,14 @@ void HNZ::start()
     Logger::getLogger()->info("Starting HNZ");
 
     loopActivated = true;
-    m_ip = m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connection/path/srv_ip"_json_pointer);
-    m_port = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connection/path/port"_json_pointer);
+    m_ip = m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connection/srv_ip"_json_pointer);
+    m_port = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connection/port"_json_pointer);
     m_retry_number = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer);
     m_retry_delay = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer);
+    /////
+    PrepareParameters();
+    Logger::getLogger()->info("Connection initialized");
+    ////
 
     // Connect to the server
     m_client = new HNZClient();
@@ -319,7 +340,7 @@ void HNZ::analyze_frame(unsigned char *data, int size)
 		millis = ms_since_epoch - (mod10m * 600000); //ms_since_beginning_of_10min_interval
 		msg_hour[0] = (frame_number % 8) * 0x20 + 0x02;
 		msg_hour[1] = 0x1d;
-		msg_hour[2] = mod10m;
+		msg_hour[2] = mod10m; 
 		msg_hour[3] = (millis / 10) >> 8;
 		msg_hour[4] = (millis / 10) & 0xff;
 		msg_hour[5] = 0x00;
@@ -707,3 +728,4 @@ HNZ::confDatas HNZ::m_checkExchangedDataLayer(const int address, const std::stri
     data.internal_id = "";
     return data;
 }
+

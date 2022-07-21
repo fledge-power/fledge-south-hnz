@@ -74,7 +74,7 @@ void HNZ::setretry_delay(int retry_delay){
  void HNZ::setrepeat_path_B(int repeat_path_B){
     m_repeat_path_B = (repeat_path_B>0)?repeat_path_B:3;
  }
- void HNZ::m_repeat_timeout(int repeat_timeout){
+ void HNZ::setrepeat_timeout(int repeat_timeout){
     m_repeat_timeout = (repeat_timeout>0)?repeat_timeout:3;
  }
 void HNZ::setanticipation(int anticipation){
@@ -83,7 +83,7 @@ void HNZ::setanticipation(int anticipation){
  void HNZ::setdefault_msg_period(int default_msg_period){
     m_default_msg_period = (default_msg_period==int(default_msg_period))?default_msg_period:0;
  }
- void HNZ:settest_msg_send(const char* Test_msg_send){
+ void HNZ::settest_msg_send(const char* Test_msg_send){
     if (strlen(Test_msg_send)>1)
         m_Test_msg_send = Test_msg_send;
     else
@@ -95,7 +95,7 @@ void HNZ::setanticipation(int anticipation){
     else
         m_Test_msg_receive = "1304";
  }
- void HNZ::PrepareParameters({
+ void HNZ::PrepareParameters(){
      m_remote_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_station_addr"_json_pointer);
      m_local_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/local_station_addr"_json_pointer);
      m_remote_addr_in_local_station= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_addr_in_local_station"_json_pointer);
@@ -110,7 +110,7 @@ void HNZ::setanticipation(int anticipation){
      m_Test_msg_send= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_send"_json_pointer);
      m_Test_msg_receive= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_receive"_json_pointer);
 
- })
+ }
 ////////
 
 
@@ -213,11 +213,11 @@ void HNZ::start()
     Logger::getLogger()->info("Starting HNZ");
 
     loopActivated = true;
+    /////
     m_ip = m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connection/srv_ip"_json_pointer);
     m_port = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connection/port"_json_pointer);
     m_retry_number = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer);
     m_retry_delay = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer);
-    /////
     PrepareParameters();
     Logger::getLogger()->info("Connection initialized");
     ////

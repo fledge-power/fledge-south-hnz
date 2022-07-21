@@ -99,6 +99,7 @@ void HNZ::setanticipation(int anticipation){
     }
  }
  void HNZ::PrepareParameters(){
+    try{
      m_remote_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_station_addr"_json_pointer);
      m_local_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/local_station_addr"_json_pointer);
      m_remote_addr_in_local_station= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_addr_in_local_station"_json_pointer);
@@ -112,6 +113,8 @@ void HNZ::setanticipation(int anticipation){
      m_default_msg_period= m_getConfigValue<int>(m_stack_configuration, "/application_layer/default_msg_period"_json_pointer);
      m_Test_msg_send= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_send"_json_pointer);
      m_Test_msg_receive= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_receive"_json_pointer);
+    }catch(exception& e){
+        cout<<"Error in reading parameters from protocol stack "<<endl; }
 
  }
 ////////
@@ -195,7 +198,7 @@ void HNZ::start()
 {
     m_fledge = new HNZFledge(this, &m_pivot_configuration);
     
-
+    
     // Fledge logging level setting
     switch (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer))
     {

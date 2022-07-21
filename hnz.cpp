@@ -84,16 +84,19 @@ void HNZ::setanticipation(int anticipation){
     m_default_msg_period = (default_msg_period==int(default_msg_period))?default_msg_period:0;
  }
  void HNZ::settest_msg_send(const char* Test_msg_send){
-    if (strlen(Test_msg_send)>1)
+    if (strlen(Test_msg_send)>1){
         m_Test_msg_send = Test_msg_send;
-    else
+         }
+    else {
         m_Test_msg_send = "1304";
+        }
  }
  void HNZ::settest_msg_receive(const char* Test_msg_receive){
-    if (strlen(Test_msg_receive)>1)
+    if (strlen(Test_msg_receive)>1) {
         m_Test_msg_receive = Test_msg_receive;
-    else
+    }else {
         m_Test_msg_receive = "1304";
+    }
  }
  void HNZ::PrepareParameters(){
      m_remote_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_station_addr"_json_pointer);

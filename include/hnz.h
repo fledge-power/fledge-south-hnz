@@ -20,6 +20,7 @@
 #include <json.hpp> // https://github.com/nlohmann/json
 
 
+
 class HNZFledge;
 
 class HNZ
@@ -103,8 +104,8 @@ public:
     void setrepeat_timeout(int repeat_timeout);
     void setanticipation(int anticipation);
     void setdefault_msg_period(int default_msg_period);
-    void settest_msg_send(std::string test_msg_send);
-    void settest_msg_receive(std::string test_msg_receive);
+    void settest_msg_send(const char* Test_msg_send);
+    void settest_msg_receive(const char* Test_msg_receive);
     void PrepareParameters();
     //// 
 

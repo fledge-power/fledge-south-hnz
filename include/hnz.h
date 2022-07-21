@@ -16,7 +16,7 @@
 #include <atomic>
 #include <utility>
 //#include "../../lib/src/inc/hnz_client.h"
-#include "../../../libhnz/src/inc/hnz_client.h"
+#include "../../libhnz/src/inc/hnz_client.h"
 #include <json.hpp> // https://github.com/nlohmann/json
 
 

@@ -106,7 +106,6 @@ public:
     void setdefault_msg_period(int default_msg_period);
     void settest_msg_send(const char* Test_msg_send);
     void settest_msg_receive(const char* Test_msg_receive);
-    void PrepareParameters();
     //// 
 
 private:

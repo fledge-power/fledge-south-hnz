@@ -330,7 +330,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 {
     int len = 0; // Length of message to push in Fledge
     confDatas confDatas;
-    int value, quality, ts, ts_qual;
+    int value, quality, ts, ts_qual, ts_iv, ts_s, ts_c;
 	long int scd_since_epoch, epoch_mod_day;
 
     unsigned char t = data[0]; // Payload type
@@ -379,8 +379,25 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
         ts = epoch_mod_day;
 		ts += module10M * 10 * 60000;
         ts += (int) ((data[3] << 8) | data[4]) * 10;
-        ts_qual = stoi(to_string((int) (data[2] >> 2) & 0x1) + to_string((int) (data[2] >> 1) & 0x1) + to_string((int) (data[2] & 0x1)));
+        ts_iv = stoi(to_string((int) (data[2] >> 2) & 0x1) + to_string((int) (data[2] >> 1) & 0x1) + to_string((int) (data[2] & 0x1)));
 
+        if(ts == 0)
+        {
+            ts_s = 0;
+        }
+        else
+        {
+            ts_s = 1;
+        }
+
+        if (ts_iv == 0)
+        {
+            ts_c = 0;
+        }
+        else
+        {
+            ts_c = 1;
+        }
         sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
 
         // Size of this message

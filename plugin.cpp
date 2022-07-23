@@ -15,21 +15,16 @@ using namespace std;
 #define DEFAULT_PORT 6001
 
 // PLUGIN DEFAULT PROTOCOL STACK CONF
-#define PROTOCOL_STACK_DEF QUOTE({        \      
+#define PROTOCOL_STACK_DEF QUOTE({        \  
     "protocol_stack":{                    \
       "name":"hnzclient",                 \
       "version":"1.0",                    \
       "transport_layer":{                 \
-         "connections":[                  \
+         "connections":                   \
             {                             \
-               "srv_ip":"192.168.0.10",   \
+               "srv_ip":"192.168.1.3",   \
                "port":6001                \
             },                            \
-            {                             \
-               "srv_ip":"192.168.0.11",   \
-               "port":6002                \
-            }                             \
-         ],                               \
          "llevel":1,                      \
          "retry_number":5,                \
          "retry_delay":5                  \

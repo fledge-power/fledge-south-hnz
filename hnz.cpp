@@ -44,10 +44,10 @@ HNZ::HNZ(const char *ip, int port)
 ///// this part is created by Hamza Otmani 
 void HNZ::setllevel(int llevel)
 {
-    m_llevel = (llevel ==1 or llevel==2 or llevel=3) ? llevel :1;
+    m_llevel = (llevel ==1 or llevel==2 or llevel==3) ? llevel :1;
 }
 void HNZ::setretry_number(int retry_number){
-    m_retry_number = (retry_number>0 or retry_number=-1)?retry_number:5;
+    m_retry_number = (retry_number>0 or retry_number==-1)?retry_number:5;
 }
 void HNZ::setretry_delay(int retry_delay){
     m_retry_delay = (retry_delay>0)?retry_delay:5;
@@ -207,25 +207,6 @@ void HNZ::start()
     ////
     m_ip = m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connections/srv_ip"_json_pointer);
     m_port = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connections/port"_json_pointer);
-<<<<<<< HEAD
-
-    setllevel(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer));
-    setretry_number (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer));
-    setretry_delay (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer));
-    setremote_station_addr(m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_station_addr"_json_pointer));
-    setlocal_station_addr(m_getConfigValue<int>(m_stack_configuration, "/application_layer/local_station_addr"_json_pointer));    
-    setremote_addr_in_local_station(m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_addr_in_local_station"_json_pointer));
-    setinacc_timeout(m_getConfigValue<int>(m_stack_configuration, "/application_layer/inacc_timeout"_json_pointer));  
-    setmax_sarm(m_getConfigValue<int>(m_stack_configuration, "/application_layer/max_sarm"_json_pointer));
-    setto_socket(m_getConfigValue<int>(m_stack_configuration, "/application_layer/to_socket"_json_pointer));
-    setrepeat_path_A(m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_path_A"_json_pointer));
-    setrepeat_path_B(m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_path_B"_json_pointer));
-    setrepeat_timeout(m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_timeout"_json_pointer));
-    setanticipation(m_getConfigValue<int>(m_stack_configuration, "/application_layer/anticipation"_json_pointer));
-    setdefault_msg_period(m_getConfigValue<int>(m_stack_configuration, "/application_layer/default_msg_period"_json_pointer));
-    settest_msg_send(m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_send"_json_pointer));
-    settest_msg_receive(m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_receive"_json_pointer)); 
-=======
     m_retry_number = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer);
     m_retry_delay = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer);
     m_remote_station_addr= m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_station_addr"_json_pointer);
@@ -241,7 +222,6 @@ void HNZ::start()
     m_default_msg_period= m_getConfigValue<int>(m_stack_configuration, "/application_layer/default_msg_period"_json_pointer);
     m_Test_msg_send= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_send"_json_pointer);
     m_Test_msg_receive= m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_receive"_json_pointer); 
->>>>>>> 840d3d2444f850d114306c9862cef6500f1eb1d6
     Logger::getLogger()->info("Connection initialized");
     ////
 

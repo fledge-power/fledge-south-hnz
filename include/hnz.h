@@ -79,6 +79,7 @@ public:
     int m_repeat_timeout;
     int m_anticipation;
     int m_default_msg_period;
+    int m_llevel;
     std::string m_Test_msg_send;
     std::string m_Test_msg_receive;
     ////
@@ -91,6 +92,7 @@ public:
 	
 	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
     //this part is created by Hamza Otmani
+    void setllevel(int llevel);
     void setretry_number(int retry_number);
     void setretry_delay(int retry_delay);
     void setremote_station_addr(int remote_station_addr);

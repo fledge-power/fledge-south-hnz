@@ -51,5 +51,6 @@
         "thread": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false
 }

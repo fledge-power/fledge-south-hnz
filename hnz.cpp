@@ -330,7 +330,11 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 {
     int len = 0; // Length of message to push in Fledge
     confDatas confDatas;
+<<<<<<< Updated upstream
     int value, quality, ts, ts_qual, ts_iv, ts_s, ts_c;
+=======
+    int value, quality, ts, ts_qual,ts_c, ts_s;
+>>>>>>> Stashed changes
 	long int scd_since_epoch, epoch_mod_day;
 
     unsigned char t = data[0]; // Payload type
@@ -469,9 +473,14 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 		confDatas = protocolDatas;
         len = 2;
         break;
-    case 0x09:
+    case 0x09: //réception d'acquittement TC
         Logger::getLogger()->info("Received ATC, not implemented");
         //confDatas = HNZ::m_checkExchangedDataLayer(addr,"09",0);
+		confDatas = protocolDatas;
+        len = 3;
+        break;
+    case 0x0A: //réception d'acquittement TVC
+        Logger::getLogger()->info("Received ATVC, not implemented");
 		confDatas = protocolDatas;
         len = 3;
         break;

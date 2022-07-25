@@ -46,7 +46,7 @@ HNZ::HNZ(const char *ip, int port)
 
 void HNZ::setIpHNZ(std::string ip)
 {
-    if (strlen(ip) > 1)
+    if (ip.length() > 1)
         m_ip = ip;
     else
     {

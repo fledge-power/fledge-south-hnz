@@ -93,7 +93,7 @@ public:
 	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
     //this part is created by Hamza Otmani
     void setPortHNZ(int port);
-    void setIpHNZ(const char *ip);
+    void setIpHNZ(std::string ip);
     void setllevel(int llevel);
     void setretry_number(int retry_number);
     void setretry_delay(int retry_delay);
@@ -108,8 +108,8 @@ public:
     void setrepeat_timeout(int repeat_timeout);
     void setanticipation(int anticipation);
     void setdefault_msg_period(int default_msg_period);
-    void settest_msg_send(const char* Test_msg_send);
-    void settest_msg_receive(const char* Test_msg_receive);
+    void settest_msg_send(std::string Test_msg_send);
+    void settest_msg_receive(std::string Test_msg_receive);
     void PrepareParameters();
     //// 
 

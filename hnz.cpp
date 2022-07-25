@@ -110,7 +110,7 @@ void HNZ::setanticipation(int anticipation){
     m_default_msg_period = (default_msg_period==int(default_msg_period))?default_msg_period:0;
  }
  void HNZ::settest_msg_send(std::string Test_msg_send){
-    if (strlen(Test_msg_send)>1){
+    if (Test_msg_send.length()>1){
         m_Test_msg_send = Test_msg_send;
          }
     else {
@@ -118,7 +118,7 @@ void HNZ::setanticipation(int anticipation){
         }
  }
  void HNZ::settest_msg_receive(std::string Test_msg_receive){
-    if (strlen(Test_msg_receive)>1) {
+    if (Test_msg_receive.length()>1) {
         m_Test_msg_receive = Test_msg_receive;
     }else {
         m_Test_msg_receive = "1304";

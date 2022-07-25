@@ -44,7 +44,7 @@ HNZ::HNZ(const char *ip, int port)
 ///// this part is created by Hamza Otmani 
 
 
-void HNZ::setIpHNZ(const char* ip)
+void HNZ::setIpHNZ(std::string ip)
 {
     if (strlen(ip) > 1)
         m_ip = ip;
@@ -109,7 +109,7 @@ void HNZ::setanticipation(int anticipation){
  void HNZ::setdefault_msg_period(int default_msg_period){
     m_default_msg_period = (default_msg_period==int(default_msg_period))?default_msg_period:0;
  }
- void HNZ::settest_msg_send(const char* Test_msg_send){
+ void HNZ::settest_msg_send(std::string Test_msg_send){
     if (strlen(Test_msg_send)>1){
         m_Test_msg_send = Test_msg_send;
          }
@@ -117,7 +117,7 @@ void HNZ::setanticipation(int anticipation){
         m_Test_msg_send = "1304";
         }
  }
- void HNZ::settest_msg_receive(const char* Test_msg_receive){
+ void HNZ::settest_msg_receive(std::string Test_msg_receive){
     if (strlen(Test_msg_receive)>1) {
         m_Test_msg_receive = Test_msg_receive;
     }else {

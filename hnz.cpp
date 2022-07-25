@@ -44,16 +44,16 @@ HNZ::HNZ(const char *ip, int port)
 ///// this part is created by Hamza Otmani 
 
 
-void HNZ::setIpHNZ(const char *ip)
+void HNZ::setIpHNZ(const char* ip)
 {
     if (strlen(ip) > 1)
-        this->m_ip = ip;
+        m_ip = ip;
     else
     {
-        this->m_ip ="192.168.1.3"
-     }
+        m_ip ="192.168.1.3";
+    } 
 }
-void HNZ::setPortHNZ(uint16_t port)
+void HNZ::setPortHNZ(int port)
 {
     if (port > 0)
     {

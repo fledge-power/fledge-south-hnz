@@ -141,8 +141,8 @@ void HNZ::setanticipation(int anticipation){
     setrepeat_timeout(m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_timeout"_json_pointer));
     setanticipation(m_getConfigValue<int>(m_stack_configuration, "/application_layer/anticipation"_json_pointer));
     setdefault_msg_period(m_getConfigValue<int>(m_stack_configuration, "/application_layer/default_msg_period"_json_pointer));
-    settest_msg_send(m_getConfigValue<string>(m_stack_configuration, "/application_layer/test_msg_send"_json_pointer));
-    settest_msg_receive(m_getConfigValue<string>(m_stack_configuration, "/application_layer/test_msg_receive"_json_pointer));
+    settest_msg_send(m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_send"_json_pointer));
+    settest_msg_receive(m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_receive"_json_pointer));
  }
 ////////
 

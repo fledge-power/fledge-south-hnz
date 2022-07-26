@@ -97,13 +97,22 @@ typedef struct
 TEST(HNZ,PluginStackParametersTestsNoThrow){
     HNZ hnz;
     json_config config;
-
-
     hnz.setJsonConfig(config.protocol_stack, config.exchanged_data, config.protocol_translation);
     iec104.PrepareParameters();
-
     ASSERT_EQ(hnz.m_llevel, 1);
-
-
-
+    ASSERT_EQ(hnz.m_retry_delay, 5);
+    ASSERT_EQ(hnz.m_retry_number, 5);
+    ASSERT_EQ(hnz.m_remote_station_addr, 12);
+    ASSERT_EQ(hnz.m_local_station_addr, 12);
+    ASSERT_EQ(hnz.m_remote_addr_in_local_station, 0);
+    ASSERT_EQ(hnz.m_inacc_timeout, 180);
+    ASSERT_EQ(hnz.m_max_sarm, 30);
+    ASSERT_EQ(hnz.m_to_socket, 1);
+    ASSERT_EQ(hnz.m_repeat_path_A, 3);
+    ASSERT_EQ(hnz.m_repeat_path_B, 3);
+    ASSERT_EQ(hnz.m_repeat_timeout, 3000);
+    ASSERT_EQ(hnz.m_anticipation, 3);
+    ASSERT_EQ(hnz.m_default_msg_period, 0);
+    ASSERT_EQ(hnz.m_Test_msg_send, "1304");
+    ASSERT_EQ(hnz.m_Test_msg_receive, "1304");
 }

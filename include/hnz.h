@@ -16,7 +16,7 @@
 #include <atomic>
 #include <utility>
 //#include "../../lib/src/inc/hnz_client.h"
-#include "../../../libhnz/src/inc/hnz_client.h"
+#include "../../libhnz/src/inc/hnz_client.h"
 #include <json.hpp> // https://github.com/nlohmann/json
 
 
@@ -47,7 +47,8 @@ public:
     void        stop_loop();
     void        analyze_frame(unsigned char* data, int size);
     bool        analyze_info_frame(unsigned char *data, unsigned char addr, int ns, int p, int nr, int size);
-    void        sendToFledge(unsigned char t, int value, int quality, int ts, int ts_qual, std::string label, std::string internal_id);
+    void        sendToFledge(unsigned char t, std::string message_type, unsigned char addr, int info_adress, int value, int valid, int ts, 
+                            int ts_iv, int ts_c, int ts_s, std::string label, std::string internal_id, bool time);
     std::string convert_data_to_str(unsigned char *data, int len);
 
 	
@@ -101,8 +102,8 @@ public :
     void sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label);
 
     template<class T>
-    Datapoint* m_addData(int value, int quality, int ts, int ts_qual);
-
+    Datapoint* m_addData(std::string message_type, unsigned char addr, int info_adress,
+               int value, int valid, int ts, int ts_iv, int ts_c, int ts_s, bool time);
 private:
 
     template<class T>

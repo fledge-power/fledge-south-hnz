@@ -330,7 +330,8 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 {
     int len = 0; // Length of message to push in Fledge
     confDatas confDatas;
-    int value, quality, ts, ts_qual;
+    string message_type;
+    int value, valid, ts, ts_iv, ts_c, ts_s;
 	long int scd_since_epoch, epoch_mod_day;
 
     unsigned char t = data[0]; // Payload type
@@ -343,7 +344,8 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
     // Analyzing the payload type
     switch (t)
     {
-    case TM4:
+    case TMA:
+        message_type = "TMA";
         Logger::getLogger()->info("Received TM4");
         for (size_t i = 0; i < 4; i++)
         {
@@ -355,16 +357,19 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
             // Item
             int noctet = 2 + i;
             value = (int) data[noctet]; // VALTMi
-            quality = (value == 0xFF); // Invalide si VALTMi = 0xFF
+            valid = (value == 0xFF); // Invalide si VALTMi = 0xFF
             ts = 0;
-            ts_qual = 0;
-
-            sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
+            ts_iv = 0;
+            ts_c = 0;
+            ts_s = 0;
+            //sendToFledge(t, message_type, addr, info_address, value, valid, ts, ts_iv, ts_c, ts_s, confDatas.label, confDatas.internal_id, time);
+            sendToFledge(t,message_type,addr,info_address,value,valid,ts,ts_iv,ts_c,ts_s,confDatas.label,confDatas.internal_id,false);
         }
 
         len = 6;
         break;
     case TSCE:
+        message_type = "TSCE";
         Logger::getLogger()->info("Received TSCE");
         // Header
         info_address += stoi(to_string((int) data[1]) + to_string((int) (data[2] >> 5))); // AD0 + ADB
@@ -373,15 +378,17 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 
         // Item
         value = (int) (data[2] >> 3) & 0x1; // E
-        quality = (int) (data[2] >> 4) & 0x1; // V
+        valid = (int) (data[2] >> 4) & 0x1; // V
 		scd_since_epoch = duration_cast<seconds>(high_resolution_clock::now().time_since_epoch()).count();
 		epoch_mod_day = scd_since_epoch - scd_since_epoch % 86400;
         ts = epoch_mod_day;
 		ts += module10M * 10 * 60000;
         ts += (int) ((data[3] << 8) | data[4]) * 10;
-        ts_qual = stoi(to_string((int) (data[2] >> 2) & 0x1) + to_string((int) (data[2] >> 1) & 0x1) + to_string((int) (data[2] & 0x1)));
-
-        sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
+        ts_iv = stoi(to_string((int) (data[2] >> 2) & 0x1) + to_string((int) (data[2] >> 1) & 0x1) + to_string((int) (data[2] & 0x1)));
+        ts_c = 0;
+        ts_s = 0;
+        sendToFledge(t, message_type, addr, info_address, value, valid, ts, ts_iv, ts_c, ts_s, confDatas.label
+        , confDatas.internal_id, true);
 
         // Size of this message
         len = 5;
@@ -398,11 +405,11 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
             // Item
             int noctet = 2 + (i / 4);
             value = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x1; // E
-            quality = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x2; // V
+            valid = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x2; // V
             ts = 0;
-            ts_qual = 0;
+            ts_iv = 0;
 
-            sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
+            //sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
         }
         // Size of this message
         len = 6;
@@ -423,18 +430,18 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 				int noctet = 2 + i;
 
 				value = (int) (data[noctet]); // Vi
-				quality = (int) (data[6] >> i) & 0x1; // Ii
+				valid = (int) (data[6] >> i) & 0x1; // Ii
 			} else {
 				int noctet = 2 + (i * 2);
 
 				value = (int) (data[noctet + 1] << 8 || data[noctet]); // Concat V1/V2 and V3/V4
-				quality = (int) (data[6] >> i*2) & 0x1; // I1 or I3
+				valid = (int) (data[6] >> i*2) & 0x1; // I1 or I3
 			}
 
 			ts = 0;
-			ts_qual = 0;
+			ts_iv = 0;
 
-			sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
+			//sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
 		}
 
 		len = 7;
@@ -482,7 +489,8 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
     }
 }
 
-void HNZ::sendToFledge(unsigned char t, int value, int quality, int ts, int ts_qual, std::string label, std::string internal_id) {
+void HNZ::sendToFledge(unsigned char t, string message_type, unsigned char addr, int info_adress, int value, int valid, int ts, 
+                 int ts_iv, int ts_c, int ts_s, std::string label, std::string internal_id, bool time) {
     if (label == "internal" && internal_id == "internal")
     {
         Logger::getLogger()->warn("Message protocolaire");
@@ -491,7 +499,7 @@ void HNZ::sendToFledge(unsigned char t, int value, int quality, int ts, int ts_q
     if (label != "" && internal_id != "")
     {
         // Prepare the value datapoint
-        Datapoint* dp = m_fledge->m_addData<std::string>(value, quality, ts, ts_qual);
+        Datapoint* dp = m_fledge->m_addData<std::string>(message_type, addr, info_adress, value, valid, ts, ts_iv, ts_c, ts_s,time);
         // Send datapoint to fledge
         m_fledge->sendData(dp, to_string(t), internal_id, label);
     }
@@ -562,20 +570,33 @@ void HNZFledge::sendData(Datapoint* dp, std::string code, std::string internal_i
 }
 
 template <class T>
-Datapoint* HNZFledge::m_addData(int value, int quality, int ts, int ts_qual)
+Datapoint* HNZFledge::m_addData(std::string message_type, unsigned char addr, int info_adress,
+               int value, int valid, int ts, int ts_iv, int ts_c, int ts_s, bool time)
 {
     auto* measure_features = new vector<Datapoint*>;
 
     for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object_item"].items())
     {
-        if (feature.value() == "value")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) value));
-        else if (feature.value() == "quality")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) quality));
-		else if (feature.value() == "timestamp")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts));
-        else if (feature.value() == "ts_qual")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_qual));
+        if (feature.value() == "message_type")
+            measure_features->push_back(m_createDatapoint(feature.key(), message_type));
+        else if (feature.value() == "station_addr")
+            measure_features->push_back(m_createDatapoint(feature.key(), (long int) addr));
+        else if (feature.value() == "msg_addr")
+            measure_features->push_back(m_createDatapoint(feature.key(), (long int) info_adress));
+        else if (feature.value() == "value")
+            measure_features->push_back(m_createDatapoint(feature.key(), (long int) value));            
+        else if (feature.value() == "validity")
+            measure_features->push_back(m_createDatapoint(feature.key(), (long int) valid));
+		else if (time) {
+            if (feature.value() == "time_code")
+               measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts));
+            else if (feature.value() == "ts_invalid")
+               measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_iv));
+            else if (feature.value() == "chronology_loss")
+              measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_c));
+            else if (feature.value() == "ts_not_synchro")
+              measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_s));           
+        }   
     }
 
     DatapointValue dpv(measure_features, true);

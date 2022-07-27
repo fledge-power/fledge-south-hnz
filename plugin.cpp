@@ -41,17 +41,17 @@ using namespace std;
         "version" : "1.0",                  \
         "msg_list" : [                      \
             {                               \
-                "station_address" : 1,      \
+                "station_address" : 20,      \
                 "message_code" : "0B",      \
                 "label" : "7AT761_AL.ECHAU",\
                 "info_address" : 511,       \
                 "internal_id" : "ID001836"  \
             },                              \
             {                               \
-                "station_address" : 1,      \
-                "message_code" : "0B",      \
+                "station_address" : 0,      \
+                "message_code" : "02",      \
                 "label" : "7AT761_AL.TEMP", \
-                "info_address" : 324,       \
+                "info_address" : 321,       \
                 "internal_id" : "ID001026"  \
             }                               \
         ]                                   \
@@ -59,23 +59,38 @@ using namespace std;
 })
 
 // PLUGIN DEFAULT PROTOCOL TRANSLATION CONF
-#define PROTOCOL_TRANSLATION_DEF QUOTE({         \
-    "protocol_translation" : {                   \
-        "name" : "hnz_to_pivot",                 \
-        "version" : "1.0",                       \
-        "mapping" : {                            \
-                "data_object_header" : {         \
-                    "doh_type" : "message_code", \
-                    "doh_name" : "internal_id"   \
-                },                               \
-                "data_object_item" : {           \
-                    "doi_value" : "value",       \
-                    "doi_quality" : "quality",   \
-                    "doi_ts" : "timestamp",      \
-                    "doi_ts_qual" : "ts_qual"    \
-                }                                \
-            }                                    \
-    }                                            \
+#define PROTOCOL_TRANSLATION_DEF QUOTE({           \
+    "protocol_translation" : {                     \
+        "name" : "hnz_to_pivot",                   \
+        "version" : "1.0",                         \
+        "mapping" : {                              \
+                "data_object_header" : {           \
+                    "doh_type" : "message_code",   \
+                    "doh_name" : "internal_id"     \
+                },                                 \
+                "data_object_item" : {             \
+                    "doi_type" : "message_type",   \
+                    "doi_station" : "station_addr",\
+                    "doi_addr"   : "msg_addr",     \
+                    "doi_value"  : "value",        \
+                    "doi_valid" : "validity",      \
+                    "doi_ts" : "time_code",        \
+                    "doi_ts_iv" : "ts_invalid",    \
+                    "doi_ts_c" : "chronology_loss",\
+                    "doi_ts_s" : "ts_not_synchro"  \
+                },                                 \
+                "command_object_header" : {        \
+                    "coh_type" : "message_code",   \
+                    "coh_name" : "internal_id"     \
+                },                                 \
+                "command_object_item" : {          \
+                    "coi_type" : "message_type",   \
+                    "coi_adress" : "msg_adress",   \
+                    "coi_value" : "value",         \
+                    "coi_val_coding" :"coding_val" \
+                }                                  \
+            }                                      \
+    }                                              \
 })
 
 /**

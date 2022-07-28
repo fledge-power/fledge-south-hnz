@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include <resultset.h>
 #include <string.h>
+
 
 #include <string>
 

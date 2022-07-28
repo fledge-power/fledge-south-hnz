@@ -98,7 +98,7 @@ TEST(HNZ,PluginStackParametersTestsNoThrow){
     HNZ hnz;
     json_config config;
     hnz.setJsonConfig(config.protocol_stack, config.exchanged_data, config.protocol_translation);
-    iec104.PrepareParameters();
+    hnz.PrepareParameters();
     testing::GTEST_FLAG(repeat) = 1;
     testing::GTEST_FLAG(shuffle) = true;
     testing::GTEST_FLAG(death_test_style) = "threadsafe";

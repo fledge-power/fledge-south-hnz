@@ -44,26 +44,6 @@ HNZ::HNZ(const char *ip, int port)
 ///// this part is created by Hamza Otmani 
 
 
-void HNZ::setIpHNZ(std::string ip)
-{
-    if (ip.length() > 1)
-        m_ip = ip;
-    else
-    {
-        m_ip ="192.168.1.3";
-    } 
-}
-void HNZ::setPortHNZ(int port)
-{
-    if (port > 0)
-    {
-        m_port = port;
-    }
-    else
-    {
-        m_port = 6001;
-    }
-}
 void HNZ::setllevel(int llevel)
 {
     m_llevel = (llevel ==1 or llevel==2 or llevel==3) ? llevel :1;
@@ -125,8 +105,6 @@ void HNZ::setanticipation(int anticipation){
     }
  }
  void HNZ::PrepareParameters(){
-    setIpHNZ(m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connections/srv_ip"_json_pointer));
-    setPortHNZ(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connections/port"_json_pointer));
     setllevel(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer));
     setretry_number(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer));
     setretry_delay(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer));

@@ -1,10 +1,10 @@
 
-include_directories(../include)
-include_directories(../../fledge-south-hnz)
-include_directories(../../libhnz/src/hnz/)
-include_directories(../../libhnz/src/hal/inc)
-include_directories(../../libhnz/src/hal/srv)
-include_directories(../../libhnz/src)
+//include_directories(../include)
+//include_directories(../../fledge-south-hnz)
+//include_directories(../../libhnz/src/hnz/)
+//include_directories(../../libhnz/src/hal/inc)
+//include_directories(../../libhnz/src/hal/srv)
+//include_directories(../../libhnz/src)
 
 #include <json.hpp>
 #include <hnz.h>

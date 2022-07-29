@@ -7,5 +7,5 @@ include_directories(../include)
 include_directories(../../fledge-south-hnz)
  
 # Link runTests with what we want to test and the GTest and pthread library
-add_executable(executeTests sqrt_test.cpp)
+add_executable(executeTests test_PrepareParameters.cpp)
 target_link_libraries(executeTests ${GTEST_LIBRARIES} pthread)

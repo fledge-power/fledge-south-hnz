@@ -8,6 +8,7 @@
 
 #include <json.hpp>
 #include <hnz.h>
+#include <server.cpp>
 //#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 //#include <plugin_api.h>

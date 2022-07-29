@@ -17,23 +17,6 @@ set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
 # Generation version header file
 set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
 
-if (${CMAKE_BUILD_TYPE} STREQUAL Coverage)
-	add_custom_command(
-	  OUTPUT version.h
-	  DEPENDS ${CMAKE_SOURCE_DIR}/VERSION
-	  COMMAND ${CMAKE_SOURCE_DIR}/mkversion ${CMAKE_SOURCE_DIR}
-	  COMMENT "Generating version header"
-	  VERBATIM
-	)
-else()
-	add_custom_command(
-	  OUTPUT version.h
-	  DEPENDS ${CMAKE_SOURCE_DIR}/../VERSION
-	  COMMAND ${CMAKE_SOURCE_DIR}/../mkversion ${CMAKE_SOURCE_DIR}/..
-	  COMMENT "Generating version header"
-	  VERBATIM
-	)
-endif()
 
 include_directories(${CMAKE_BINARY_DIR})
 

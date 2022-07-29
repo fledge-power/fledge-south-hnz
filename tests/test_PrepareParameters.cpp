@@ -1,3 +1,15 @@
+
+include_directories(../include)
+include_directories(../../fledge-south-hnz)
+include_directories(../../libhnz/src/hnz/)
+include_directories(../../libhnz/src/hal/inc)
+include_directories(../../libhnz/src/hal/srv)
+include_directories(../../libhnz/src)
+
+
+
+
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <hnz.h>
@@ -7,12 +19,7 @@
 #include <iostream>
 #include <string>
 
-include_directories(../include)
-include_directories(../../fledge-south-hnz)
-include_directories(../../libhnz/src/hnz/)
-include_directories(../../libhnz/src/hal/inc)
-include_directories(../../libhnz/src/hal/srv)
-include_directories(../../libhnz/src)
+
 
 
 

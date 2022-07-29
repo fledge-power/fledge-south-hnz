@@ -56,7 +56,13 @@ include_directories(${GTEST_INCLUDE_DIRS})
 # Add ../include
 include_directories(../include)
 include_directories(../../fledge-south-hnz)
-include_directories(../../libhnz)
+include_directories(../../libhnz/src/hnz/)
+include_directories(../../libhnz/src/hal/inc)
+include_directories(../../libhnz/src/hal/srv)
+include_directories(../../libhnz/src)
+
+
+include_directories()
 # Add Fledge include dir(s)
 include_directories(${FLEDGE_INCLUDE_DIRS})
 

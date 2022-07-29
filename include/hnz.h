@@ -7,8 +7,8 @@
 
 #include <iostream>
 #include <cstring>
-#include <reading.h>
-#include <logger.h>
+//#include <reading.h>
+//#include <logger.h>
 #include <cstdlib>
 #include <cstdio>
 #include <thread>

@@ -8,9 +8,9 @@
 
 #include <json.hpp>
 #include <hnz.h>
-#include <gmock/gmock.h>
+//#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include <plugin_api.h>
+//#include <plugin_api.h>
 #include <string.h>
 
 #include <iostream>

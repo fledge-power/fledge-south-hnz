@@ -9,6 +9,7 @@ include_directories(../../libhnz/src/hnz/)
 include_directories(../../libhnz/src/hal/inc)
 include_directories(../../libhnz/src/hal/srv)
 include_directories(../../libhnz/src)
+include_directories(/usr/src/gtest)
 
 
  

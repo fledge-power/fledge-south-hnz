@@ -4,12 +4,12 @@ cmake_minimum_required(VERSION 2.6)
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 #include_directories(../include)
-#include_directories(../../fledge-south-hnz)
+include_directories(../../fledge-south-hnz)
 #include_directories(../../libhnz/src/hnz/)
 #include_directories(../../libhnz/src/hal/inc)
 #include_directories(../../libhnz/src/hal/srv)
-include_directories(../../libhnz)
-include_directories(/usr/src/gtest)
+#include_directories(../../libhnz)
+#include_directories(/usr/src/gtest)
 
 
  

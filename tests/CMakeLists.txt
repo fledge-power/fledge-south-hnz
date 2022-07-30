@@ -17,7 +17,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 #include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 #include_directories(${CMAKE_BINARY_DIR})
 
-#include_directories(${PROJECT_SOURCE_DIR}../../fledge)
+include_directories(${PROJECT_SOURCE_DIR}../../fledge)
 include_directories(${PROJECT_SOURCE_DIR}../../libhnz)
 
  

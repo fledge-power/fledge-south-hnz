@@ -58,8 +58,8 @@ set(FLEDGE_INSTALL "" CACHE INTERNAL "")
 # Link runTests with what we want to test and the GTest and pthread library
 add_executable(executeTests test_PrepareParameters.cpp)
 target_link_libraries(executeTests ${GTEST_LIBRARIES} pthread)
-target_link_libraries(${PROJECT_NAME} ../../libhnz)
-target_link_libraries(${PROJECT_NAME} ../../fledge-south-hnz)
+target_link_libraries(${PROJECT_NAME} -L/root/ -libhnz)
+
 
 
 

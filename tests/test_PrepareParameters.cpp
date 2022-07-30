@@ -6,6 +6,7 @@
 //include_directories(../../libhnz/src/hal/srv)
 //include_directories(../../libhnz/src)
 
+#include <automate.h>
 #include <hnz.h>
 //#include <gmock/gmock.h>
 #include <gtest/gtest.h>

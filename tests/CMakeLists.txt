@@ -6,7 +6,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 #include_directories(../include)
 #include_directories(../../fledge-south-hnz)
 #include_directories(../../libhnz/src/hnz/)
-include_directories(../../libhnz/src/hal/inc)
+#include_directories(../../libhnz/src/hal/inc)
 #include_directories(../../libhnz/src/hal/srv)
 #include_directories(../../libhnz)
 #include_directories(/usr/src/gtest)
@@ -20,7 +20,17 @@ include_directories(../../libhnz/src/hal/inc)
 #include_directories(${PROJECT_SOURCE_DIR}../../fledge)
 #include_directories(${PROJECT_SOURCE_DIR}../../libhnz)
 
+
+file(
+        GLOB_RECURSE
+        source_files
+        ../../libhnz/*
+)
+
+
+
  
 # Link runTests with what we want to test and the GTest and pthread library
 add_executable(executeTests test_PrepareParameters.cpp)
 target_link_libraries(executeTests ${GTEST_LIBRARIES} pthread)
+

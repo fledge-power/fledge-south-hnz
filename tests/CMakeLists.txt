@@ -59,11 +59,9 @@ target_link_libraries(executeTests ${GTEST_LIBRARIES} pthread)
 
 
 
-target_link_libraries(${PROJECT_NAME} ${GTEST_LIBRARIES} pthread)
 target_link_libraries(${PROJECT_NAME} ${NEEDED_FLEDGE_LIBS})
 target_link_libraries(${PROJECT_NAME}  ${Boost_LIBRARIES})
 
-target_link_libraries(${PROJECT_NAME} -lpthread -ldl)
 
 
 

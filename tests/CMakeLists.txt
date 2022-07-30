@@ -6,7 +6,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 #include_directories(../include)
 #include_directories(../../fledge-south-hnz)
 #include_directories(../../libhnz/src/hnz/)
-#include_directories(../../libhnz/src/hal/inc)
+include_directories(../../libhnz/src/hal/inc)
 #include_directories(../../libhnz/src/hal/srv)
 #include_directories(../../libhnz)
 #include_directories(/usr/src/gtest)
@@ -17,8 +17,8 @@ include_directories(${GTEST_INCLUDE_DIRS})
 #include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 #include_directories(${CMAKE_BINARY_DIR})
 
-include_directories(${PROJECT_SOURCE_DIR}../../fledge)
-include_directories(${PROJECT_SOURCE_DIR}../../libhnz)
+#include_directories(${PROJECT_SOURCE_DIR}../../fledge)
+#include_directories(${PROJECT_SOURCE_DIR}../../libhnz)
 
  
 # Link runTests with what we want to test and the GTest and pthread library

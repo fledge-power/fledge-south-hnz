@@ -48,7 +48,6 @@ include_directories(${FLEDGE_INCLUDE_DIRS})
 link_directories(${FLEDGE_LIB_DIRS})
 
 # Link runTests with what we want to test and the GTest and pthread library
-add_executable(RunTests ${unittests} ${SOURCES} version.h)
 
 set(FLEDGE_INSTALL "" CACHE INTERNAL "")
 
@@ -63,7 +62,7 @@ target_link_libraries(executeTests ${GTEST_LIBRARIES} pthread)
 target_link_libraries(${PROJECT_NAME} ${GTEST_LIBRARIES} pthread)
 target_link_libraries(${PROJECT_NAME} ${NEEDED_FLEDGE_LIBS})
 target_link_libraries(${PROJECT_NAME}  ${Boost_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} -L/usr/)
+
 target_link_libraries(${PROJECT_NAME} -lpthread -ldl)
 
 

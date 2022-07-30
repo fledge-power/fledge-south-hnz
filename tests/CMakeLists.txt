@@ -21,11 +21,13 @@ include_directories(${GTEST_INCLUDE_DIRS})
 #include_directories(${PROJECT_SOURCE_DIR}../../libhnz)
 
 
-file(
-        GLOB
-        source_files
-        ../../libhnz/*
-)
+
+
+file(GLOB ../../libhnz/*.cpp SRC) 
+file(GLOB ../../libhnz/*.h SRC) 
+
+
+
 
 
 

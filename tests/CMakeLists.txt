@@ -24,7 +24,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 
 
 
-file(GLOB_RECURSE ../../libhnz/*.h libhnz) 
+file(GLOB ../../libhnz/*.h libhnz) 
 
 
 # Link runTests with what we want to test and the GTest and pthread library

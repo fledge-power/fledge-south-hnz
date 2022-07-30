@@ -40,7 +40,9 @@ include_directories(${GTEST_INCLUDE_DIRS})
 
 # Add ../include
 include_directories(../include)
-include_directories(/usr/local/include/lib60870)
+include_directories(../../fledge-south-hnz)
+include_directories(../../libhnz)
+
 # Add Fledge include dir(s)
 include_directories(${FLEDGE_INCLUDE_DIRS})
 
@@ -56,6 +58,8 @@ set(FLEDGE_INSTALL "" CACHE INTERNAL "")
 # Link runTests with what we want to test and the GTest and pthread library
 add_executable(executeTests test_PrepareParameters.cpp)
 target_link_libraries(executeTests ${GTEST_LIBRARIES} pthread)
+target_link_libraries(${PROJECT_NAME} ../../libhnz)
+target_link_libraries(${PROJECT_NAME} ../../fledge-south-hnz)
 
 
 

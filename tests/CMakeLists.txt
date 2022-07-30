@@ -22,7 +22,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 
 
 file(
-        GLOB_RECURSE
+        GLOB
         source_files
         ../../libhnz/*
 )

@@ -105,8 +105,8 @@ void HNZ::setanticipation(int anticipation){
     }
  }
  void HNZ::PrepareParameters(){
-    m_ip="192.168.1.77";
-    m_port=6001;
+    m_ip=m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connections/srv_ip"_json_pointer);
+    m_port=m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connections/port"_json_pointer);
     setllevel(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer));
     setretry_number(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer));
     setretry_delay(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer));

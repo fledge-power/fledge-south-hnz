@@ -49,10 +49,101 @@ using namespace std;
             },                              \
             {                               \
                 "station_address" : 0,      \
-                "message_code" : "02",      \
+                "message_code" : "16",      \
                 "label" : "7AT761_AL.TEMP", \
                 "info_address" : 321,       \
                 "internal_id" : "ID001026"  \
+            },                              \
+            {                               \
+                "station_address" : 20,     \
+                "message_code" : "02",      \
+                "label" : "TMA.TEST",       \
+                "info_address" : 70,        \
+                "internal_id" : "ID001111"  \
+            },                              \
+            {                               \
+                "station_address" : 20,     \
+                "message_code" : "02",      \
+                "label" : "TMA.TEST",       \
+                "info_address" : 71,        \
+                "internal_id" : "ID001111"  \
+            },                              \
+            {                               \
+                "station_address" : 20,     \
+                "message_code" : "02",      \
+                "label" : "TMA.TEST",       \
+                "info_address" : 72,        \
+                "internal_id" : "ID001111"  \
+            },                              \
+            {                               \
+                "station_address" : 20,     \
+                "message_code" : "02",      \
+                "label" : "TMA.TEST",       \
+                "info_address" : 73,        \
+                "internal_id" : "ID001111"  \
+            },                              \
+            {                               \
+                "station_address" : 5,      \
+                "message_code" : "02",      \
+                "label" : "TMA.5TEST",      \
+                "info_address" : 40,        \
+                "internal_id" : "ID001112"  \
+            },                              \
+            {                               \
+                "station_address" : 5,      \
+                "message_code" : "02",      \
+                "label" : "TMA.5TEST",      \
+                "info_address" : 41,        \
+                "internal_id" : "ID001112"  \
+            },                              \
+            {                               \
+                "station_address" : 5,      \
+                "message_code" : "02",      \
+                "label" : "TMA.5TEST",      \
+                "info_address" : 42,        \
+                "internal_id" : "ID001112"  \
+            },                              \
+            {                               \
+                "station_address" : 5,      \
+                "message_code" : "02",      \
+                "label" : "TMA.5TEST",      \
+                "info_address" : 43,        \
+                "internal_id" : "ID001112"  \
+            },                              \
+            {                               \
+                "station_address" : 0,      \
+                "message_code" : "02",      \
+                "label" : "TMA.0TEST",      \
+                "info_address" : 0,         \
+                "internal_id" : "ID001113"  \
+            },                              \
+            {                               \
+                "station_address" : 1,      \
+                "message_code" : "02",      \
+                "label" : "TMA.1TEST",      \
+                "info_address" : 80,        \
+                "internal_id" : "ID001114"  \
+            },                              \
+            {                               \
+                "station_address" : 1,      \
+                "message_code" : "02",      \
+                "label" : "TMA.1TEST",      \
+                "info_address" : 81,        \
+                "internal_id" : "ID001114"  \
+            },                              \
+            {                               \
+                "station_address" : 1,      \
+                "message_code" : "02",      \
+                "label" : "TMA.1TEST",      \
+                "info_address" : 82,        \
+                "internal_id" : "ID001114"  \
+            },                              \
+            {                               \
+                "station_address" : 1,      \
+                "message_code" : "02",      \
+                "label" : "TMA.1TEST",      \
+                "info_address" : 83,        \
+                "internal_id" : "ID001114"  \
             }                               \
         ]                                   \
     }                                       \
@@ -64,30 +155,22 @@ using namespace std;
         "name" : "hnz_to_pivot",                   \
         "version" : "1.0",                         \
         "mapping" : {                              \
-                "data_object_header" : {           \
-                    "doh_type" : "message_code",   \
-                    "doh_name" : "internal_id"     \
+                "data_object" : {                  \
+                    "do_type" : "message_type",   \
+                    "do_station" : "station_addr",\
+                    "do_addr"   : "msg_addr",     \
+                    "do_value"  : "value",        \
+                    "do_valid" : "validity",      \
+                    "do_ts" : "time_code",        \
+                    "do_ts_iv" : "ts_invalid",    \
+                    "do_ts_c" : "chronology_loss",\
+                    "do_ts_s" : "ts_not_synchro"  \
                 },                                 \
-                "data_object_item" : {             \
-                    "doi_type" : "message_type",   \
-                    "doi_station" : "station_addr",\
-                    "doi_addr"   : "msg_addr",     \
-                    "doi_value"  : "value",        \
-                    "doi_valid" : "validity",      \
-                    "doi_ts" : "time_code",        \
-                    "doi_ts_iv" : "ts_invalid",    \
-                    "doi_ts_c" : "chronology_loss",\
-                    "doi_ts_s" : "ts_not_synchro"  \
-                },                                 \
-                "command_object_header" : {        \
-                    "coh_type" : "message_code",   \
-                    "coh_name" : "internal_id"     \
-                },                                 \
-                "command_object_item" : {          \
-                    "coi_type" : "message_type",   \
-                    "coi_adress" : "msg_adress",   \
-                    "coi_value" : "value",         \
-                    "coi_val_coding" :"coding_val" \
+                "command_object" : {               \
+                    "co_type" : "message_type",   \
+                    "co_adress" : "msg_adress",   \
+                    "co_value" : "value",         \
+                    "co_val_coding" :"coding_val" \
                 }                                  \
             }                                      \
     }                                              \

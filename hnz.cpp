@@ -364,6 +364,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
             ts_s = 0;
             //sendToFledge(t, message_type, addr, info_address, value, valid, ts, ts_iv, ts_c, ts_s, confDatas.label, confDatas.internal_id, time);
             sendToFledge(t,message_type,addr,info_address,value,valid,ts,ts_iv,ts_c,ts_s,confDatas.label,confDatas.internal_id,false);
+            info_address = 0;
         }
 
         len = 6;
@@ -394,6 +395,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
         len = 5;
         break;
     case TSCG:
+        message_type = "TSCG"
         Logger::getLogger()->info("Received TSCG");
         for (size_t i = 0; i < 16; i++)
         {
@@ -406,10 +408,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
             int noctet = 2 + (i / 4);
             value = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x1; // E
             valid = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x2; // V
-            ts = 0;
-            ts_iv = 0;
-
-            //sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
+            sendToFledge(t,message_type,addr,info_address,value,valid,ts,ts_iv,ts_c,ts_s,confDatas.label,confDatas.internal_id,false);
         }
         // Size of this message
         len = 6;
@@ -549,23 +548,23 @@ void HNZ::registerIngest(void *data, INGEST_CB cb)
 void HNZFledge::sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label)
 {
     // Create the header
-    auto* data_header = new vector<Datapoint*>;
+    //auto* data_header = new vector<Datapoint*>;
 
-    for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object_header"].items())
-    {
-        if (feature.value() == "message_code")
-            data_header->push_back(m_createDatapoint(feature.key(), code));
-        else if (feature.value() == "internal_id")
-            data_header->push_back(m_createDatapoint(feature.key(), internal_id));
-    }
+    //for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object_header"].items())
+    //{
+      //  if (feature.value() == "message_code")
+        //    data_header->push_back(m_createDatapoint(feature.key(), code));
+        //else if (feature.value() == "internal_id")
+          //  data_header->push_back(m_createDatapoint(feature.key(), internal_id));
+    //}
 
-    DatapointValue header_dpv(data_header, true);
+    //DatapointValue header_dpv(data_header, true);
 
-    auto* header_dp = new Datapoint("data_object_header", header_dpv);
+    //auto* header_dp = new Datapoint("data_object_header", header_dpv);
 
     Datapoint* item_dp = dp;
 
-    Reading reading(label, {header_dp, item_dp});
+    Reading reading(label, item_dp);
     m_hnz->ingest(reading);
 }
 
@@ -575,7 +574,7 @@ Datapoint* HNZFledge::m_addData(std::string message_type, unsigned char addr, in
 {
     auto* measure_features = new vector<Datapoint*>;
 
-    for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object_item"].items())
+    for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object"].items())
     {
         if (feature.value() == "message_type")
             measure_features->push_back(m_createDatapoint(feature.key(), message_type));
@@ -601,7 +600,7 @@ Datapoint* HNZFledge::m_addData(std::string message_type, unsigned char addr, in
 
     DatapointValue dpv(measure_features, true);
 
-    auto* dp = new Datapoint("data_object_item", dpv);
+    auto* dp = new Datapoint("data_object", dpv);
     return dp;
 }
 
@@ -636,16 +635,16 @@ HNZ::confDatas HNZ::m_checkExchangedDataLayer(const int address, const std::stri
 	{
 		if (m_getConfigValue<unsigned int>(element, "/station_address"_json_pointer) == address)
 		{
-			//Logger::getLogger()->warn("ADDR:" + to_string(m_getConfigValue<unsigned int>(element, "/station_address"_json_pointer)));
+			Logger::getLogger()->warn("ADDR:" + to_string(m_getConfigValue<unsigned int>(element, "/station_address"_json_pointer)));
 			know_station_address = true;
 			if (m_getConfigValue<string>(element, "/message_code"_json_pointer) == message_code)
 			{
-				//Logger::getLogger()->warn("MSGCODE:" + m_getConfigValue<string>(element, "/message_code"_json_pointer));
+				Logger::getLogger()->warn("MSGCODE:" + m_getConfigValue<string>(element, "/message_code"_json_pointer));
 				know_message_code = true;
 				if (m_getConfigValue<unsigned int>(element, "/info_address"_json_pointer) == info_address)
 				{
 					know_info_address = true;
-					//Logger::getLogger()->warn("INFOADDR:"+ to_string(m_getConfigValue<unsigned int>(element, "/info_address"_json_pointer)));
+					Logger::getLogger()->warn("INFOADDR:"+ to_string(m_getConfigValue<unsigned int>(element, "/info_address"_json_pointer)));
                     data.label = element["label"];
                     data.internal_id = element["internal_id"];
 					//Logger::getLogger()->warn("Found : " + data.label + " " + data.internal_id);

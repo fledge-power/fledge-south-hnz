@@ -41,7 +41,7 @@ HNZ::HNZ(const char *ip, int port)
     }
 }
 
-///// this part is created by Hamza Otmani 
+/////
 
 
 void HNZ::setllevel(int llevel)

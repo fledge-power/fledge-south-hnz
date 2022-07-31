@@ -67,7 +67,7 @@ public:
     HNZClient*      m_client;
 
 
-    ////this part is created by Hamza Otmani
+    //////
     int m_remote_station_addr;
     int m_local_station_addr;
     int m_remote_addr_in_local_station;
@@ -91,7 +91,7 @@ public:
     std::thread loopThread;
 	
 	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
-    //this part is created by Hamza Otmani
+    ///////
     void setllevel(int llevel);
     void setretry_number(int retry_number);
     void setretry_delay(int retry_delay);

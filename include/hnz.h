@@ -84,7 +84,7 @@ public:
     std::string m_Test_msg_receive;
     ////
 
-
+    
 
     std::mutex loopLock;
     std::atomic<bool> loopActivated;

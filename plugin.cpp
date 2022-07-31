@@ -22,7 +22,7 @@ using namespace std;
       "transport_layer":{                 \
          "connections":                   \
             {                             \
-               "srv_ip":"192.168.1.77",   \
+               "srv_ip":"192.168.1.3",   \
                "port":6001                \
             },                            \
          "llevel":1,                      \

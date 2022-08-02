@@ -55,11 +55,30 @@ void HNZ::setJsonConfig(const std::string &stack_configuration, const std::strin
 
     try
     {
+        // Parse the json from a raw string
         m_msg_configuration = json::parse(msg_configuration)["exchanged_data"];
+        // Ensure that all parameters for each entries are good
+        for (json::iterator it = m_msg_configuration["msg_list"].begin(); it != m_msg_configuration["msg_list"].end(); ++it)
+        {
+            json msg = *it;
+            if (msg["station_address"].is_null()
+            || msg["message_code"].is_null() 
+            || msg["label"].is_null() 
+            || msg["info_address"].is_null() 
+            || !msg["message_code"].is_string() 
+            || !msg["label"].is_string() 
+            || !msg["station_address"].is_number() 
+            || !msg["info_address"].is_number())
+            {
+                Logger::getLogger()->fatal("Error in exchanged_data json config string. At least one of the parameters is missing or incorrect for this entry : " + msg.dump());
+                throw(string("json config error"));
+            }
+        }
     }
     catch (json::parse_error &e)
     {
         Logger::getLogger()->fatal("Couldn't read exchanged_data json config string : " + string(e.what()));
+        throw(string("json config error"));
     }
 
     Logger::getLogger()->info("Json config parsed successsfully.");

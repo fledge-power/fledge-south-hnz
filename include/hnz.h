@@ -56,8 +56,9 @@ public:
 
     confDatas m_checkExchangedDataLayer(const int address, const std::string& message_code, const int info_address);
 
-    void		ingest(Reading& reading);
-    void		registerIngest(void *data, void (*cb)(void *, Reading));
+    //void ingest(Reading& reading);
+    void ingest(std::string assetName, std::vector<Datapoint *> &points);
+    void registerIngest(void *data, void (*cb)(void *, Reading));
 
     std::string		m_asset;
     std::string     m_ip;
@@ -70,7 +71,7 @@ public:
     std::atomic<bool> loopActivated;
     std::thread loopThread;
 	
-	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
+	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration);
 
 
 private:
@@ -84,13 +85,12 @@ private:
     static T m_getConfigValue(nlohmann::json configuration, nlohmann::json_pointer<nlohmann::json> path);
 	static nlohmann::json m_stack_configuration;
     static nlohmann::json m_msg_configuration;
-    static nlohmann::json m_pivot_configuration;
 };
 
 class HNZFledge
 {
 public :
-    explicit HNZFledge(HNZ *hnz, nlohmann::json* pivot_configuration) : m_hnz(hnz), m_pivot_configuration(pivot_configuration) {};
+    explicit HNZFledge(HNZ *hnz) : m_hnz(hnz) {};
 
     // ==================================================================== //
     // Note : The overloaded method addData is used to prevent the user from
@@ -114,7 +114,6 @@ private:
     }
 
     HNZ* m_hnz;
-	nlohmann::json* m_pivot_configuration;
 	
 };
 

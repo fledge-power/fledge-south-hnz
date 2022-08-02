@@ -149,33 +149,6 @@ using namespace std;
     }                                       \
 })
 
-// PLUGIN DEFAULT PROTOCOL TRANSLATION CONF
-#define PROTOCOL_TRANSLATION_DEF QUOTE({           \
-    "protocol_translation" : {                     \
-        "name" : "hnz_to_pivot",                   \
-        "version" : "1.0",                         \
-        "mapping" : {                              \
-                "data_object" : {                  \
-                    "do_type" : "message_type",   \
-                    "do_station" : "station_addr",\
-                    "do_addr"   : "msg_addr",     \
-                    "do_value"  : "value",        \
-                    "do_valid" : "validity",      \
-                    "do_ts" : "time_code",        \
-                    "do_ts_iv" : "ts_invalid",    \
-                    "do_ts_c" : "chronology_loss",\
-                    "do_ts_s" : "ts_not_synchro"  \
-                },                                 \
-                "command_object" : {               \
-                    "co_type" : "message_type",   \
-                    "co_adress" : "msg_adress",   \
-                    "co_value" : "value",         \
-                    "co_val_coding" :"coding_val" \
-                }                                  \
-            }                                      \
-    }                                              \
-})
-
 /**
  * Default configuration
  */
@@ -212,14 +185,6 @@ const char *default_config = QUOTE({
         "displayName" : "Exchanged data list",
         "order" : "3",
         "default" : EXCHANGED_DATA_DEF
-    },
-
-    "protocol_translation" : {
-        "description" : "protocol translation mapping",
-        "type" : "string",
-        "displayName" : "Protocol translation mapping",
-        "order" : "4",
-        "default" : PROTOCOL_TRANSLATION_DEF
     }
 });
 
@@ -262,9 +227,9 @@ extern "C"
             hnz->setAssetName("hnz");
         }
 
-        if (config->itemExists("protocol_stack") && config->itemExists("exchanged_data") && config->itemExists("protocol_translation"))
+        if (config->itemExists("protocol_stack") && config->itemExists("exchanged_data"))
         {
-            hnz->setJsonConfig(config->getValue("protocol_stack"), config->getValue("exchanged_data"), config->getValue("protocol_translation"));
+            hnz->setJsonConfig(config->getValue("protocol_stack"), config->getValue("exchanged_data"));
         }
 
         return (PLUGIN_HANDLE)hnz;
@@ -319,8 +284,8 @@ extern "C"
         hnz->setPort(DEFAULT_PORT);
         hnz->setIp(DEFAULT_IP);
 
-        if (config.itemExists("protocol_stack") && config.itemExists("exchanged_data") && config.itemExists("protocol_translation"))
-            hnz->setJsonConfig(config.getValue("protocol_stack"), config.getValue("exchanged_data"), config.getValue("protocol_translation"));
+        if (config.itemExists("protocol_stack") && config.itemExists("exchanged_data"))
+            hnz->setJsonConfig(config.getValue("protocol_stack"), config.getValue("exchanged_data"));
 
         if (config.itemExists("asset"))
         {

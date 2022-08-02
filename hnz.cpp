@@ -20,7 +20,6 @@ using namespace std::chrono;
 
 json HNZ::m_stack_configuration;
 json HNZ::m_msg_configuration;
-json HNZ::m_pivot_configuration;
 
 HNZ::HNZ(const char *ip, int port)
 {
@@ -41,7 +40,7 @@ HNZ::HNZ(const char *ip, int port)
     }
 }
 
-void HNZ::setJsonConfig(const std::string &stack_configuration, const std::string &msg_configuration, const std::string &pivot_configuration)
+void HNZ::setJsonConfig(const std::string &stack_configuration, const std::string &msg_configuration)
 {
     Logger::getLogger()->info("Reading json config string...");
 
@@ -61,15 +60,6 @@ void HNZ::setJsonConfig(const std::string &stack_configuration, const std::strin
     catch (json::parse_error &e)
     {
         Logger::getLogger()->fatal("Couldn't read exchanged_data json config string : " + string(e.what()));
-    }
-
-    try
-    {
-        m_pivot_configuration = json::parse(pivot_configuration)["protocol_translation"];
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't read protocol_translation json config string : " + string(e.what()));
     }
 
     Logger::getLogger()->info("Json config parsed successsfully.");
@@ -115,7 +105,7 @@ int HNZ::connect()
 /** Starts the plugin */
 void HNZ::start()
 {
-    m_fledge = new HNZFledge(this, &m_pivot_configuration);
+    m_fledge = new HNZFledge(this);
 
     // Fledge logging level setting
     switch (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer))
@@ -346,7 +336,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
     {
     case TMA:
         message_type = "TMA";
-        Logger::getLogger()->info("Received TM4");
+        Logger::getLogger()->info("Received TMA");
         for (size_t i = 0; i < 4; i++)
         {
             // 4 TM inside a TM cyclique
@@ -395,7 +385,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
         len = 5;
         break;
     case TSCG:
-        message_type = "TSCG"
+        message_type = "TSCG";
         Logger::getLogger()->info("Received TSCG");
         for (size_t i = 0; i < 16; i++)
         {
@@ -529,9 +519,14 @@ void HNZ::stop()
  *
  * @param points    The points in the reading we must create
  */
-void HNZ::ingest(Reading &reading)
+// void HNZ::ingest(Reading &reading)
+// {
+//     (*m_ingest)(m_data, reading);
+// }
+void HNZ::ingest(std::string assetName, std::vector<Datapoint *> &points)
 {
-    (*m_ingest)(m_data, reading);
+    if (m_ingest)
+        m_ingest(m_data, Reading(assetName, points));
 }
 
 /**
@@ -547,25 +542,11 @@ void HNZ::registerIngest(void *data, INGEST_CB cb)
 
 void HNZFledge::sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label)
 {
-    // Create the header
-    //auto* data_header = new vector<Datapoint*>;
+    // Datapoint *item_dp = dp;
 
-    //for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object_header"].items())
-    //{
-      //  if (feature.value() == "message_code")
-        //    data_header->push_back(m_createDatapoint(feature.key(), code));
-        //else if (feature.value() == "internal_id")
-          //  data_header->push_back(m_createDatapoint(feature.key(), internal_id));
-    //}
-
-    //DatapointValue header_dpv(data_header, true);
-
-    //auto* header_dp = new Datapoint("data_object_header", header_dpv);
-
-    Datapoint* item_dp = dp;
-
-    Reading reading(label, item_dp);
-    m_hnz->ingest(reading);
+    std::vector<Datapoint *> points;
+    points.push_back(dp);
+    m_hnz->ingest(label, points);
 }
 
 template <class T>
@@ -573,36 +554,25 @@ Datapoint* HNZFledge::m_addData(std::string message_type, unsigned char addr, in
                int value, int valid, int ts, int ts_iv, int ts_c, int ts_s, bool time)
 {
     auto* measure_features = new vector<Datapoint*>;
+    measure_features->push_back(m_createDatapoint("do_type", message_type));
+    measure_features->push_back(m_createDatapoint("do_station", (long int)addr));
+    measure_features->push_back(m_createDatapoint("do_addr", (long int)info_adress));
+    measure_features->push_back(m_createDatapoint("do_value", (long int)value));
+    measure_features->push_back(m_createDatapoint("do_valid", (long int)valid));
 
-    for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object"].items())
+    if (time)
     {
-        if (feature.value() == "message_type")
-            measure_features->push_back(m_createDatapoint(feature.key(), message_type));
-        else if (feature.value() == "station_addr")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) addr));
-        else if (feature.value() == "msg_addr")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) info_adress));
-        else if (feature.value() == "value")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) value));            
-        else if (feature.value() == "validity")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) valid));
-		else if (time) {
-            if (feature.value() == "time_code")
-               measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts));
-            else if (feature.value() == "ts_invalid")
-               measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_iv));
-            else if (feature.value() == "chronology_loss")
-              measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_c));
-            else if (feature.value() == "ts_not_synchro")
-              measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_s));           
-        }   
+        measure_features->push_back(m_createDatapoint("do_ts", (long int)ts));
+        measure_features->push_back(m_createDatapoint("do_ts_iv", (long int)ts_iv));
+        measure_features->push_back(m_createDatapoint("do_ts_c", (long int)ts_c));
+        measure_features->push_back(m_createDatapoint("do_ts_s", (long int)ts_s));
     }
 
     DatapointValue dpv(measure_features, true);
 
     auto* dp = new Datapoint("data_object", dpv);
     return dp;
-}
+    }
 
 template <class T>
 T HNZ::m_getConfigValue(json configuration, json_pointer<json> path)

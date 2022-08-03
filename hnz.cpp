@@ -40,48 +40,78 @@ HNZ::HNZ(const char *ip, int port)
     }
 }
 
-void HNZ::setJsonConfig(const std::string &stack_configuration, const std::string &msg_configuration)
-{
-    Logger::getLogger()->info("Reading json config string...");
+void HNZ::setJsonConfig(const std::string &stack_configuration,
+                        const std::string &msg_configuration) {
+  Logger::getLogger()->info("Reading json config string...");
 
-    try
-    {
-        m_stack_configuration = json::parse(stack_configuration)["protocol_stack"];
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't read protocol_stack json config string : " + string(e.what()));
-    }
+  try {
+    m_stack_configuration = json::parse(stack_configuration)["protocol_stack"];
+  } catch (json::parse_error &e) {
+    Logger::getLogger()->fatal(
+        "Couldn't read protocol_stack json config string : " +
+        string(e.what()));
+  }
 
-    try
-    {
-        // Parse the json from a raw string
-        m_msg_configuration = json::parse(msg_configuration)["exchanged_data"];
-        // Ensure that all parameters for each entries are good
-        for (json::iterator it = m_msg_configuration["msg_list"].begin(); it != m_msg_configuration["msg_list"].end(); ++it)
-        {
-            json msg = *it;
-            if (msg["station_address"].is_null()
-            || msg["message_code"].is_null() 
-            || msg["label"].is_null() 
-            || msg["info_address"].is_null() 
-            || !msg["message_code"].is_string() 
-            || !msg["label"].is_string() 
-            || !msg["station_address"].is_number() 
-            || !msg["info_address"].is_number())
-            {
-                Logger::getLogger()->fatal("Error in exchanged_data json config string. At least one of the parameters is missing or incorrect for this entry : " + msg.dump());
-                throw(string("json config error"));
-            }
-        }
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't read exchanged_data json config string : " + string(e.what()));
+  m_checkExchangedDataJson(msg_configuration);
+
+  Logger::getLogger()->info("Json config parsed successsfully.");
+}
+
+void HNZ::m_checkExchangedDataJson(const std::string &msg_configuration) {
+  try {
+    // Parse the json from a raw string
+    json exchanged_data = json::parse(msg_configuration)["exchanged_data"];
+    // Ensure that all parameters related to HNZ, for each entries, are good
+    for (json::iterator it = exchanged_data["datapoints"].begin();
+         it != exchanged_data["datapoints"].end(); ++it) {
+      json msg = *it;
+
+      if (msg["label"].is_null() || !msg["label"].is_string() ||
+          msg["pivot_id"].is_null() || !msg["pivot_id"].is_string() ||
+          msg["pivot_type"].is_null() || !msg["pivot_type"].is_string() ||
+          msg["protocols"].is_null() || !msg["protocols"].is_array()) {
+        Logger::getLogger()->fatal(
+            "Error in exchanged_data json config string. At least one of "
+            "the parameters is missing or incorrect for this entry : " +
+            msg.dump());
         throw(string("json config error"));
-    }
+      }
 
-    Logger::getLogger()->info("Json config parsed successsfully.");
+      for (json::iterator it1 = msg["protocols"].begin();
+           it1 != msg["protocols"].end(); ++it1) {
+        json protocol = *it1;
+
+        if (protocol["name"] == "hnz") {
+          if (protocol["station_address"].is_null() ||
+              protocol["message_code"].is_null() ||
+              protocol["info_address"].is_null() ||
+              !protocol["message_code"].is_string() ||
+              !protocol["station_address"].is_number_integer() ||
+              !protocol["info_address"].is_number_integer()) {
+            Logger::getLogger()->fatal(
+                "Error in exchanged_data json config string. At least one "
+                "of "
+                "the parameters is missing or incorrect for this entry : " +
+                protocol.dump());
+            throw(string("json config error"));
+          }
+
+          json data;
+          data["label"] = msg["label"];
+          data["station_address"] = protocol["station_address"];
+          data["message_code"] = protocol["message_code"];
+          data["info_address"] = protocol["info_address"];
+
+          m_msg_configuration.push_back(data);
+        }
+      }
+    }
+  } catch (json::parse_error &e) {
+    Logger::getLogger()->fatal(
+        "Couldn't read exchanged_data json config string : " +
+        string(e.what()));
+    throw(string("json config error"));
+  }
 }
 
 void HNZ::restart()
@@ -338,7 +368,7 @@ std::string HNZ::convert_data_to_str(unsigned char *data, int len)
 bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, int p, int nr, int payloadSize)
 {
     int len = 0; // Length of message to push in Fledge
-    confDatas confDatas;
+    string label;
     string message_type;
     int value, valid, ts, ts_iv, ts_c, ts_s;
 	long int scd_since_epoch, epoch_mod_day;
@@ -353,7 +383,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
     // Analyzing the payload type
     switch (t)
     {
-    case TMA:
+    case TM4:
         message_type = "TMA";
         Logger::getLogger()->info("Received TMA");
         for (size_t i = 0; i < 4; i++)
@@ -361,7 +391,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
             // 4 TM inside a TM cyclique
             // Header
             info_address += stoi(to_string((int) data[1]) + to_string(i)); // ADTM + i
-            confDatas = HNZ::m_checkExchangedDataLayer(addr, "02", info_address);
+            label = HNZ::m_getLabel(addr, message_type, info_address);
 
             // Item
             int noctet = 2 + i;
@@ -371,8 +401,9 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
             ts_iv = 0;
             ts_c = 0;
             ts_s = 0;
-            //sendToFledge(t, message_type, addr, info_address, value, valid, ts, ts_iv, ts_c, ts_s, confDatas.label, confDatas.internal_id, time);
-            sendToFledge(t,message_type,addr,info_address,value,valid,ts,ts_iv,ts_c,ts_s,confDatas.label,confDatas.internal_id,false);
+            //sendToFledge(t, message_type, addr, info_address, value, valid, ts, ts_iv, ts_c, ts_s, label, time);
+            sendToFledge(t, message_type, addr, info_address, value, valid, ts,
+                         ts_iv, ts_c, ts_s, label, false);
             info_address = 0;
         }
 
@@ -383,8 +414,9 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
         Logger::getLogger()->info("Received TSCE");
         // Header
         info_address += stoi(to_string((int) data[1]) + to_string((int) (data[2] >> 5))); // AD0 + ADB
-        //Logger::getLogger()->info("Info address = " + to_string(info_address) + " et addr = " + to_string(addr));
-        confDatas = HNZ::m_checkExchangedDataLayer(addr, "0B", info_address);
+        Logger::getLogger()->info("Info address = " + to_string(info_address) + " et addr = " + to_string(addr));
+        label =
+            HNZ::m_getLabel(addr, message_type, info_address);
 
         // Item
         value = (int) (data[2] >> 3) & 0x1; // E
@@ -397,8 +429,8 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
         ts_iv = stoi(to_string((int) (data[2] >> 2) & 0x1) + to_string((int) (data[2] >> 1) & 0x1) + to_string((int) (data[2] & 0x1)));
         ts_c = 0;
         ts_s = 0;
-        sendToFledge(t, message_type, addr, info_address, value, valid, ts, ts_iv, ts_c, ts_s, confDatas.label
-        , confDatas.internal_id, true);
+        sendToFledge(t, message_type, addr, info_address, value, valid, ts,
+                     ts_iv, ts_c, ts_s, label, true);
 
         // Size of this message
         len = 5;
@@ -411,18 +443,19 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
             // 16 TS inside a TSCG
             // Header
             info_address += stoi(to_string((int) data[1] + (int) i/8) + to_string(i % 8)); // AD0 + i%8  ou (AD0+1) + i%8
-            confDatas = HNZ::m_checkExchangedDataLayer(addr, "16", info_address);
+            label = HNZ::m_getLabel(addr, message_type, info_address);
 
             // Item
             int noctet = 2 + (i / 4);
             value = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x1; // E
             valid = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x2; // V
-            sendToFledge(t,message_type,addr,info_address,value,valid,ts,ts_iv,ts_c,ts_s,confDatas.label,confDatas.internal_id,false);
+            sendToFledge(t,message_type,addr,info_address,value,valid,ts,ts_iv,ts_c,ts_s,label,false);
         }
         // Size of this message
         len = 6;
         break;
     case TMN:
+        message_type = "TMN";
 		Logger::getLogger()->info("Received TMN");
 		// 2 or 4 TM inside a TMn
 		nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
@@ -431,7 +464,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 			// 2 or 4 TM inside a TMn
 			// Header
 			info_address += stoi(to_string((int) data[1]) + to_string(i*4)); // ADTM + i*4
-			confDatas = HNZ::m_checkExchangedDataLayer(addr, "0C", info_address);
+			label = HNZ::m_getLabel(addr, message_type, info_address);
 
 			// Item
 			if (nbrTM == 4) {
@@ -449,28 +482,25 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 			ts = 0;
 			ts_iv = 0;
 
-			//sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
+			//sendToFledge(t, value, quality, ts, ts_qual, label);
 		}
 
 		len = 7;
 		break;
     case 0x13:
         Logger::getLogger()->info("Received CG request/BULLE");
-        //confDatas = HNZ::m_checkExchangedDataLayer(addr,"13",0);
-		confDatas = protocolDatas;
+        //label = HNZ::m_getLabel(addr,"13",0);
         len = 2;
         break;
     case 0x0F:
         module10M = (int) data[1];
         Logger::getLogger()->info("Received Modulo 10mn");
-        //confDatas = HNZ::m_checkExchangedDataLayer(addr,"0F",0);
-		confDatas = protocolDatas;
+        //label = HNZ::m_getLabel(addr,"0F",0);
         len = 2;
         break;
     case 0x09:
         Logger::getLogger()->info("Received ATC, not implemented");
-        //confDatas = HNZ::m_checkExchangedDataLayer(addr,"09",0);
-		confDatas = protocolDatas;
+        //label = HNZ::m_getLabel(addr,"09",0);
         len = 3;
         break;
     default:
@@ -498,18 +528,18 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 }
 
 void HNZ::sendToFledge(unsigned char t, string message_type, unsigned char addr, int info_adress, int value, int valid, int ts, 
-                 int ts_iv, int ts_c, int ts_s, std::string label, std::string internal_id, bool time) {
-    if (label == "internal" && internal_id == "internal")
+                 int ts_iv, int ts_c, int ts_s, std::string label, bool time) {
+    if (label == "internal")
     {
         Logger::getLogger()->warn("Message protocolaire");
         return;
     }
-    if (label != "" && internal_id != "")
+    if (label != "")
     {
         // Prepare the value datapoint
         Datapoint* dp = m_fledge->m_addData<std::string>(message_type, addr, info_adress, value, valid, ts, ts_iv, ts_c, ts_s,time);
         // Send datapoint to fledge
-        m_fledge->sendData(dp, to_string(t), internal_id, label);
+        m_fledge->sendData(dp, label);
     }
     else
     {
@@ -559,7 +589,7 @@ void HNZ::registerIngest(void *data, INGEST_CB cb)
     m_data = data;
 }
 
-void HNZFledge::sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label)
+void HNZFledge::sendData(Datapoint* dp, const std::string& label)
 {
     // Datapoint *item_dp = dp;
 
@@ -614,13 +644,12 @@ T HNZ::m_getConfigValue(json configuration, json_pointer<json> path)
     return typed_value;
 }
 
-HNZ::confDatas HNZ::m_checkExchangedDataLayer(const int address, const std::string& message_code, const int info_address)
+std::string HNZ::m_getLabel(const int address, const std::string& message_code, const int info_address)
 {
     bool know_station_address = false, know_message_code = false, know_info_address = false;
-    confDatas data;
 	
 	//Logger::getLogger()->warn("Checking " + to_string(address) + " " + message_code + " " + to_string(info_address));
-	for (auto& element : m_msg_configuration["msg_list"])
+	for (auto& element : m_msg_configuration)
 	{
 		if (m_getConfigValue<unsigned int>(element, "/station_address"_json_pointer) == address)
 		{
@@ -634,15 +663,12 @@ HNZ::confDatas HNZ::m_checkExchangedDataLayer(const int address, const std::stri
 				{
 					know_info_address = true;
 					Logger::getLogger()->warn("INFOADDR:"+ to_string(m_getConfigValue<unsigned int>(element, "/info_address"_json_pointer)));
-                    data.label = element["label"];
-                    data.internal_id = element["internal_id"];
-					//Logger::getLogger()->warn("Found : " + data.label + " " + data.internal_id);
-					return data;
-				}
+
+                    return element["label"].get<std::string>();
+                }
 			}
 		}
 	}
-	//Logger::getLogger()->warn("Legacy : " + data.label + " " + data.internal_id);
 	
 	if (!know_station_address)
 		Logger::getLogger()->warn("Unknown Station Address (" + to_string(address) +")");
@@ -652,8 +678,5 @@ HNZ::confDatas HNZ::m_checkExchangedDataLayer(const int address, const std::stri
 		Logger::getLogger()->warn("Unknown Info Address (" + to_string(info_address) +")");
 	else
 		Logger::getLogger()->warn("Error while checking data layer config");
-
-	data.label = "";
-    data.internal_id = "";
-    return data;
+    return "";
 }

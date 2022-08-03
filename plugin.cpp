@@ -35,119 +35,53 @@ using namespace std;
 })
 
 // PLUGIN DEFAULT EXCHANGED DATA CONF
-#define EXCHANGED_DATA_DEF QUOTE({          \
-    "exchanged_data" : {                    \
-        "name" : "hnzclient",               \
-        "version" : "1.0",                  \
-        "msg_list" : [                      \
-            {                               \
-                "station_address" : 20,      \
-                "message_code" : "0B",      \
-                "label" : "7AT761_AL.ECHAU",\
-                "info_address" : 511,       \
-                "internal_id" : "ID001836"  \
-            },                              \
-            {                               \
-                "station_address" : 0,      \
-                "message_code" : "16",      \
-                "label" : "7AT761_AL.TEMP", \
-                "info_address" : 321,       \
-                "internal_id" : "ID001026"  \
-            },                              \
-            {                               \
-                "station_address" : 20,     \
-                "message_code" : "02",      \
-                "label" : "TMA.TEST",       \
-                "info_address" : 70,        \
-                "internal_id" : "ID001111"  \
-            },                              \
-            {                               \
-                "station_address" : 20,     \
-                "message_code" : "02",      \
-                "label" : "TMA.TEST",       \
-                "info_address" : 71,        \
-                "internal_id" : "ID001111"  \
-            },                              \
-            {                               \
-                "station_address" : 20,     \
-                "message_code" : "02",      \
-                "label" : "TMA.TEST",       \
-                "info_address" : 72,        \
-                "internal_id" : "ID001111"  \
-            },                              \
-            {                               \
-                "station_address" : 20,     \
-                "message_code" : "02",      \
-                "label" : "TMA.TEST",       \
-                "info_address" : 73,        \
-                "internal_id" : "ID001111"  \
-            },                              \
-            {                               \
-                "station_address" : 5,      \
-                "message_code" : "02",      \
-                "label" : "TMA.5TEST",      \
-                "info_address" : 40,        \
-                "internal_id" : "ID001112"  \
-            },                              \
-            {                               \
-                "station_address" : 5,      \
-                "message_code" : "02",      \
-                "label" : "TMA.5TEST",      \
-                "info_address" : 41,        \
-                "internal_id" : "ID001112"  \
-            },                              \
-            {                               \
-                "station_address" : 5,      \
-                "message_code" : "02",      \
-                "label" : "TMA.5TEST",      \
-                "info_address" : 42,        \
-                "internal_id" : "ID001112"  \
-            },                              \
-            {                               \
-                "station_address" : 5,      \
-                "message_code" : "02",      \
-                "label" : "TMA.5TEST",      \
-                "info_address" : 43,        \
-                "internal_id" : "ID001112"  \
-            },                              \
-            {                               \
-                "station_address" : 0,      \
-                "message_code" : "02",      \
-                "label" : "TMA.0TEST",      \
-                "info_address" : 0,         \
-                "internal_id" : "ID001113"  \
-            },                              \
-            {                               \
-                "station_address" : 1,      \
-                "message_code" : "02",      \
-                "label" : "TMA.1TEST",      \
-                "info_address" : 80,        \
-                "internal_id" : "ID001114"  \
-            },                              \
-            {                               \
-                "station_address" : 1,      \
-                "message_code" : "02",      \
-                "label" : "TMA.1TEST",      \
-                "info_address" : 81,        \
-                "internal_id" : "ID001114"  \
-            },                              \
-            {                               \
-                "station_address" : 1,      \
-                "message_code" : "02",      \
-                "label" : "TMA.1TEST",      \
-                "info_address" : 82,        \
-                "internal_id" : "ID001114"  \
-            },                              \
-            {                               \
-                "station_address" : 1,      \
-                "message_code" : "02",      \
-                "label" : "TMA.1TEST",      \
-                "info_address" : 83,        \
-                "internal_id" : "ID001114"  \
-            }                               \
-        ]                                   \
-    }                                       \
-})
+#define EXCHANGED_DATA_DEF                                                     \
+  QUOTE({                                                                      \
+    "exchanged_data" : {                                                       \
+      "name" : "SAMPLE",                                                       \
+      "version" : "1.0",                                                       \
+      "datapoints" : [                                                         \
+        {                                                                      \
+          "label" : "TS1",                                                     \
+          "pivot_id" : "ID114562",                                             \
+          "pivot_type" : "SpsTyp",                                             \
+          "protocols" : [                                                      \
+            {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_1"}, \
+            {                                                                  \
+              "name" : "tase2",                                                \
+              "address" : "S_114562",                                          \
+              "typeid" : "Data_StateQTimeTagExtended"                          \
+            },                                                                 \
+            {                                                                  \
+              "name" : "hnz",                                                  \
+              "station_address" : 1,                                          \
+              "info_address" : 511,                                            \
+              "message_code" : "TSCE"                                          \
+            }                                                                  \
+          ]                                                                    \
+        },                                                                     \
+        {                                                                      \
+          "label" : "TM1",                                                     \
+          "pivot_id" : "ID99876",                                              \
+          "pivot_type" : "DpsTyp",                                             \
+          "protocols" : [                                                      \
+            {"name" : "iec104", "address" : "45-984", "typeid" : "M_ME_NA_1"}, \
+            {                                                                  \
+              "name" : "tase2",                                                \
+              "address" : "S_114562",                                          \
+              "typeid" : "Data_RealQ"                                          \
+            },                                                                 \
+            {                                                                  \
+              "name" : "hnz",                                                  \
+              "station_address" : 20,                                          \
+              "info_address" : 511,                                            \
+              "message_code" : "TMN"                                           \
+            }                                                                  \
+          ]                                                                    \
+        }                                                                      \
+      ]                                                                        \
+    }                                                                          \
+  })
 
 /**
  * Default configuration

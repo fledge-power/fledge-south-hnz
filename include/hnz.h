@@ -41,7 +41,7 @@ public:
     void        stop_loop();
     void        analyze_frame(unsigned char* data, int size);
     bool        analyze_info_frame(unsigned char *data, unsigned char addr, int ns, int p, int nr, int size);
-    void        sendToFledge(unsigned char t, std::string message_type, unsigned char addr, int info_adress, int value, int valid, int ts, 
+    void        sendToFledge(std::string message_type, unsigned char addr, int info_adress, int value, int valid, int ts, 
                             int ts_iv, int ts_c, int ts_s, std::string label, bool time);
     std::string convert_data_to_str(unsigned char *data, int len);
 

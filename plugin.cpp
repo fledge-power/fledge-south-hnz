@@ -35,48 +35,53 @@ using namespace std;
 })
 
 // PLUGIN DEFAULT EXCHANGED DATA CONF
-#define EXCHANGED_DATA_DEF QUOTE({          \
-    "exchanged_data" : {                    \
-        "name" : "hnzclient",               \
-        "version" : "1.0",                  \
-        "msg_list" : [                      \
-            {                               \
-                "station_address" : 1,      \
-                "message_code" : "0B",      \
-                "label" : "7AT761_AL.ECHAU",\
-                "info_address" : 511,       \
-                "internal_id" : "ID001836"  \
-            },                              \
-            {                               \
-                "station_address" : 1,      \
-                "message_code" : "0B",      \
-                "label" : "7AT761_AL.TEMP", \
-                "info_address" : 324,       \
-                "internal_id" : "ID001026"  \
-            }                               \
-        ]                                   \
-    }                                       \
-})
-
-// PLUGIN DEFAULT PROTOCOL TRANSLATION CONF
-#define PROTOCOL_TRANSLATION_DEF QUOTE({         \
-    "protocol_translation" : {                   \
-        "name" : "hnz_to_pivot",                 \
-        "version" : "1.0",                       \
-        "mapping" : {                            \
-                "data_object_header" : {         \
-                    "doh_type" : "message_code", \
-                    "doh_name" : "internal_id"   \
-                },                               \
-                "data_object_item" : {           \
-                    "doi_value" : "value",       \
-                    "doi_quality" : "quality",   \
-                    "doi_ts" : "timestamp",      \
-                    "doi_ts_qual" : "ts_qual"    \
-                }                                \
-            }                                    \
-    }                                            \
-})
+#define EXCHANGED_DATA_DEF                                                     \
+  QUOTE({                                                                      \
+    "exchanged_data" : {                                                       \
+      "name" : "SAMPLE",                                                       \
+      "version" : "1.0",                                                       \
+      "datapoints" : [                                                         \
+        {                                                                      \
+          "label" : "TS1",                                                     \
+          "pivot_id" : "ID114562",                                             \
+          "pivot_type" : "SpsTyp",                                             \
+          "protocols" : [                                                      \
+            {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_1"}, \
+            {                                                                  \
+              "name" : "tase2",                                                \
+              "address" : "S_114562",                                          \
+              "typeid" : "Data_StateQTimeTagExtended"                          \
+            },                                                                 \
+            {                                                                  \
+              "name" : "hnz",                                                  \
+              "station_address" : 1,                                          \
+              "info_address" : 511,                                            \
+              "message_code" : "TSCE"                                          \
+            }                                                                  \
+          ]                                                                    \
+        },                                                                     \
+        {                                                                      \
+          "label" : "TM1",                                                     \
+          "pivot_id" : "ID99876",                                              \
+          "pivot_type" : "DpsTyp",                                             \
+          "protocols" : [                                                      \
+            {"name" : "iec104", "address" : "45-984", "typeid" : "M_ME_NA_1"}, \
+            {                                                                  \
+              "name" : "tase2",                                                \
+              "address" : "S_114562",                                          \
+              "typeid" : "Data_RealQ"                                          \
+            },                                                                 \
+            {                                                                  \
+              "name" : "hnz",                                                  \
+              "station_address" : 20,                                          \
+              "info_address" : 511,                                            \
+              "message_code" : "TMN"                                           \
+            }                                                                  \
+          ]                                                                    \
+        }                                                                      \
+      ]                                                                        \
+    }                                                                          \
+  })
 
 /**
  * Default configuration
@@ -114,14 +119,6 @@ const char *default_config = QUOTE({
         "displayName" : "Exchanged data list",
         "order" : "3",
         "default" : EXCHANGED_DATA_DEF
-    },
-
-    "protocol_translation" : {
-        "description" : "protocol translation mapping",
-        "type" : "string",
-        "displayName" : "Protocol translation mapping",
-        "order" : "4",
-        "default" : PROTOCOL_TRANSLATION_DEF
     }
 });
 
@@ -164,9 +161,9 @@ extern "C"
             hnz->setAssetName("hnz");
         }
 
-        if (config->itemExists("protocol_stack") && config->itemExists("exchanged_data") && config->itemExists("protocol_translation"))
+        if (config->itemExists("protocol_stack") && config->itemExists("exchanged_data"))
         {
-            hnz->setJsonConfig(config->getValue("protocol_stack"), config->getValue("exchanged_data"), config->getValue("protocol_translation"));
+            hnz->setJsonConfig(config->getValue("protocol_stack"), config->getValue("exchanged_data"));
         }
 
         return (PLUGIN_HANDLE)hnz;
@@ -221,8 +218,8 @@ extern "C"
         hnz->setPort(DEFAULT_PORT);
         hnz->setIp(DEFAULT_IP);
 
-        if (config.itemExists("protocol_stack") && config.itemExists("exchanged_data") && config.itemExists("protocol_translation"))
-            hnz->setJsonConfig(config.getValue("protocol_stack"), config.getValue("exchanged_data"), config.getValue("protocol_translation"));
+        if (config.itemExists("protocol_stack") && config.itemExists("exchanged_data"))
+            hnz->setJsonConfig(config.getValue("protocol_stack"), config.getValue("exchanged_data"));
 
         if (config.itemExists("asset"))
         {

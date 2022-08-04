@@ -16,7 +16,7 @@
 #include <atomic>
 #include <utility>
 //#include "../../lib/src/inc/hnz_client.h"
-#include "../../../libhnz/src/inc/hnz_client.h"
+#include "../../libhnz/src/inc/hnz_client.h"
 #include <json.hpp> // https://github.com/nlohmann/json
 
 
@@ -30,12 +30,6 @@ public:
     HNZ(const char *ip, int port);
     ~HNZ() = default;
 
-    struct confDatas {
-        std::string label, internal_id;
-    };
-    
-    typedef struct confDatas confDatas;
-
     void        setIp(const char *ip)  { m_ip = (strlen(ip) > 1) ? ip : "127.0.0.1"; }
     void        setPort(uint16_t port) { m_port = (port > 0) ? port : 1234; }
     void		setAssetName(const std::string& asset) { m_asset = asset; }
@@ -47,16 +41,17 @@ public:
     void        stop_loop();
     void        analyze_frame(unsigned char* data, int size);
     bool        analyze_info_frame(unsigned char *data, unsigned char addr, int ns, int p, int nr, int size);
-    void        sendToFledge(unsigned char t, int value, int quality, int ts, int ts_qual, std::string label, std::string internal_id);
+    void        sendToFledge(std::string message_type, unsigned char addr, int info_adress, int value, int valid, int ts, 
+                            int ts_iv, int ts_c, int ts_s, std::string label, bool time);
     std::string convert_data_to_str(unsigned char *data, int len);
 
-	
-	confDatas protocolDatas = {"na", "na"};
+    std::string m_getLabel(const int address,
+                                          const std::string& message_code,
+                                          const int info_address);
 
-    confDatas m_checkExchangedDataLayer(const int address, const std::string& message_code, const int info_address);
-
-    void		ingest(Reading& reading);
-    void		registerIngest(void *data, void (*cb)(void *, Reading));
+    //void ingest(Reading& reading);
+    void ingest(std::string assetName, std::vector<Datapoint *> &points);
+    void registerIngest(void *data, void (*cb)(void *, Reading));
 
     std::string		m_asset;
     std::string     m_ip;
@@ -69,7 +64,7 @@ public:
     std::atomic<bool> loopActivated;
     std::thread loopThread;
 	
-	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
+	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration);
 
 
 private:
@@ -81,15 +76,16 @@ private:
 	
 	template <class T>
     static T m_getConfigValue(nlohmann::json configuration, nlohmann::json_pointer<nlohmann::json> path);
+
+    static void   m_checkExchangedDataJson(const std::string &msg_configuration);
 	static nlohmann::json m_stack_configuration;
     static nlohmann::json m_msg_configuration;
-    static nlohmann::json m_pivot_configuration;
 };
 
 class HNZFledge
 {
 public :
-    explicit HNZFledge(HNZ *hnz, nlohmann::json* pivot_configuration) : m_hnz(hnz), m_pivot_configuration(pivot_configuration) {};
+    explicit HNZFledge(HNZ *hnz) : m_hnz(hnz) {};
 
     // ==================================================================== //
     // Note : The overloaded method addData is used to prevent the user from
@@ -98,11 +94,11 @@ public :
 
 
     // Sends the datapoints passed as Reading to Fledge
-    void sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label);
+    void sendData(Datapoint* dp, const std::string& label);
 
     template<class T>
-    Datapoint* m_addData(int value, int quality, int ts, int ts_qual);
-
+    Datapoint* m_addData(std::string message_type, unsigned char addr, int info_adress,
+               int value, int valid, int ts, int ts_iv, int ts_c, int ts_s, bool time);
 private:
 
     template<class T>
@@ -113,7 +109,6 @@ private:
     }
 
     HNZ* m_hnz;
-	nlohmann::json* m_pivot_configuration;
 	
 };
 

@@ -489,7 +489,13 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
         break;
     case 0x09:
         Logger::getLogger()->info("Received ATC, not implemented");
-        //label = HNZ::m_getLabel(addr,"09",0);
+        // label = HNZ::m_getLabel(addr, ATC,0);
+        label = "";
+        len = 3;
+        break;
+    case 0x0A:
+        Logger::getLogger()->info("Received ATVC, not implemented");
+        // label = HNZ::m_getLabel(addr, ATVC,0);
         label = "";
         len = 3;
         break;

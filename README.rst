@@ -19,7 +19,7 @@ To build HNZ C/C++ South plugin, you need to have the HNZ library and then:
 
 .. code-block:: console
 
-  $ cd lib/src/hnz
+  $ cd libhnz/src/hnz
   $ export LIB_HNZ=`pwd`
 
 As shown above, you need a $LIB_HNZ env var set to the source tree of the
@@ -29,11 +29,8 @@ Then, you can build the library with:
 
 .. code-block:: console
 
-  $ cd lib/src/hnz
-  $ mkdir build
-  $ cd build
-  $ cmake ..
-  $ make
+  $ cd libhnz/src/hnz
+  $ ./compilation.sh
 
 
 

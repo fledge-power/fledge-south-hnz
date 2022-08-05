@@ -21,36 +21,21 @@ using namespace std::chrono;
 json HNZ::m_stack_configuration;
 json HNZ::m_msg_configuration;
 
-HNZ::HNZ(const char *ip, int port)
-{
-    if (strlen(ip) > 1)
-        this->m_ip = ip;
-    else
-    {
-        this->m_ip = "127.0.0.1";
-    }
-
-    if (port > 0)
-    {
-        m_port = port;
-    }
-    else
-    {
-        m_port = 6001;
-    }
+HNZ::HNZ() {
+  m_conf = new HNZConf();
+  // Fledge logging level setting
+  Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 }
 
 void HNZ::setJsonConfig(const std::string &stack_configuration,
                         const std::string &msg_configuration) {
   Logger::getLogger()->info("Reading json config string...");
 
-  try {
-    m_stack_configuration = json::parse(stack_configuration)["protocol_stack"];
-  } catch (json::parse_error &e) {
-    Logger::getLogger()->fatal(
-        "Couldn't read protocol_stack json config string : " +
-        string(e.what()));
-  }
+    m_conf->import_json(stack_configuration);
+    if (!m_conf->is_complete()) {
+      Logger::getLogger()->fatal("Unable to set Plugin configuration");
+      throw(string("json config error"));
+    }
 
   m_checkExchangedDataJson(msg_configuration);
 
@@ -120,14 +105,14 @@ void HNZ::restart()
     start();
 }
 
-/** Try to connect to server (m_retry_number try) */
+/** Try to connect to server */
 int HNZ::connect()
 {
     int i = 1;
-    while ((i <= m_retry_number) or (m_retry_number == -1))
+    while ((i <= RETRY_CONN_NUM) or (RETRY_CONN_NUM == -1))
     {
-        Logger::getLogger()->info("Connecting to server ... [" + to_string(i) + "/" + to_string(m_retry_number) + "]");
-        m_connected = !(m_client->connect_Server(m_ip.c_str(), m_port));
+        Logger::getLogger()->info("Connecting to server ... [" + to_string(i) + "/" + to_string(RETRY_CONN_NUM) + "]");
+        m_connected = !(m_client->connect_Server(m_conf->get_ip_address().c_str(), m_conf->get_port()));
         if (m_connected)
         {
             Logger::getLogger()->info("Connected.");
@@ -136,10 +121,10 @@ int HNZ::connect()
         }
         else
         {
-            Logger::getLogger()->warn("Error in connection, retrying in " + to_string(m_retry_delay) + "s ...");
+            Logger::getLogger()->warn("Error in connection, retrying in " + to_string(RETRY_CONN_DELAY) + "s ...");
             high_resolution_clock::time_point beginning_time = high_resolution_clock::now();
             duration<double, std::milli> time_span = high_resolution_clock::now() - beginning_time;
-            int time_out = m_retry_delay * 1000;
+            int time_out = RETRY_CONN_DELAY * 1000;
 
             while (time_span.count() < time_out)
             {
@@ -156,30 +141,11 @@ void HNZ::start()
 {
     m_fledge = new HNZFledge(this);
 
-    // Fledge logging level setting
-    switch (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer))
-    {
-    case 1:
-        Logger::getLogger()->setMinLevel("debug");
-        break;
-    case 2:
-        Logger::getLogger()->setMinLevel("info");
-        break;
-    case 3:
-        Logger::getLogger()->setMinLevel("warning");
-        break;
-    default:
-        Logger::getLogger()->setMinLevel("error");
-        break;
-    }
-
     Logger::getLogger()->info("Starting HNZ");
 
     loopActivated = true;
-    m_ip = m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connection/path/srv_ip"_json_pointer);
-    m_port = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connection/path/port"_json_pointer);
-    m_retry_number = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer);
-    m_retry_delay = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer);
+    
+    Logger::getLogger()->info("Connection initialized");
 
     // Connect to the server
     m_client = new HNZClient();
@@ -299,7 +265,7 @@ void HNZ::analyze_frame(unsigned char *data, int size)
 		millis = ms_since_epoch - (mod10m * 600000); //ms_since_beginning_of_10min_interval
 		msg_hour[0] = (frame_number % 8) * 0x20 + 0x02;
 		msg_hour[1] = 0x1d;
-		msg_hour[2] = mod10m;
+		msg_hour[2] = mod10m; 
 		msg_hour[3] = (millis / 10) >> 8;
 		msg_hour[4] = (millis / 10) & 0xff;
 		msg_hour[5] = 0x00;

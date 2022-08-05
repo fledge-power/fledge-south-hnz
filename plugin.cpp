@@ -11,28 +11,42 @@ typedef void (*INGEST_CB)(void *, Reading);
 using namespace std;
 
 #define PLUGIN_NAME "hnz"
-#define DEFAULT_IP "127.0.0.1"
-#define DEFAULT_PORT 6001
 
 // PLUGIN DEFAULT PROTOCOL STACK CONF
-#define PROTOCOL_STACK_DEF QUOTE({         \
-    "protocol_stack" : {                   \
-        "name" : "hnzclient",              \
-        "version" : "1.0",                 \
-        "transport_layer" : {              \
-            "connection" : {               \
-                "path" : {                 \
-                    "srv_ip" : "10.0.0.5", \
-                    "clt_ip" : "",         \
-                    "port" : DEFAULT_PORT  \
-                }                          \
-            },                             \
-            "llevel" : 1,                  \
-            "retry_number" : 5,            \
-            "retry_delay" : 5              \
-        }                                  \
-    }                                      \
-})
+#define PROTOCOL_STACK_DEF QUOTE({        \
+    "protocol_stack":{                    \
+      "name":"hnzclient",                 \
+      "version":"1.0",                    \
+      "transport_layer":{                 \
+         "connections":[                  \
+            {                             \
+               "srv_ip":"192.168.0.10",   \
+               "port":6001                \
+            },                            \
+            {                             \
+               "srv_ip":"192.168.0.11",   \
+               "port":6002                \
+            }                             \
+         ],                               \
+      },                                  \
+      "application_layer":{               \
+         "remote_station_addr":12,        \
+         "local_station_addr":12,         \
+         "remote_addr_in_local_station":0,\
+         "inacc_timeout":180,             \
+         "max_sarm":30,                   \
+         "to_socket":1,                   \
+         "repeat_path_A":3,               \
+         "repeat_path_B":3,               \
+         "repeat_timeout":3000,           \
+         "anticipation":3,                \
+         "default_msg_period":0,          \
+         "Test_msg_send":"1304",          \
+         "Test_msg_receive":"1304"        \
+      }                                   \
+   }                                      \
+ })
+
 
 // PLUGIN DEFAULT EXCHANGED DATA CONF
 #define EXCHANGED_DATA_DEF                                                     \
@@ -98,7 +112,7 @@ const char *default_config = QUOTE({
     "asset" : {
         "description" : "Asset name",
         "type" : "string",
-        "default" : "hnz",
+        "default" : PLUGIN_NAME,
         "displayName" : "Asset Name",
         "order" : "1",
         "mandatory" : "true"
@@ -150,7 +164,9 @@ extern "C"
         HNZ *hnz;
         Logger::getLogger()->info("Initializing the plugin");
 
-        hnz = new HNZ(DEFAULT_IP, DEFAULT_PORT);
+
+
+        hnz = new HNZ();
 
         if (config->itemExists("asset"))
         {
@@ -158,7 +174,7 @@ extern "C"
         }
         else
         {
-            hnz->setAssetName("hnz");
+            hnz->setAssetName(PLUGIN_NAME);
         }
 
         if (config->itemExists("protocol_stack") && config->itemExists("exchanged_data"))
@@ -214,9 +230,6 @@ extern "C"
         std::unique_lock<std::mutex> guard2(hnz->loopLock);
 
         hnz->stop_loop();
-
-        hnz->setPort(DEFAULT_PORT);
-        hnz->setIp(DEFAULT_IP);
 
         if (config.itemExists("protocol_stack") && config.itemExists("exchanged_data"))
             hnz->setJsonConfig(config.getValue("protocol_stack"), config.getValue("exchanged_data"));

@@ -111,3 +111,9 @@ Temporary Items
 *.code-workspace
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,visualstudiocode,cmake,c++
+
+# Build file
+build/**
+
+# Folder with Fledge header
+C/**

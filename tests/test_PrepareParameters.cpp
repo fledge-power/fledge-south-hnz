@@ -33,9 +33,6 @@ typedef struct
                "srv_ip":"192.168.1.3",    \
                "port":6001                \
             },                            \
-         "llevel":1,                      \
-         "retry_number":5,                \
-         "retry_delay":5                  \
       },                                  \
       "application_layer":{               \
          "remote_station_addr":12,        \
@@ -110,9 +107,6 @@ TEST(HNZ,PluginStackParametersTestsNoThrow){
     testing::GTEST_FLAG(repeat) = 1;
     testing::GTEST_FLAG(shuffle) = true;
     testing::GTEST_FLAG(death_test_style) = "threadsafe";
-    ASSERT_EQ(hnz.m_llevel, 1);
-    ASSERT_EQ(hnz.m_retry_delay, 5);
-    ASSERT_EQ(hnz.m_retry_number, 5);
     ASSERT_EQ(hnz.m_remote_station_addr, 12);
     ASSERT_EQ(hnz.m_local_station_addr, 12);
     ASSERT_EQ(hnz.m_remote_addr_in_local_station, 0);

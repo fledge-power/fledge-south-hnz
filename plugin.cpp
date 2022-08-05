@@ -11,23 +11,23 @@ typedef void (*INGEST_CB)(void *, Reading);
 using namespace std;
 
 #define PLUGIN_NAME "hnz"
-#define DEFAULT_IP "127.0.0.1"
-#define DEFAULT_PORT 6001
 
 // PLUGIN DEFAULT PROTOCOL STACK CONF
-#define PROTOCOL_STACK_DEF QUOTE({        \  
+#define PROTOCOL_STACK_DEF QUOTE({        \
     "protocol_stack":{                    \
       "name":"hnzclient",                 \
       "version":"1.0",                    \
       "transport_layer":{                 \
-         "connections":                   \
+         "connections":[                  \
             {                             \
-               "srv_ip":"192.168.1.3",   \
+               "srv_ip":"192.168.0.10",   \
                "port":6001                \
             },                            \
-         "llevel":1,                      \
-         "retry_number":5,                \
-         "retry_delay":5                  \
+            {                             \
+               "srv_ip":"192.168.0.11",   \
+               "port":6002                \
+            }                             \
+         ],                               \
       },                                  \
       "application_layer":{               \
          "remote_station_addr":12,        \
@@ -107,7 +107,7 @@ const char *default_config = QUOTE({
     "asset" : {
         "description" : "Asset name",
         "type" : "string",
-        "default" : "hnz",
+        "default" : PLUGIN_NAME,
         "displayName" : "Asset Name",
         "order" : "1",
         "mandatory" : "true"
@@ -169,7 +169,7 @@ extern "C"
 
 
 
-        hnz = new HNZ(DEFAULT_IP, DEFAULT_PORT);
+        hnz = new HNZ();
 
         if (config->itemExists("asset"))
         {
@@ -177,7 +177,7 @@ extern "C"
         }
         else
         {
-            hnz->setAssetName("hnz");
+            hnz->setAssetName(PLUGIN_NAME);
         }
 
         if (config->itemExists("protocol_stack") && config->itemExists("exchanged_data") && config->itemExists("protocol_translation"))
@@ -233,9 +233,6 @@ extern "C"
         std::unique_lock<std::mutex> guard2(hnz->loopLock);
 
         hnz->stop_loop();
-
-        hnz->setPort(DEFAULT_PORT);
-        hnz->setIp(DEFAULT_IP);
 
         if (config.itemExists("protocol_stack") && config.itemExists("exchanged_data") && config.itemExists("protocol_translation"))
             hnz->setJsonConfig(config.getValue("protocol_stack"), config.getValue("exchanged_data"), config.getValue("protocol_translation"));

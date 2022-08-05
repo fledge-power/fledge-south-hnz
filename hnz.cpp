@@ -22,124 +22,20 @@ json HNZ::m_stack_configuration;
 json HNZ::m_msg_configuration;
 json HNZ::m_pivot_configuration;
 
-HNZ::HNZ(const char *ip, int port)
-{
-    if (strlen(ip) > 1)
-        this->m_ip = ip;
-    else
-    {
-        this->m_ip = "127.0.0.1";
-    }
-
-    if (port > 0)
-    {
-        m_port = port;
-    }
-    else
-    {
-        m_port = 6001;
-    }
+HNZ::HNZ() {
+  m_conf = new HNZConf();
+  // Fledge logging level setting
+  Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 }
-
-/////
-
-
-void HNZ::setllevel(int llevel)
-{
-    m_llevel = (llevel ==1 or llevel==2 or llevel==3) ? llevel :1;
-}
-void HNZ::setretry_number(int retry_number){
-    m_retry_number = (retry_number>0 or retry_number==-1)?retry_number:5;
-}
-void HNZ::setretry_delay(int retry_delay){
-    m_retry_delay = (retry_delay>0)?retry_delay:5;
-}
- void HNZ::setremote_station_addr(int remote_station_addr){
-   
- m_remote_station_addr = (remote_station_addr>0)?remote_station_addr:12;
- }
- void HNZ::setlocal_station_addr(int local_station_addr){
-    m_local_station_addr = (local_station_addr>0)?local_station_addr:12;
-
- }
- void HNZ::setremote_addr_in_local_station(int remote_addr_in_local_station){
-    m_remote_addr_in_local_station = (remote_addr_in_local_station==int(remote_addr_in_local_station))?remote_addr_in_local_station:0;
- }
- void HNZ::setinacc_timeout(int inacc_timeout){
-    m_inacc_timeout = (inacc_timeout>0)?inacc_timeout:180;
- }
- void HNZ::setmax_sarm(int max_sarm){
-    m_max_sarm = (max_sarm>0)?max_sarm:30;
- }
- void HNZ::setto_socket(int to_socket){
-    m_to_socket = (to_socket>0)?to_socket:1;
- }
- void HNZ::setrepeat_path_A(int repeat_path_A){
-    m_repeat_path_A = (repeat_path_A>0)?repeat_path_A:3;
- }
- void HNZ::setrepeat_path_B(int repeat_path_B){
-    m_repeat_path_B = (repeat_path_B>0)?repeat_path_B:3;
- }
- void HNZ::setrepeat_timeout(int repeat_timeout){
-    m_repeat_timeout = (repeat_timeout>0)?repeat_timeout:3;
- }
-void HNZ::setanticipation(int anticipation){
-    m_anticipation = (anticipation>0)?anticipation:3;
- }
- void HNZ::setdefault_msg_period(int default_msg_period){
-    m_default_msg_period = (default_msg_period==int(default_msg_period))?default_msg_period:0;
- }
- void HNZ::settest_msg_send(std::string Test_msg_send){
-    if (Test_msg_send.length()>1){
-        m_Test_msg_send = Test_msg_send;
-         }
-    else {
-        m_Test_msg_send = "1304";
-        }
- }
- void HNZ::settest_msg_receive(std::string Test_msg_receive){
-    if (Test_msg_receive.length()>1) {
-        m_Test_msg_receive = Test_msg_receive;
-    }else {
-        m_Test_msg_receive = "1304";
-    }
- }
- void HNZ::PrepareParameters(){
-    m_ip=m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connections/srv_ip"_json_pointer);
-    m_port=m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connections/port"_json_pointer);
-    setllevel(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer));
-    setretry_number(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer));
-    setretry_delay(m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer));
-    setremote_station_addr(m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_station_addr"_json_pointer));
-    setlocal_station_addr(m_getConfigValue<int>(m_stack_configuration, "/application_layer/local_station_addr"_json_pointer));
-    setremote_addr_in_local_station(m_getConfigValue<int>(m_stack_configuration, "/application_layer/remote_addr_in_local_station"_json_pointer));
-    setinacc_timeout(m_getConfigValue<int>(m_stack_configuration, "/application_layer/inacc_timeout"_json_pointer));
-    setmax_sarm(m_getConfigValue<int>(m_stack_configuration, "/application_layer/max_sarm"_json_pointer));
-    setto_socket(m_getConfigValue<int>(m_stack_configuration, "/application_layer/to_socket"_json_pointer));
-    setrepeat_path_A(m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_path_A"_json_pointer));
-    setrepeat_path_B(m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_path_B"_json_pointer));
-    setrepeat_timeout(m_getConfigValue<int>(m_stack_configuration, "/application_layer/repeat_timeout"_json_pointer));
-    setanticipation(m_getConfigValue<int>(m_stack_configuration, "/application_layer/anticipation"_json_pointer));
-    setdefault_msg_period(m_getConfigValue<int>(m_stack_configuration, "/application_layer/default_msg_period"_json_pointer));
-    settest_msg_send(m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_send"_json_pointer));
-    settest_msg_receive(m_getConfigValue<string>(m_stack_configuration, "/application_layer/Test_msg_receive"_json_pointer));
- }
-////////
-
-
- 
 
 void HNZ::setJsonConfig(const std::string &stack_configuration, const std::string &msg_configuration, const std::string &pivot_configuration)
 {
     Logger::getLogger()->info("Reading json config string...");
 
-    try
-    {
-        m_stack_configuration = json::parse(stack_configuration)["protocol_stack"];
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't read protocol_stack json config string : " + string(e.what()));
+    m_conf->import_json(stack_configuration);
+    if (!m_conf->is_complete()) {
+      Logger::getLogger()->fatal("Unable to set Plugin configuration");
+      throw(string("json config error"));
     }
 
     try
@@ -169,14 +65,14 @@ void HNZ::restart()
     start();
 }
 
-/** Try to connect to server (m_retry_number try) */
+/** Try to connect to server */
 int HNZ::connect()
 {
     int i = 1;
-    while ((i <= m_retry_number) or (m_retry_number == -1))
+    while ((i <= RETRY_CONN_NUM) or (RETRY_CONN_NUM == -1))
     {
-        Logger::getLogger()->info("Connecting to server ... [" + to_string(i) + "/" + to_string(m_retry_number) + "]");
-        m_connected = !(m_client->connect_Server(m_ip.c_str(), m_port));
+        Logger::getLogger()->info("Connecting to server ... [" + to_string(i) + "/" + to_string(RETRY_CONN_NUM) + "]");
+        m_connected = !(m_client->connect_Server(m_conf->get_ip_address().c_str(), m_conf->get_port()));
         if (m_connected)
         {
             Logger::getLogger()->info("Connected.");
@@ -185,10 +81,10 @@ int HNZ::connect()
         }
         else
         {
-            Logger::getLogger()->warn("Error in connection, retrying in " + to_string(m_retry_delay) + "s ...");
+            Logger::getLogger()->warn("Error in connection, retrying in " + to_string(RETRY_CONN_DELAY) + "s ...");
             high_resolution_clock::time_point beginning_time = high_resolution_clock::now();
             duration<double, std::milli> time_span = high_resolution_clock::now() - beginning_time;
-            int time_out = m_retry_delay * 1000;
+            int time_out = RETRY_CONN_DELAY * 1000;
 
             while (time_span.count() < time_out)
             {
@@ -204,33 +100,12 @@ int HNZ::connect()
 void HNZ::start()
 {
     m_fledge = new HNZFledge(this, &m_pivot_configuration);
-    
-    
-    // Fledge logging level setting
-    switch (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer))
-    {
-    case 1:
-        Logger::getLogger()->setMinLevel("debug");
-        break;
-    case 2:
-        Logger::getLogger()->setMinLevel("info");
-        break;
-    case 3:
-        Logger::getLogger()->setMinLevel("warning");
-        break;
-    default:
-        Logger::getLogger()->setMinLevel("error");
-        break;
-    }
 
     Logger::getLogger()->info("Starting HNZ");
 
     loopActivated = true;
     
-    //// 
-    PrepareParameters();
     Logger::getLogger()->info("Connection initialized");
-    ////
 
     // Connect to the server
     m_client = new HNZClient();

@@ -18,8 +18,7 @@
 //#include "../../lib/src/inc/hnz_client.h"
 #include "../../libhnz/src/inc/hnz_client.h"
 #include <json.hpp> // https://github.com/nlohmann/json
-
-
+#include "hnzconf.h"
 
 class HNZFledge;
 
@@ -28,7 +27,7 @@ class HNZ
 public:
     typedef void (*INGEST_CB)(void *, Reading);
 
-    HNZ(const char *ip, int port);
+    HNZ();
     ~HNZ() = default;
 
     struct confDatas {
@@ -37,8 +36,6 @@ public:
     
     typedef struct confDatas confDatas;
 
-    void        setIp(const char *ip)  { m_ip = (strlen(ip) > 1) ? ip : "127.0.0.1"; }
-    void        setPort(uint16_t port) { m_port = (port > 0) ? port : 1234; }
     void		setAssetName(const std::string& asset) { m_asset = asset; }
     void		restart();
     void        start();
@@ -60,58 +57,19 @@ public:
     void		registerIngest(void *data, void (*cb)(void *, Reading));
 
     std::string		m_asset;
-    std::string     m_ip;
-    int             m_port;
-	int             m_retry_number;
-	int             m_retry_delay;
-    HNZClient*      m_client;
-
-
-    //////
-    int m_remote_station_addr;
-    int m_local_station_addr;
-    int m_remote_addr_in_local_station;
-    int m_inacc_timeout;
-    int m_max_sarm;
-    int m_to_socket;
-    int m_repeat_path_A;
-    int m_repeat_path_B;
-    int m_repeat_timeout;
-    int m_anticipation;
-    int m_default_msg_period;
-    int m_llevel;
-    std::string m_Test_msg_send;
-    std::string m_Test_msg_receive;
-    ////
-
     
+    HNZClient*      m_client;
 
     std::mutex loopLock;
     std::atomic<bool> loopActivated;
     std::thread loopThread;
 	
 	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
-    ///////
-    void setllevel(int llevel);
-    void setretry_number(int retry_number);
-    void setretry_delay(int retry_delay);
-    void setremote_station_addr(int remote_station_addr);
-    void setlocal_station_addr(int local_station_addr);
-    void setremote_addr_in_local_station(int remote_addr_in_local_station);
-    void setinacc_timeout(int inacc_timeout);
-    void setmax_sarm(int max_sarm);
-    void setto_socket(int to_socket);
-    void setrepeat_path_A(int repeat_path_A);
-    void setrepeat_path_B(int repeat_path_B);
-    void setrepeat_timeout(int repeat_timeout);
-    void setanticipation(int anticipation);
-    void setdefault_msg_period(int default_msg_period);
-    void settest_msg_send(std::string Test_msg_send);
-    void settest_msg_receive(std::string Test_msg_receive);
-    void PrepareParameters();
-    //// 
 
 private:
+    // configuration
+    static HNZConf *m_conf;
+
     INGEST_CB			m_ingest;     // Callback function used to send data to south service
     void*               m_data;       // Ingest function data
     bool				m_connected;

@@ -18,7 +18,7 @@
 //#include "../../lib/src/inc/hnz_client.h"
 #include "../../libhnz/src/inc/hnz_client.h"
 #include <json.hpp> // https://github.com/nlohmann/json
-
+#include "hnzconf.h"
 
 class HNZFledge;
 
@@ -27,11 +27,9 @@ class HNZ
 public:
     typedef void (*INGEST_CB)(void *, Reading);
 
-    HNZ(const char *ip, int port);
+    HNZ();
     ~HNZ() = default;
 
-    void        setIp(const char *ip)  { m_ip = (strlen(ip) > 1) ? ip : "127.0.0.1"; }
-    void        setPort(uint16_t port) { m_port = (port > 0) ? port : 1234; }
     void		setAssetName(const std::string& asset) { m_asset = asset; }
     void		restart();
     void        start();
@@ -54,10 +52,7 @@ public:
     void registerIngest(void *data, void (*cb)(void *, Reading));
 
     std::string		m_asset;
-    std::string     m_ip;
-    int             m_port;
-	int             m_retry_number;
-	int             m_retry_delay;
+    
     HNZClient*      m_client;
 
     std::mutex loopLock;
@@ -66,8 +61,10 @@ public:
 	
 	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration);
 
-
 private:
+    // configuration
+    static HNZConf *m_conf;
+
     INGEST_CB			m_ingest;     // Callback function used to send data to south service
     void*               m_data;       // Ingest function data
     bool				m_connected;

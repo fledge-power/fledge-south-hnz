@@ -1,3 +1,13 @@
+/*
+ * Fledge HNZ south plugin.
+ *
+ * Copyright (c) 2022, RTE (https://www.rte-france.com)
+ *
+ * Released under the Apache 2.0 Licence
+ *
+ * Author: Justin Facquet
+ */
+
 #include "hnzconf.h"
 
 using namespace rapidjson;
@@ -11,13 +21,15 @@ HNZConf::~HNZConf() {}
 void HNZConf::import_json(const std::string &json_config) {
   m_is_complete = false;
 
+  bool is_complete = true;
+
   Document document;
 
   if (document.Parse(const_cast<char *>(json_config.c_str())).HasParseError()) {
     Logger::getLogger()->fatal(
         "Parsing error in protocol_stack json, offset " +
-        std::to_string((unsigned)document.GetErrorOffset()));
-    // More details : GetParseError_En(document.GetParseErrorCode())
+        std::to_string((unsigned)document.GetErrorOffset()) + " " +
+        GetParseError_En(document.GetParseError()));
     return;
   }
   if (!document.IsObject()) return;
@@ -41,90 +53,106 @@ void HNZConf::import_json(const std::string &json_config) {
   // If there are more than 2 objects, ignoring them
   for (SizeType i = 0; i < 2; i++) {
     const Value &conn = transport[CONNECTIONS][i];
-    if (!conn.HasMember(IP_ADDR) || !conn.IsString()) return;
-    m_ip = conn[IP_ADDR].GetString();
 
-    if (!conn.HasMember(IP_PORT)) {
-      m_port = DEFAULT_PORT;
-    } else if (!conn[IP_PORT].IsUint())
-      return;
-    m_port = conn[IP_PORT].GetUint();
+    is_complete &= m_retrieve(conn, IP_ADDR, &m_ip);
+
+    is_complete &= m_retrieve(conn, IP_PORT, &m_port, DEFAULT_PORT);
   }
 
   if (!info.HasMember(APP_LAYER) || !info[APP_LAYER].IsObject()) return;
 
   const Value &conf = info[APP_LAYER];
 
-  if (!conf.HasMember(REMOTE_ADDR) || !conf[REMOTE_ADDR].IsUint()) return;
-  m_remote_station_addr = conf[REMOTE_ADDR].GetUint();
-  if (m_remote_station_addr > 64) return;
-
-  if (!conf.HasMember(LOCAL_ADDR) || !conf[LOCAL_ADDR].IsUint()) return;
-  m_local_station_addr = conf[LOCAL_ADDR].GetUint();
-  if (m_local_station_addr > 64) return;
-
-  if (!conf.HasMember(REMOTE_ADDR_IN_LOCAL) ||
-      !conf[REMOTE_ADDR_IN_LOCAL].IsUint())
+  is_complete &= m_retrieve(conf, REMOTE_ADDR, &m_remote_station_addr);
+  if (m_remote_station_addr > 64) {
+    std::string s = REMOTE_ADDR;
+    Logger::getLogger()->error("Error with the field " + s +
+                               ", the value is not on 6 bits.");
     return;
-  m_remote_addr_in_local_station = conf[REMOTE_ADDR_IN_LOCAL].GetUint();
-  if (m_remote_addr_in_local_station > 2) return;
+  }
 
-  if (!conf.HasMember(INACC_TIMEOUT)) {
-    m_inacc_timeout = DEFAULT_INACC_TIMEOUT;
-  } else if (!conf[INACC_TIMEOUT].IsUint())
+  is_complete &= m_retrieve(conf, LOCAL_ADDR, &m_local_station_addr);
+  if (m_local_station_addr > 64) {
+    std::string s = LOCAL_ADDR;
+    Logger::getLogger()->error("Error with the field " + s +
+                               ", the value is not on 6 bits.");
     return;
-  m_inacc_timeout = conf[INACC_TIMEOUT].GetUint();
+  }
 
-  if (!conf.HasMember(MAX_SARM)) {
-    m_max_sarm = DEFAULT_MAX_SARM;
-  } else if (!conf[MAX_SARM].IsUint())
+  is_complete &=
+      m_retrieve(conf, REMOTE_ADDR_IN_LOCAL, &m_remote_addr_in_local_station);
+  if (m_remote_addr_in_local_station > 2) {
+    std::string s = REMOTE_ADDR_IN_LOCAL;
+    Logger::getLogger()->error("Error with the field " + s +
+                               ", the value is not equal to 0, 1 or 2.");
     return;
-  m_max_sarm = conf[MAX_SARM].GetUint();
+  }
 
-  if (!conf.HasMember(TO_SOCKET)) {
-    // TODO : to check
-    m_to_socket = DEFAULT_TO_SOCKET;
-  } else if (!conf[TO_SOCKET].IsUint())
-    return;
-  m_to_socket = conf[TO_SOCKET].GetUint();
+  is_complete &=
+      m_retrieve(conf, INACC_TIMEOUT, &m_inacc_timeout, DEFAULT_INACC_TIMEOUT);
 
-  if (!conf.HasMember(REPEAT_PATH_A)) {
-    m_repeat_path_A = DEFAULT_REPEAT_PATH;
-  } else if (!conf[REPEAT_PATH_A].IsUint())
-    return;
-  m_repeat_path_A = conf[REPEAT_PATH_A].GetUint();
+  is_complete &= m_retrieve(conf, MAX_SARM, &m_max_sarm, DEFAULT_MAX_SARM);
 
-  if (!conf.HasMember(REPEAT_PATH_B)) {
-    m_repeat_path_B = DEFAULT_REPEAT_PATH;
-  } else if (!conf[REPEAT_PATH_B].IsUint())
-    return;
-  m_repeat_path_B = conf[REPEAT_PATH_B].GetUint();
+  // TODO : to check
+  is_complete &= m_retrieve(conf, TO_SOCKET, &m_to_socket, DEFAULT_TO_SOCKET);
 
-  if (!conf.HasMember(REPEAT_TIMEOUT)) {
-    m_repeat_timeout = DEFAULT_REPEAT_TIMEOUT;
-  } else if (!conf[REPEAT_TIMEOUT].IsUint())
-    return;
-  m_repeat_timeout = conf[REPEAT_TIMEOUT].GetUint();
+  is_complete &=
+      m_retrieve(conf, REPEAT_PATH_A, &m_repeat_path_A, DEFAULT_REPEAT_PATH);
 
-  if (!conf.HasMember(ANTICIPATION)) {
-    m_anticipation = DEFAULT_ANTICIPATION;
-  } else if (!conf[ANTICIPATION].IsUint())
-    return;
-  m_anticipation = conf[ANTICIPATION].GetUint();
+  is_complete &=
+      m_retrieve(conf, REPEAT_PATH_B, &m_repeat_path_B, DEFAULT_REPEAT_PATH);
 
-  if (!conf.HasMember(DEFAULT_MSG_PERIOD)) {
-    // TODO : to check
-    m_default_msg_period = DEFAULT_DEFAULT_MSG_PERIOD;
-  } else if (!conf[DEFAULT_MSG_PERIOD].IsUint())
-    return;
-  m_default_msg_period = conf[DEFAULT_MSG_PERIOD].GetUint();
+  is_complete &= m_retrieve(conf, REPEAT_TIMEOUT, &m_repeat_timeout,
+                            DEFAULT_REPEAT_TIMEOUT);
 
-  if (!conf.HasMember(TST_MSG_SEND) || !conf[TST_MSG_SEND].IsString()) return;
-  m_test_msg_send = conf[TST_MSG_SEND].GetString();
+  is_complete &=
+      m_retrieve(conf, ANTICIPATION, &m_anticipation, DEFAULT_ANTICIPATION);
 
-  if (!conf.HasMember(TST_MSG_RECEIVE) || !conf[TST_MSG_RECEIVE].IsString())
-    return;
-  m_test_msg_receive = conf[TST_MSG_RECEIVE].GetString();
+  // TODO : to check
+  is_complete &= m_retrieve(conf, DEFAULT_MSG_PERIOD, &m_default_msg_period,
+                            DEFAULT_DEFAULT_MSG_PERIOD);
 
-  m_is_complete = true;
+  is_complete &= m_retrieve(conf, TST_MSG_SEND, &m_test_msg_send);
+
+  is_complete &= m_retrieve(conf, TST_MSG_RECEIVE, &m_test_msg_receive);
+
+  m_is_complete = is_complete;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key,
+                         unsigned int *target) {
+  if (!json.HasMember(key) || !json[key].IsUint()) {
+    std::string s = key;
+    Logger::getLogger()->error("Error with the field " + s +
+                               ", the value is not an unsigned integer.");
+    return false;
+  }
+  *target = json[key].GetUint();
+  return true;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key,
+                         unsigned int *target, unsigned int def) {
+  if (!json.HasMember(key)) {
+    *target = def;
+  } else if (!json[key].IsUint()) {
+    std::string s = key;
+    Logger::getLogger()->error("Error with the field " + s +
+                               ", the value is not an unsigned integer.");
+    return false;
+  }
+  *target = json[key].GetUint();
+  return true;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key,
+                         std::string *target) {
+  if (!json.HasMember(key) || !json[key].IsString()) {
+    std::string s = key;
+    Logger::getLogger()->error("Error with the field " + s +
+                               ", the value is not a string.");
+    return false;
+  }
+  *target = json[key].GetString();
+  return true;
 }

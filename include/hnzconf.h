@@ -1,7 +1,15 @@
+/*
+ * Fledge HNZ south plugin.
+ *
+ * Copyright (c) 2022, RTE (https://www.rte-france.com)
+ *
+ * Released under the Apache 2.0 Licence
+ *
+ * Author: Justin Facquet
+ */
+
 #ifndef HNZConf_H
 #define HNZConf_H
-
-#include <json.hpp>  // https://github.com/nlohmann/json
 
 #include "logger.h"
 #include "rapidjson/document.h"
@@ -42,6 +50,8 @@
 
 #define RETRY_CONN_DELAY 5
 #define RETRY_CONN_NUM 5
+
+using namespace rapidjson;
 
 class HNZConf {
  public:
@@ -88,6 +98,13 @@ class HNZConf {
   std::string m_test_msg_receive;
 
   bool m_is_complete;
+
+  static bool m_retrieve(const Value &json, const char *key,
+                         unsigned int *target);
+  static bool m_retrieve(const Value &json, const char *key,
+                         unsigned int *target, unsigned int def);
+  static bool m_retrieve(const Value &json, const char *key,
+                         std::string *target);
 };
 
 #endif

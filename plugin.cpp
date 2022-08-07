@@ -74,7 +74,7 @@ using namespace std;
             {                                                                  \
               "name" : "hnz",                                                  \
               "station_address" : 1,                                           \
-              "info_address" : 511,                                            \
+              "message_address" : 511,                                         \
               "message_code" : "TSCE"                                          \
             }                                                                  \
           ]                                                                    \
@@ -93,7 +93,7 @@ using namespace std;
             {                                                                  \
               "name" : "hnz",                                                  \
               "station_address" : 20,                                          \
-              "info_address" : 511,                                            \
+              "message_address" : 511,                                         \
               "message_code" : "TMN"                                           \
             }                                                                  \
           ]                                                                    \

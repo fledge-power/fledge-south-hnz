@@ -37,18 +37,18 @@ using namespace std;
       },                                              \
       "application_layer" : {                         \
         "remote_station_addr" : 12,                   \
-        "local_station_addr" : 12,                    \
-        "remote_addr_in_local_station" : 0,           \
         "inacc_timeout" : 180,                        \
         "max_sarm" : 30,                              \
-        "to_socket" : 1,                              \
         "repeat_path_A" : 3,                          \
         "repeat_path_B" : 3,                          \
         "repeat_timeout" : 3000,                      \
         "anticipation" : 3,                           \
-        "default_msg_period" : 0,                     \
-        "Test_msg_send" : "1304",                     \
-        "Test_msg_receive" : "1304"                   \
+        "test_msg_send" : "1304",                     \
+        "test_msg_receive" : "1304",                  \
+        "gi_schedule" : "99:99",                      \
+        "gi_repeat_count" : 3,                        \
+        "gi_time" : 255,                              \
+        "c_ack_time" : 10                             \
       }                                               \
     }                                                 \
   })

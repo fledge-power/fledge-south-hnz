@@ -22,8 +22,6 @@
 #include <mutex>
 #include <thread>
 #include <utility>
-//#include "../../lib/src/inc/hnz_client.h"
-#include <json.hpp>  // https://github.com/nlohmann/json
 
 #include "../../libhnz/src/inc/hnz_client.h"
 #include "hnzconf.h"
@@ -45,15 +43,12 @@ class HNZ {
   int connect();
   void stop_loop();
   void analyze_frame(unsigned char* data, int size);
-  bool analyze_info_frame(unsigned char* data, unsigned char addr, int ns,
-                          int p, int nr, int size);
-  void sendToFledge(std::string message_type, unsigned char addr,
-                    int info_adress, int value, int valid, int ts, int ts_iv,
+  bool analyze_info_frame(unsigned char* data, unsigned char station_addr,
+                          int ns, int p, int nr, int size);
+  void sendToFledge(std::string msg_code, unsigned char station_addr,
+                    int msg_address, int value, int valid, int ts, int ts_iv,
                     int ts_c, int ts_s, std::string label, bool time);
   std::string convert_data_to_str(unsigned char* data, int len);
-
-  std::string m_getLabel(const int address, const std::string& message_code,
-                         const int info_address);
 
   // void ingest(Reading& reading);
   void ingest(std::string assetName, std::vector<Datapoint*>& points);
@@ -72,21 +67,13 @@ class HNZ {
 
  private:
   // configuration
-  HNZConf* m_conf;
+  HNZConf* m_hnz_conf;
 
   INGEST_CB m_ingest;  // Callback function used to send data to south service
   void* m_data;        // Ingest function data
   bool m_connected;
   HNZFledge* m_fledge;
   int frame_number, module10M;
-
-  template <class T>
-  static T m_getConfigValue(nlohmann::json configuration,
-                            nlohmann::json_pointer<nlohmann::json> path);
-
-  static void m_checkExchangedDataJson(const std::string& msg_configuration);
-  static nlohmann::json m_stack_configuration;
-  static nlohmann::json m_msg_configuration;
 };
 
 class HNZFledge {

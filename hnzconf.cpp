@@ -72,30 +72,10 @@ void HNZConf::importConfigJson(const string &json) {
       is_complete = false;
     }
 
-    is_complete &= m_retrieve(conf, LOCAL_ADDR, &m_local_station_addr);
-    if (m_local_station_addr > 64) {
-      string s = LOCAL_ADDR;
-      Logger::getLogger()->error("Error with the field " + s +
-                                 ", the value is not on 6 bits.");
-      is_complete = false;
-    }
-
-    is_complete &=
-        m_retrieve(conf, REMOTE_ADDR_IN_LOCAL, &m_remote_addr_in_local_station);
-    if (m_remote_addr_in_local_station > 2) {
-      string s = REMOTE_ADDR_IN_LOCAL;
-      Logger::getLogger()->error("Error with the field " + s +
-                                 ", the value is not equal to 0, 1 or 2.");
-      is_complete = false;
-    }
-
     is_complete &= m_retrieve(conf, INACC_TIMEOUT, &m_inacc_timeout,
                               DEFAULT_INACC_TIMEOUT);
 
     is_complete &= m_retrieve(conf, MAX_SARM, &m_max_sarm, DEFAULT_MAX_SARM);
-
-    // TODO : to check
-    is_complete &= m_retrieve(conf, TO_SOCKET, &m_to_socket, DEFAULT_TO_SOCKET);
 
     is_complete &=
         m_retrieve(conf, REPEAT_PATH_A, &m_repeat_path_A, DEFAULT_REPEAT_PATH);
@@ -106,16 +86,23 @@ void HNZConf::importConfigJson(const string &json) {
     is_complete &= m_retrieve(conf, REPEAT_TIMEOUT, &m_repeat_timeout,
                               DEFAULT_REPEAT_TIMEOUT);
 
-    is_complete &=
-        m_retrieve(conf, ANTICIPATION, &m_anticipation, DEFAULT_ANTICIPATION);
-
-    // TODO : to check
-    is_complete &= m_retrieve(conf, DEFAULT_MSG_PERIOD, &m_default_msg_period,
-                              DEFAULT_DEFAULT_MSG_PERIOD);
+    is_complete &= m_retrieve(conf, ANTICIPATION_RATIO, &m_anticipation_ratio,
+                              DEFAULT_ANTICIPATION_RATIO);
 
     is_complete &= m_retrieve(conf, TST_MSG_SEND, &m_test_msg_send);
 
     is_complete &= m_retrieve(conf, TST_MSG_RECEIVE, &m_test_msg_receive);
+
+    is_complete &=
+        m_retrieve(conf, GI_SCHEDULE, &m_gi_schedule, DEFAULT_GI_SCHEDULE);
+
+    is_complete &= m_retrieve(conf, GI_REPEAT_COUNT, &m_gi_repeat_count,
+                              DEFAULT_GI_REPEAT_COUNT);
+
+    is_complete &= m_retrieve(conf, GI_TIME, &m_gi_time, DEFAULT_GI_TIME);
+
+    is_complete &=
+        m_retrieve(conf, C_ACK_TIME, &m_c_ack_time, DEFAULT_C_ACK_TIME);
   }
 
   m_config_is_complete = is_complete;
@@ -246,13 +233,15 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
                          unsigned int *target, unsigned int def) {
   if (!json.HasMember(key)) {
     *target = def;
-  } else if (!json[key].IsUint()) {
-    string s = key;
-    Logger::getLogger()->error("Error with the field " + s +
-                               ", the value is not an unsigned integer.");
-    return false;
+  } else {
+    if (!json[key].IsUint()) {
+      string s = key;
+      Logger::getLogger()->error("Error with the field " + s +
+                                 ", the value is not an unsigned integer.");
+      return false;
+    }
+    *target = json[key].GetUint();
   }
-  *target = json[key].GetUint();
   return true;
 }
 
@@ -265,5 +254,21 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, string *target) {
     return false;
   }
   *target = json[key].GetString();
+  return true;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key, string *target,
+                         string def) {
+  if (!json.HasMember(key)) {
+    *target = def;
+  } else {
+    if (!json[key].IsString()) {
+      string s = key;
+      Logger::getLogger()->error("Error with the field " + s +
+                                 ", the value is not a string.");
+      return false;
+    }
+    *target = json[key].GetString();
+  }
   return true;
 }

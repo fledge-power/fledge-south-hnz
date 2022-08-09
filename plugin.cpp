@@ -128,7 +128,8 @@ const char *default_config = QUOTE({
     "type" : "string",
     "displayName" : "Protocol stack parameters",
     "order" : "2",
-    "default" : PROTOCOL_STACK_DEF
+    "default" : PROTOCOL_STACK_DEF,
+    "mandatory" : "true"
   },
 
   "exchanged_data" : {
@@ -136,7 +137,8 @@ const char *default_config = QUOTE({
     "type" : "string",
     "displayName" : "Exchanged data list",
     "order" : "3",
-    "default" : EXCHANGED_DATA_DEF
+    "default" : EXCHANGED_DATA_DEF,
+    "mandatory" : "true"
   }
 });
 
@@ -175,9 +177,12 @@ PLUGIN_HANDLE plugin_init(ConfigCategory *config) {
 
   if (config->itemExists("protocol_stack") &&
       config->itemExists("exchanged_data")) {
-    hnz->setJsonConfig(config->getValue("protocol_stack"),
-                       config->getValue("exchanged_data"));
+    if (!hnz->setJsonConfig(config->getValue("protocol_stack"),
+                            config->getValue("exchanged_data")))
+      return nullptr;
   }
+
+  Logger::getLogger()->info("Pluging initialized");
 
   return (PLUGIN_HANDLE)hnz;
 }
@@ -190,6 +195,7 @@ void plugin_start(PLUGIN_HANDLE *handle) {
   Logger::getLogger()->info("Starting the plugin");
   HNZ *hnz = (HNZ *)handle;
   hnz->start();
+  Logger::getLogger()->info("Plugin started");
 }
 
 /**
@@ -211,15 +217,10 @@ Reading plugin_poll(PLUGIN_HANDLE *handle) {
 
 /**
  * Reconfigure the plugin
- *
  */
 void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
   ConfigCategory config("new", newConfig);
   auto *hnz = (HNZ *)*handle;
-
-  std::unique_lock<std::mutex> guard2(hnz->loopLock);
-
-  hnz->stop_loop();
 
   if (config.itemExists("protocol_stack") &&
       config.itemExists("exchanged_data"))
@@ -228,11 +229,7 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
 
   if (config.itemExists("asset")) {
     hnz->setAssetName(config.getValue("asset"));
-    Logger::getLogger()->info("HNZ plugin restart after reconfigure asset");
   }
-
-  hnz->start();
-  guard2.unlock();
 }
 
 /**
@@ -240,8 +237,6 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
  */
 void plugin_shutdown(PLUGIN_HANDLE *handle) {
   auto *hnz = (HNZ *)handle;
-
-  hnz->stop();
   delete hnz;
 }
 }

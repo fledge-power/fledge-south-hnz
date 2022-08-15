@@ -80,7 +80,7 @@ class HNZ {
   void* m_data;        // Ingest function data
   bool m_connected;
 
-  int frame_number, module10M;  // HNZ Protocol related vars
+  int m_nr, module10M;  // HNZ Protocol related vars
 
   /**
    * Waits for new messages and processes them
@@ -101,22 +101,22 @@ class HNZ {
   /**
    * Initialize the "procedure"
    */
-  void m_initialize_procedure(unsigned char addr_A, unsigned char addr_B);
+  void m_initialize_procedure(unsigned char station_address);
 
   /**
    * Send a date configuration message
    */
-  void m_send_date_setting(unsigned char addr_B);
+  void m_send_date_setting(unsigned char station_address);
 
   /**
    * Send a time configuration message
    */
-  void m_send_time_setting(unsigned char addr_B);
+  void m_send_time_setting(unsigned char station_address);
 
   /**
    * Send a general configuration request
    */
-  void m_send_CG(unsigned char addr_B);
+  void m_send_CG(unsigned char station_address);
 
   /**
    * Analyze an information frame

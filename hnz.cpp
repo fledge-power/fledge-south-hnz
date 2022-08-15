@@ -371,8 +371,10 @@ void HNZ::m_handleTM4(vector<Reading> &readings, unsigned int station_addr,
 
     if (!label.empty()) {
       int noctet = 2 + i;
-      unsigned int value = (int)data[noctet];  // VALTMi
-      unsigned int valid = (value == 0xFF);    // Invalid if VALTMi = 0xFF
+      int value =
+          (((data[noctet] >> 7) == 0x1) ? (-1 * ((int)data[noctet] ^ 0xFF) - 1)
+                                        : data[noctet]);  // VALTMi
+      unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
 
       readings.push_back(m_prepare_reading(label, msg_code, station_addr,
                                            msg_address, value, valid, 0, 0, 0,
@@ -444,7 +446,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, unsigned int station_addr,
     } else {
       int noctet = 2 + (i * 2);
 
-      value = (int)(data[noctet + 1] << 8 ||
+      value = (int)(data[noctet + 1] << 8 |
                     data[noctet]);            // Concat V1/V2 and V3/V4
       valid = (int)(data[6] >> i * 2) & 0x1;  // I1 or I3
     }

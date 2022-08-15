@@ -12,6 +12,7 @@
  */
 #include <config_category.h>
 #include <logger.h>
+#include <plugin_api.h>
 #include <reading.h>
 
 #include <atomic>
@@ -73,6 +74,16 @@ class HNZ {
    * Reset the GI queue. Delete previous TSCG received.
    */
   void resetGIQueue() { m_gi_readings_temp.clear(); };
+
+  /**
+   * Called by Fledge to send a command message
+   *
+   * @param operation The command name
+   * @param count Number of parameters
+   * @param params Array of parameters
+   */
+  bool operation(const std::string& operation, int count,
+                 PLUGIN_PARAMETER** params);
 
  private:
   string m_asset;  // Plugin name in fledge
@@ -142,12 +153,34 @@ class HNZ {
   void m_handleTMN(vector<Reading>& reading, unsigned char* data);
 
   /**
+   * Handle TVC ACK messages: analyse them and returns readings for export to
+   * fledge.
+   */
+  void m_handleATVC(vector<Reading>& reading, unsigned int station_addr,
+                    unsigned char* data);
+
+  /**
+   * Handle TC ACK messages: analyse them and returns readings for export to
+   * fledge.
+   */
+  void m_handleATC(vector<Reading>& reading, unsigned int station_addr,
+                   unsigned char* data);
+
+  /**
    * Create a reading from the values given in argument.
    */
   static Reading m_prepare_reading(string label, string msg_code,
                                    unsigned char station_addr, int msg_address,
                                    int value, int valid, int ts, int ts_iv,
                                    int ts_c, int ts_s, bool time);
+
+  /**
+   * Create a reading from the values given in argument.
+   */
+  static Reading m_prepare_reading(string label, string msg_code,
+                                   unsigned char station_addr, int msg_address,
+                                   int value, int value_coding, bool coding);
+
   /**
    * Create a datapoint.
    * @param name
@@ -166,6 +199,11 @@ class HNZ {
    * @param reading The reading to push to fledge
    */
   void ingest(Reading& reading);
+
+  bool sendTVCCommand(unsigned char address, int value,
+                      unsigned char val_coding);
+
+  bool sendTCCommand(unsigned char address, unsigned char value);
 
   string convert_data_to_str(unsigned char* data, int len);
 };

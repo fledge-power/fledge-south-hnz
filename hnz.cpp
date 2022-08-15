@@ -241,10 +241,16 @@ void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
       break;
     case 0x09:
       Logger::getLogger()->info("Received ATC, not implemented");
+
+      m_handleATC(readings, station_addr, data);
+
       len = 3;
       break;
     case 0x0A:
       Logger::getLogger()->info("Received ATVC, not implemented");
+
+      m_handleATVC(readings, station_addr, data);
+
       len = 3;
       break;
     default:
@@ -372,6 +378,44 @@ void HNZ::m_handleTMN(vector<Reading> &readings, unsigned char *data) {
   }
 }
 
+void HNZ::m_handleATVC(vector<Reading> &readings, unsigned int station_addr,
+                       unsigned char *data) {
+  string msg_code = "ACK_TVC";
+
+  unsigned int msg_address = data[1] & 0x1F;         // AD0
+  unsigned int value_coding = (data[1] >> 5) & 0x1;  // X
+  unsigned int a = (data[1] >> 6) & 0x1;             // A
+  int value;
+
+  if (value_coding == 1) {
+    value = ((data[3] & 0xF) << 8) | data[2];
+  } else {
+    value = data[2] & 0x7F;
+  }
+
+  if (((data[3] >> 7) & 0x1) == 1) -1 * value;  // S
+
+  string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+
+  readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+                                       msg_address, value, value_coding, true));
+}
+
+void HNZ::m_handleATC(vector<Reading> &readings, unsigned int station_addr,
+                      unsigned char *data) {
+  string msg_code = "ACK_TC";
+
+  unsigned int msg_address = stoi(to_string((int)data[1]) +
+                                  to_string((int)(data[2] >> 5)));  // AD0 + ADB
+
+  string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+
+  int value = data[2] & 0x7;
+
+  readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+                                       msg_address, value, 0, false));
+}
+
 Reading HNZ::m_prepare_reading(string label, string msg_code,
                                unsigned char station_addr, int msg_address,
                                int value, int valid, int ts, int ts_iv,
@@ -408,6 +452,37 @@ Reading HNZ::m_prepare_reading(string label, string msg_code,
   return Reading(label, dp);
 }
 
+Reading HNZ::m_prepare_reading(string label, string msg_code,
+                               unsigned char station_addr, int msg_address,
+                               int value, int value_coding, bool coding) {
+  Logger::getLogger()->debug(
+      "Send to fledge " + msg_code +
+      " with station address = " + to_string(station_addr) +
+      ", message address = " + to_string(msg_address) +
+      ", value = " + to_string(value) +
+      (coding ? ("value coding = " + to_string(value_coding)) : ""));
+
+  auto *measure_features = new vector<Datapoint *>;
+  measure_features->push_back(m_createDatapoint("do_type", msg_code));
+  measure_features->push_back(
+      m_createDatapoint("do_station", (long int)station_addr));
+  measure_features->push_back(
+      m_createDatapoint("do_addr", (long int)msg_address));
+  measure_features->push_back(m_createDatapoint("do_value", (long int)value));
+
+  if (coding) {
+    // TODO : Review the name
+    measure_features->push_back(
+        m_createDatapoint("do_val_coding", (long int)value_coding));
+  }
+
+  DatapointValue dpv(measure_features, true);
+
+  Datapoint *dp = new Datapoint("data_object", dpv);
+
+  return Reading(label, dp);
+}
+
 void HNZ::sendToFledge(vector<Reading> &readings) {
   for (Reading &reading : readings) {
     ingest(reading);
@@ -419,4 +494,60 @@ void HNZ::ingest(Reading &reading) { (*m_ingest)(m_data, reading); }
 void HNZ::registerIngest(void *data, INGEST_CB cb) {
   m_ingest = cb;
   m_data = data;
+}
+
+bool HNZ::sendTVCCommand(unsigned char address, int value,
+                         unsigned char val_coding) {
+  unsigned char msg[5];
+  msg[0] = (m_nr % 8) * 0x20 + 0x02;
+  msg[1] = 0x1A;
+  msg[2] = (address & 0x1F) | ((val_coding & 0x1) << 5);
+  if ((val_coding & 0x1) == 1) {
+    msg[3] = value & 0xFF;
+    msg[4] = ((value >= 0) ? 0 : 0x80) | value & 0xF00;
+  } else {
+    msg[3] = value & 0x7F;
+    msg[4] = (value >= 0) ? 0 : 0x80;
+  }
+  // TODO : Check later for the RR / ACK_TVC
+  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
+  Logger::getLogger()->warn("TVC sent (address = " + to_string(address) +
+                            ", value = " + to_string(value) +
+                            " and value coding = " + to_string(val_coding));
+}
+
+bool HNZ::sendTCCommand(unsigned char address, unsigned char value) {
+  string address_str = to_string(address);
+  unsigned char msg[4];
+  msg[0] = (m_nr % 8) * 0x20 + 0x02;
+  msg[1] = 0x19;
+  msg[2] = stoi(address_str.substr(0, address_str.length() - 2));
+  msg[3] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
+  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
+  // TODO : Check later for the RR / ACK_TC
+  Logger::getLogger()->warn("TC sent (address = " + to_string(address) +
+                            " and value = " + to_string(value));
+}
+
+bool HNZ::operation(const std::string &operation, int count,
+                    PLUGIN_PARAMETER **params) {
+  if (operation.compare("HNZ_sendTC") == 0) {
+    // TODO : Read a json in input ?
+    int address = atoi(params[0]->value.c_str());
+    int value = atoi(params[1]->value.c_str());
+
+    sendTCCommand(address, value);  // TODO : Use a thread ?
+    return true;
+  } else if (operation.compare("HNZ_sendTVC") == 0) {
+    // TODO : Read a json in input ?
+    int address = atoi(params[0]->value.c_str());
+    int value = atoi(params[1]->value.c_str());
+    int val_coding = atoi(params[2]->value.c_str());
+
+    sendTVCCommand(address, value, val_coding);  // TODO : Use a thread ?
+    return true;
+  }
+
+  Logger::getLogger()->error("Unrecognised operation %s", operation.c_str());
+  return false;
 }

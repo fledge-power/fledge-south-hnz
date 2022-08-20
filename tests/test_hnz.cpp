@@ -8,17 +8,20 @@
 #include <boost/thread.hpp>
 #include <utility>
 #include <vector>
+#include <threads.h>
+#include <chrono>
+#include <boost/thread.hpp>
 
 
 using namespace std;
 using namespace nlohmann;
 
-#define TEST_PORT 2404
+#define TEST_PORT 6001
 
 class HNZTestComp : public HNZ
 {
 public:
-    HNZTestComp() : HNZ("127.0.0.1",TEST_PORT)
+    HNZTestComp() : HNZ("",-1)
     {
     }
 };
@@ -40,6 +43,7 @@ protected:
         // Avoid reallocating static objects if called in subclasses of FooTest.
         if (hnz == nullptr)
         {
+            printf("Here");
             hnz = new HNZTestComp();
             hnz->registerIngest(NULL, ingestCallback);
 
@@ -141,6 +145,8 @@ protected:
         storedReading = new Reading(reading);
 
         ingestCallbackCalled++;
+        printf("My value is");
+        printf("Mu value is%u",ingestCallbackCalled);
     }
 
     static boost::thread thread_;
@@ -156,13 +162,14 @@ int HNZTest::ingestCallbackCalled;
 Reading* HNZTest::storedReading;
 
 
-TEST_F(HNZTest, IEC104_receiveMonitoringAsdus)
+TEST_F(HNZTest, ReceivingMessage)
 {
-    HNZServer* server = new HNZServer();
-
-    server->start();
-
     startHNZ();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+
+    ASSERT_EQ(ingestCallbackCalled, 1);
+
 
     // CS101_ASDU newAsdu = CS101_ASDU_create(alParams, false, CS101_COT_PERIODIC, 0, 41025, false, false);
 

@@ -85,10 +85,13 @@ void HNZ::restart()
 int HNZ::connect()
 {
     int i = 1;
+    printf(this->m_ip.c_str());
     while ((i <= m_retry_number) or (m_retry_number == -1))
     {
+
         Logger::getLogger()->info("Connecting to server ... [" + to_string(i) + "/" + to_string(m_retry_number) + "]");
-        m_connected = !(m_client->connect_Server(m_ip.c_str(), m_port));
+        m_connected = !(m_client->connect_Server("127.0.0.1"/*m_ip.c_str()*/, 6001/*m_port*/));
+        printf(this->m_ip.c_str());
         if (m_connected)
         {
             Logger::getLogger()->info("Connected.");
@@ -483,6 +486,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, in
 }
 
 void HNZ::sendToFledge(unsigned char t, int value, int quality, int ts, int ts_qual, std::string label, std::string internal_id) {
+    printf("Salut je vais envoyer à fledge");
     if (label == "internal" && internal_id == "internal")
     {
         Logger::getLogger()->warn("Message protocolaire");
@@ -490,6 +494,7 @@ void HNZ::sendToFledge(unsigned char t, int value, int quality, int ts, int ts_q
     }
     if (label != "" && internal_id != "")
     {
+        printf("Salut je vais envoyer à fledge 2S");
         // Prepare the value datapoint
         Datapoint* dp = m_fledge->m_addData<std::string>(value, quality, ts, ts_qual);
         // Send datapoint to fledge
@@ -540,6 +545,7 @@ void HNZ::registerIngest(void *data, INGEST_CB cb)
 
 void HNZFledge::sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label)
 {
+    printf("je suis dans send");
     // Create the header
     auto* data_header = new vector<Datapoint*>;
 
@@ -558,6 +564,7 @@ void HNZFledge::sendData(Datapoint* dp, std::string code, std::string internal_i
     Datapoint* item_dp = dp;
 
     Reading reading(label, {header_dp, item_dp});
+    printf("gonna call the ingest");
     m_hnz->ingest(reading);
 }
 

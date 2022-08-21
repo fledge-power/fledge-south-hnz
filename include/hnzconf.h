@@ -110,9 +110,14 @@ class HNZConf {
   unsigned int get_repeat_path_A() { return m_repeat_path_A; }
   unsigned int get_repeat_path_B() { return m_repeat_path_B; }
   unsigned int get_repeat_timeout() { return m_repeat_timeout; }
+  unsigned int get_anticipation_ratio() { return m_anticipation_ratio; }
   unsigned int get_default_msg_period() { return m_default_msg_period; }
   string get_test_msg_send() { return m_test_msg_send; }
   string get_test_msg_receive() { return m_test_msg_receive; }
+  string get_gi_schedule() { return m_gi_schedule; }
+  unsigned int get_gi_repeat_count() { return m_gi_repeat_count; }
+  unsigned int get_gi_time() { return m_gi_time; }
+  unsigned int get_c_ack_time() { return m_c_ack_time; }
 
  private:
   string m_ip;

@@ -15,10 +15,12 @@
 #include <reading.h>
 
 #include <atomic>
+#include <sstream>
 #include <thread>
 
 #include "../../libhnz/src/inc/hnz_client.h"
 #include "hnzconf.h"
+#include "hnzconnection.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -70,8 +72,10 @@ class HNZ {
  private:
   string m_asset;  // Plugin name in fledge
 
-  HNZConf* m_hnz_conf;  // HNZ Configuration
-  HNZClient* m_client;  // HNZ Client (lib hnz)
+  HNZConf* m_hnz_conf;              // HNZ Configuration
+  HNZClient* m_client;              // HNZ Client (lib hnz)
+  HNZConnection* m_hnz_connection;  // HNZ Connection handling
+
   thread* m_receiving_thread;
 
   atomic<bool> m_is_running;
@@ -79,8 +83,9 @@ class HNZ {
   INGEST_CB m_ingest;  // Callback function used to send data to south service
   void* m_data;        // Ingest function data
   bool m_connected;
+  int m_remote_address;
 
-  int m_nr, module10M;  // HNZ Protocol related vars
+  int module10M;  // HNZ Protocol related vars
 
   /**
    * Waits for new messages and processes them
@@ -97,26 +102,6 @@ class HNZ {
    * @param frReceived
    */
   void m_analyze_frame(MSG_TRAME* frReceived);
-
-  /**
-   * Initialize the "procedure"
-   */
-  void m_initialize_procedure(unsigned char station_address);
-
-  /**
-   * Send a date configuration message
-   */
-  void m_send_date_setting(unsigned char station_address);
-
-  /**
-   * Send a time configuration message
-   */
-  void m_send_time_setting(unsigned char station_address);
-
-  /**
-   * Send a general configuration request
-   */
-  void m_send_CG(unsigned char station_address);
 
   /**
    * Analyze an information frame

@@ -40,6 +40,7 @@ void HNZ::stop() {
     }
     Logger::getLogger()->info("Waiting for the receiving thread");
     m_receiving_thread->join();
+    m_receiving_thread = nullptr;
   }
   Logger::getLogger()->info("Plugin stopped");
 }
@@ -65,6 +66,9 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
 
   Logger::getLogger()->info("Json config parsed successsfully.");
 
+  m_remote_address = m_hnz_conf->get_remote_station_addr();
+  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client);
+
   if (was_running) {
     Logger::getLogger()->warn("Restarting the plugin...");
     start();
@@ -83,7 +87,6 @@ bool HNZ::connect() {
 
     if (m_connected) {
       Logger::getLogger()->info("Connected.");
-      m_nr = 0;
       return true;
     } else {
       Logger::getLogger()->warn("Error in connection, retrying in " +
@@ -106,6 +109,8 @@ void HNZ::receive() {
     return;
   }
 
+  m_hnz_connection->start();
+
   Logger::getLogger()->warn("Listening for data ...");
 
   while (m_is_running) {
@@ -114,7 +119,6 @@ void HNZ::receive() {
     // Waiting for data
     frReceived = (m_client->receiveFr());
     if (frReceived != nullptr) {
-      Logger::getLogger()->warn("Data Received !");
       // Checking the CRC
       if (m_client->checkCRC(frReceived)) {
         Logger::getLogger()->debug("CRC is good");
@@ -133,139 +137,59 @@ void HNZ::receive() {
         m_client->stop();
       }
     }
-    // TODO : is it necessary?
-    std::chrono::milliseconds timespan(1000);
-    std::this_thread::sleep_for(timespan);
   }
+
+  m_hnz_connection->stop();
 }
 
 void HNZ::m_analyze_frame(MSG_TRAME *frReceived) {
   unsigned char *data = frReceived->aubTrame;
   int size = frReceived->usLgBuffer;
-  unsigned char address = data[0];  // address byte
-  unsigned char c = data[1];        // Message type
+  unsigned char address = data[0] >> 2;  // remote address
+  unsigned char c = data[1];             // Message type
 
   Logger::getLogger()->debug(convert_data_to_str(data, size));
-  Logger::getLogger()->debug("Frame size : " + to_string(size));
 
-  switch (c) {
-    case UA:
-      Logger::getLogger()->info("Received UA");
-      break;
-    case SARM:
-      Logger::getLogger()->info("Received SARM");
+  if (m_remote_address == address) {
+    switch (c) {
+      case UA:
+        Logger::getLogger()->debug("Received UA");
+        m_hnz_connection->receivedUA();
+        break;
+      case SARM:
+        Logger::getLogger()->debug("Received SARM");
+        m_hnz_connection->receivedSARM();
+        module10M = 0;
+        break;
+      default:
+        // Get NR, P/F ans NS field
+        int ns = (c >> 1) & 0x07;
+        int pf = (c >> 4) & 0x01;
+        int nr = (c >> 5) & 0x07;
+        bool info = (c & 0x01) == 0;
+        if (info) {
+          // Information frame
+          Logger::getLogger()->warn("Data received (ns = " + to_string(ns) +
+                                    ", p = " + to_string(pf) +
+                                    ", nr = " + to_string(nr) + ")");
 
-      m_initialize_procedure(address);
-
-      m_send_date_setting(address);
-
-      m_send_time_setting(address);
-
-      m_send_CG(address);
-
-      break;
-    default:
-      // Information frame
-      // Get NR, P ans NS field
-      int ns = (c >> 1) & 0x07;
-      int pf = (c >> 4) & 0x01;
-      int nr = (c >> 5) & 0x07;
-      bool info = (c & 0x01) == 0;
-      if (info) {
-        // Trame d'info
-        Logger::getLogger()->info("Trame info reçu : ns = " + to_string(ns) +
-                                  ", p = " + to_string(pf) +
-                                  ", nr = " + to_string(nr));
-      } else {
-        // Trame de supervision
-        Logger::getLogger()->info("Trame de supervision : f = " +
-                                  to_string(pf) + ", nr = " + to_string(nr));
-      }
-
-      int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
-
-      if (analyze_info_frame(data + 2, (address >> 2), ns, pf, nr,
-                             payloadSize)) {
-        // Computing the frame number & sending RR
-        unsigned char msg[1];
-        if (!pf) {
-          m_nr = (m_nr + 1) % 8;
-          msg[0] = 0x01 + m_nr * 0x20;
-          m_client->createAndSendFr(address, msg, sizeof(msg));
-          Logger::getLogger()->info("RR sent");
+          int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
+          if (analyze_info_frame(data + 2, address, ns, pf, nr, payloadSize)) {
+            // Computing the frame number & sending RR
+            m_hnz_connection->sendRR(pf == 1, ns);
+          }
         } else {
-          msg[0] = 0x01 + m_nr * 0x20 + 0x10;
-          m_client->createAndSendFr(address, msg, sizeof(msg));
-          Logger::getLogger()->info("Repetition, renvoi du RR");
+          // Supervision frame
+          Logger::getLogger()->warn("RR received (f = " + to_string(pf) +
+                                    ", nr = " + to_string(nr) + ")");
+          m_hnz_connection->receivedRR(nr, pf == 1);
         }
-      }
-      break;
+
+        break;
+    }
+  } else {
+    Logger::getLogger()->warn("The address don't match the configuration!");
   }
-}
-
-void HNZ::m_initialize_procedure(unsigned char address) {
-  m_nr = 0;
-  module10M = 0;
-
-  // Sending UA
-  unsigned char msg[1];
-  msg[0] = UA;
-  m_client->createAndSendFr(address, msg, sizeof(msg));
-  Logger::getLogger()->info("UA sent");
-
-  // Envoi d'un SARM
-  msg[0] = SARM;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->info("SARM sent");
-  // TODO : Wait for the reception of the UA ?
-  Logger::getLogger()->warn("Procedure initialized.");
-}
-
-void HNZ::m_send_date_setting(unsigned char address) {
-  unsigned char msg[5];
-  time_t now = time(0);
-  tm *time_struct = gmtime(&now);
-  msg[0] = m_nr * 0x20;
-  msg[1] = 0x1c;
-  msg[2] = time_struct->tm_mday;
-  msg[3] = time_struct->tm_mon + 1;
-  msg[4] = time_struct->tm_year % 100;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->warn("Time setting sent : " + to_string((int)msg[2]) +
-                            "/" + to_string((int)msg[3]) + "/" +
-                            to_string((int)msg[4]));
-}
-
-void HNZ::m_send_time_setting(unsigned char address) {
-  unsigned char msg[5];
-  long int ms_since_epoch, mod10m, frac;
-  ms_since_epoch = duration_cast<milliseconds>(
-                       high_resolution_clock::now().time_since_epoch())
-                       .count();
-  long int ms_today = (ms_since_epoch % 86400000);
-  mod10m = ms_today / 600000;
-  frac = (ms_today - (mod10m * 600000)) / 10;
-  msg[0] = (m_nr % 8) * 0x20 + 0x02;
-  msg[1] = 0x1d;
-  msg[2] = mod10m;
-  msg[3] = frac >> 8;
-  msg[4] = frac & 0xff;
-  msg[5] = 0x00;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->warn(
-      "Time setting sent : mod10m = " + to_string(mod10m) +
-      " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) +
-      "h" + to_string((mod10m % 6) * 10) + "m and " + to_string(frac / 100) +
-      "s " + to_string(frac % 100) + "ms");
-}
-
-void HNZ::m_send_CG(unsigned char address) {
-  unsigned char msg[3];
-  msg[0] = m_nr * 0x20 + 0x04;
-  msg[1] = 0x13;
-  msg[2] = 0x01;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->warn("CG (General interrogation) request sent");
 }
 
 string HNZ::convert_data_to_str(unsigned char *data, int len) {
@@ -315,8 +239,13 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char station_addr,
       len = 7;
       break;
     case 0x13:
-      Logger::getLogger()->info("Received CG request/BULLE");
-      len = 2;
+      if (data[1] == 0x04) {
+        Logger::getLogger()->info("Received BULLE");
+        m_hnz_connection->receivedBULLE();
+        len = 2;
+      } else {
+        Logger::getLogger()->info("Received GI Request");
+      }
       break;
     case 0x0F:
       module10M = (int)data[1];

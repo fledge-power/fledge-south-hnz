@@ -313,7 +313,7 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned char *data) {
 }
 
 void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
-  string msg_code = "TS";
+  string msg_code = "TSCG";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
     unsigned int msg_address = stoi(
@@ -326,9 +326,15 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
     unsigned int value = (int)(data[noctet] >> dep) & 0x1;  // E
     unsigned int valid = (int)(data[noctet] >> dep) & 0x2;  // V
 
-    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                         msg_address, value, valid, 0, 0, 0, 0,
-                                         false));
+    m_gi_readings_temp.push_back(
+        m_prepare_reading(label, msg_code, m_remote_address, msg_address, value,
+                          valid, 0, 0, 0, 0, false));
+  }
+
+  // Check if GI is complete
+  if (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG(m_remote_address)) {
+    sendToFledge(m_gi_readings_temp);
+    m_gi_readings_temp.clear();
   }
 }
 

@@ -87,6 +87,9 @@ class HNZ {
 
   int module10M;  // HNZ Protocol related vars
 
+  vector<Reading> m_gi_readings_temp;  // Contains all Reading of GI waiting for
+                                       // the completeness check
+
   /**
    * Waits for new messages and processes them
    */

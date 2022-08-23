@@ -185,6 +185,12 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) {
   return label;
 }
 
+int HNZConf::getNumberCG(const int station_address) {
+  int nb = m_msg_list.at("TSCG").at(station_address).size();
+  Logger::getLogger()->debug(to_string(nb) + " TSCG in the configuration.");
+  return nb;
+}
+
 bool HNZConf::m_check_string(const Value &json, const char *key) {
   if (!json.HasMember(key) || !json[key].IsString()) {
     string s = key;

@@ -101,6 +101,11 @@ class HNZConf {
    */
   string getLabel(const string &msg_code, const int msg_address);
 
+  /**
+   * Get the number of CG. Used for the consistency check when GI.
+   */
+  int getNumberCG(const int station_address);
+
   string get_ip_address() { return m_ip; }
   unsigned int get_port() { return m_port; }
   unsigned int get_remote_station_addr() { return m_remote_station_addr; }

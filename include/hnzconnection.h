@@ -12,6 +12,7 @@
 #define HNZConnection_H
 
 #include <logger.h>
+#include <math.h>
 
 #include <queue>
 
@@ -149,6 +150,8 @@ class HNZConnection {
 
   void m_go_to_connection();
   void m_go_to_connected();
+
+  int m_distRR(int a, int b);
 
   HNZClient* m_client;  // HNZ Client (lib hnz)
 };

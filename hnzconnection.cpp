@@ -177,9 +177,19 @@ void HNZConnection::receivedRR(int nr, bool repetition) {
       m_msg_waiting.pop_front();
     }
   } else {
-    Logger::getLogger()->warn("Some RRs have not been received");
-    // TODO
+    if (repetition &&
+        (m_distRR(nr, (m_nr_PA + 1) % 8) < m_anticipation_ratio)) {
+      Logger::getLogger()->warn("Received RR repeated, ignoring it");
+    } else {
+      Logger::getLogger()->warn("Some RRs have not been received");
+      // TODO
+    }
   }
+}
+
+int HNZConnection::m_distRR(int a, int b) {
+  int diff = fabs(b - a);
+  return min(diff, 8 - diff);
 }
 
 void HNZConnection::m_sendSARM() {

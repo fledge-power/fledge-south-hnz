@@ -65,7 +65,7 @@ void HNZConnection::manageConnection() {
         }
         break;
       case CONNECTED:
-        if (now - m_last_received_bulle <= m_inacc_timeout) {
+        if (now - m_last_msg_time <= m_inacc_timeout) {
           m_sendBULLE();
           sleep = milliseconds(10000);
         } else {
@@ -97,7 +97,7 @@ void HNZConnection::manageMessages() {
       // Manage repeat/timeout
       if (!m_msg_sent.empty()) {
         Message& msg = m_msg_sent.front();
-        if (msg.timestamp + m_repeat_timeout < current) {
+        if (m_last_sent + m_repeat_timeout < current) {
           if (m_repeat >= m_repeat_max) {
             // Connection disrupted, back to SARM
             Logger::getLogger()->warn("Connection disrupted, back to SARM");
@@ -130,8 +130,8 @@ void HNZConnection::m_go_to_connection() {
   sarm_PA_received = false;
   sarm_ARP_UA = false;
   m_nr = 0;
-  m_ns = 7;
-  m_nr_PA = 0;
+  m_ns = 0;
+  m_NRR = 0;
   m_nbr_sarm_sent = 0;
   m_repeat = 0;
 
@@ -147,12 +147,13 @@ void HNZConnection::m_go_to_connection() {
 void HNZConnection::m_go_to_connected() {
   m_send_date_setting();
   m_send_time_setting();
-  m_send_CG();
+  m_send_GI();
   m_state = CONNECTED;
 }
 
 void HNZConnection::receivedSARM() {
   Logger::getLogger()->info("[HNZ Connection] SARM Received");
+  m_go_to_connection();
   sarm_PA_received = true;
   m_sendUA();
 }
@@ -162,27 +163,42 @@ void HNZConnection::receivedUA() {
   sarm_ARP_UA = true;
 }
 
-void HNZConnection::receivedBULLE() { m_last_received_bulle = time(nullptr); }
+void HNZConnection::receivedBULLE() { m_last_msg_time = time(nullptr); }
 
 void HNZConnection::receivedRR(int nr, bool repetition) {
-  if (nr == (m_nr_PA + 1) % 8) {
-    // Message well received by the PA
-    if (!m_msg_sent.empty()) m_msg_sent.pop_front();
-    m_nr_PA = nr;
-    m_repeat = 0;
+  if (nr != m_NRR) {
+    int frameOk = (nr - m_NRR + 7) % 8 + 1;
+    if (frameOk <= m_anticipation_ratio) {
+      // valid NR, message(s) well received
+      // remove them from msg sent list
+      for (size_t i = 0; i < frameOk; i++) {
+        if (!m_msg_sent.empty()) m_msg_sent.pop_front();
+      }
 
-    while (!m_msg_waiting.empty() &&
-           (m_msg_sent.size() < m_anticipation_ratio)) {
-      sendInfoImmediately(m_msg_waiting.front());
-      m_msg_waiting.pop_front();
-    }
-  } else {
-    if (repetition &&
-        (m_distRR(nr, (m_nr_PA + 1) % 8) < m_anticipation_ratio)) {
-      Logger::getLogger()->warn("Received RR repeated, ignoring it");
+      m_NRR = nr;
+      m_repeat = 0;
+
+      // Waiting for other RR, set timer
+      if (!m_msg_sent.empty())
+        m_last_sent =
+            duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+                .count();
+
+      // Sent message in waiting queue
+      while (!m_msg_waiting.empty() &&
+             (m_msg_sent.size() < m_anticipation_ratio)) {
+        sendInfoImmediately(m_msg_waiting.front());
+        m_msg_waiting.pop_front();
+      }
     } else {
-      Logger::getLogger()->warn("Some RRs have not been received");
-      // TODO
+      // invalid NR
+      if (repetition) {
+        Logger::getLogger()->warn("Received RR repeated, ignoring it");
+      } else {
+        Logger::getLogger()->warn(
+            "Error with the RR, NR (=" + to_string(nr) +
+            ") is invalid. Expected : " + to_string(m_NRR + 1));
+      }
     }
   }
 }
@@ -211,7 +227,11 @@ void HNZConnection::m_sendBULLE() {
   Logger::getLogger()->info("BULLE sent");
 }
 
-void HNZConnection::sendRR(bool repetition, int ns) {
+void HNZConnection::sendRR(bool repetition, int ns, int nr) {
+  // use NR to validate frames sent
+  receivedRR(nr, 0);
+
+  // send RR message
   unsigned char msg[1];
   if (!repetition) {
     if (ns == m_nr) {
@@ -229,6 +249,9 @@ void HNZConnection::sendRR(bool repetition, int ns) {
     m_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
     Logger::getLogger()->info("Frame is repeated, send back RR");
   }
+
+  // Update timer
+  m_last_msg_time = time(nullptr);
 }
 
 void HNZConnection::sendInfo(unsigned char* msg, unsigned long size) {
@@ -243,14 +266,6 @@ void HNZConnection::sendInfo(unsigned char* msg, unsigned long size) {
 }
 
 void HNZConnection::sendInfoImmediately(Message message) {
-  m_ns = (m_ns + 1) % 8;
-
-  message.ns = m_ns;
-  message.timestamp =
-      duration_cast<milliseconds>(system_clock::now().time_since_epoch())
-          .count();
-  m_msg_sent.push_back(message);
-
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
 
@@ -259,6 +274,17 @@ void HNZConnection::sendInfoImmediately(Message message) {
 
   msgWithNrNs[0] = m_nr * 0x20 + m_ns * 0x2;
   m_client->createAndSendFr(m_address_ARP, msgWithNrNs, sizeof(msgWithNrNs));
+
+  // Set timer if there is not other message sent waiting for confirmation
+  if (m_msg_sent.empty())
+    m_last_sent =
+        duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+            .count();
+
+  message.ns = m_ns;
+  m_msg_sent.push_back(message);
+
+  m_ns = (m_ns + 1) % 8;
 }
 
 void HNZConnection::sendBackInfo(Message& message) {
@@ -272,7 +298,7 @@ void HNZConnection::sendBackInfo(Message& message) {
   msgWithNrNs[0] = m_nr * 0x20 + 0x10 + message.ns * 0x2;
   m_client->createAndSendFr(m_address_ARP, msgWithNrNs, sizeof(msgWithNrNs));
 
-  message.timestamp =
+  m_last_sent =
       duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
 }
@@ -286,9 +312,9 @@ void HNZConnection::m_send_date_setting() {
   msg[2] = time_struct->tm_mon + 1;
   msg[3] = time_struct->tm_year % 100;
   sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->warn("Time setting sent : " + to_string((int)msg[2]) +
-                            "/" + to_string((int)msg[3]) + "/" +
-                            to_string((int)msg[4]));
+  Logger::getLogger()->warn("Time setting sent : " + to_string((int)msg[1]) +
+                            "/" + to_string((int)msg[2]) + "/" +
+                            to_string((int)msg[3]));
 }
 
 void HNZConnection::m_send_time_setting() {
@@ -301,7 +327,7 @@ void HNZConnection::m_send_time_setting() {
   mod10m = ms_today / 600000;
   frac = (ms_today - (mod10m * 600000)) / 10;
   msg[0] = 0x1d;
-  msg[1] = mod10m;
+  msg[1] = mod10m & 0xFF;
   msg[2] = frac >> 8;
   msg[3] = frac & 0xff;
   msg[4] = 0x00;
@@ -313,8 +339,8 @@ void HNZConnection::m_send_time_setting() {
       "s " + to_string(frac % 100) + "ms");
 }
 
-void HNZConnection::m_send_CG() {
+void HNZConnection::m_send_GI() {
   unsigned char msg[2]{0x13, 0x01};
   sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->warn("CG (General interrogation) request sent");
+  Logger::getLogger()->warn("GI (General interrogation) request sent");
 }

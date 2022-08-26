@@ -64,7 +64,7 @@ class HNZConnection {
   /**
    * Call this method when a RR message is received.
    * @param nr NR of the RTU
-   * @param repetition ???
+   * @param repetition set to true if frame received is repeated
    */
   void receivedRR(int nr, bool repetition);
 
@@ -75,9 +75,10 @@ class HNZConnection {
 
   /**
    * Send a RR
-   * @param repetition ???
+   * @param repetition set to true if frame received is repeated
+   * @param ns NS of the received frame
    */
-  void sendRR(bool repetition, int ns);
+  void sendRR(bool repetition, int ns, int nr);
 
   /**
    * Send an information frame. The address byte, numbering bit (containing NR,
@@ -93,7 +94,7 @@ class HNZConnection {
   atomic<bool> m_is_running;    // If false, the connection thread will stop
 
   int m_nr, m_ns;  // Number in reception
-  int m_nr_PA;     // Number in reception of the PA
+  int m_NRR;       // Received aquit number
 
   // Plugin configuration
   unsigned char m_address_PA;   // remote address + 1
@@ -104,7 +105,8 @@ class HNZConnection {
   int m_anticipation_ratio;
   int m_repeat_max;
 
-  long m_last_received_bulle;  // timestamp of the last reception of a BULLE
+  long m_last_msg_time;  // timestamp of the last reception of a BULLE
+  long m_last_sent;
 
   bool sarm_PA_received;  // The SARM sent by the PA was received
   bool sarm_ARP_UA;  // The UA sent by the PA after receiving SARM was received
@@ -146,7 +148,7 @@ class HNZConnection {
   /**
    * Send a general configuration request
    */
-  void m_send_CG();
+  void m_send_GI();
 
   void m_go_to_connection();
   void m_go_to_connected();

@@ -166,8 +166,7 @@ void HNZ::m_analyze_frame(MSG_TRAME *frReceived) {
         int ns = (c >> 1) & 0x07;
         int pf = (c >> 4) & 0x01;
         int nr = (c >> 5) & 0x07;
-        bool info = (c & 0x01) == 0;
-        if (info) {
+        if ((c & 0x01) == 0) {
           // Information frame
           Logger::getLogger()->warn("Data received (ns = " + to_string(ns) +
                                     ", p = " + to_string(pf) +
@@ -176,7 +175,7 @@ void HNZ::m_analyze_frame(MSG_TRAME *frReceived) {
           int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
           analyze_info_frame(data + 2, payloadSize);
           // Computing the frame number & sending RR
-          m_hnz_connection->sendRR(pf == 1, ns);
+          m_hnz_connection->sendRR(pf == 1, ns, nr);
         } else {
           // Supervision frame
           Logger::getLogger()->warn("RR received (f = " + to_string(pf) +

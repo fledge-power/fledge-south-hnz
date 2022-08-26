@@ -174,10 +174,9 @@ void HNZ::m_analyze_frame(MSG_TRAME *frReceived) {
                                     ", nr = " + to_string(nr) + ")");
 
           int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
-          if (analyze_info_frame(data + 2, address, ns, pf, nr, payloadSize)) {
-            // Computing the frame number & sending RR
-            m_hnz_connection->sendRR(pf == 1, ns);
-          }
+          analyze_info_frame(data + 2, payloadSize);
+          // Computing the frame number & sending RR
+          m_hnz_connection->sendRR(pf == 1, ns);
         } else {
           // Supervision frame
           Logger::getLogger()->warn("RR received (f = " + to_string(pf) +
@@ -201,41 +200,30 @@ string HNZ::convert_data_to_str(unsigned char *data, int len) {
   return s;
 }
 
-bool HNZ::analyze_info_frame(unsigned char *data, unsigned char station_addr,
-                             int ns, int p, int nr, int payloadSize) {
-  int len = 0;  // Length of message to push in Fledge
-
+void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
+  int len = 0;                // Length of message to push in Fledge
   unsigned char t = data[0];  // Payload type
-
-  vector<Reading> readings;
+  vector<Reading> readings;   // Contains data object to push to fledge
 
   switch (t) {
     case TM4:
       Logger::getLogger()->info("Received TMA");
-
-      m_handleTM4(readings, station_addr, data);
-
+      m_handleTM4(readings, data);
       len = 6;
       break;
     case TSCE:
       Logger::getLogger()->info("Received TSCE");
-
-      m_handleTSCE(readings, station_addr, data);
-
+      m_handleTSCE(readings, data);
       len = 5;
       break;
     case TSCG:
       Logger::getLogger()->info("Received TSCG");
-
-      m_handleTSCG(readings, station_addr, data);
-
+      m_handleTSCG(readings, data);
       len = 6;
       break;
     case TMN:
       Logger::getLogger()->info("Received TMN");
-
-      m_handleTMN(readings, station_addr, data);
-
+      m_handleTMN(readings, data);
       len = 7;
       break;
     case 0x13:
@@ -266,9 +254,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char station_addr,
   }
 
   if (len != 0) {
-    // Logging
-    Logger::getLogger()->debug("Data : [ " + convert_data_to_str(data, len) +
-                               " ]");
+    Logger::getLogger()->debug("[" + convert_data_to_str(data, len) + "]");
 
     if (!readings.empty()) {
       sendToFledge(readings);
@@ -278,25 +264,20 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char station_addr,
     // There can be several messages in the same frame
     if (len != payloadSize) {
       // Analyze the rest of the payload
-      return analyze_info_frame(data + len, station_addr, ns, p, nr,
-                                payloadSize - len);
+      analyze_info_frame(data + len, payloadSize - len);
     }
-    return true;
   } else {
     Logger::getLogger()->info("Unknown message");
-    // TODO : Send a RR if the message is unknown
-    return false;
   }
 }
 
-void HNZ::m_handleTM4(vector<Reading> &readings, unsigned int station_addr,
-                      unsigned char *data) {
+void HNZ::m_handleTM4(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TMA";
   for (size_t i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
     unsigned int msg_address =
         stoi(to_string((int)data[1]) + to_string(i));  // ADTM + i
-    string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
     if (!label.empty()) {
       int noctet = 2 + i;
@@ -305,20 +286,19 @@ void HNZ::m_handleTM4(vector<Reading> &readings, unsigned int station_addr,
                                         : data[noctet]);  // VALTMi
       unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
 
-      readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+      readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                            msg_address, value, valid, 0, 0, 0,
                                            0, false));
     }
   }
 }
 
-void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned int station_addr,
-                       unsigned char *data) {
+void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TSCE";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
-  string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+  string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
   unsigned int value = (int)(data[2] >> 3) & 0x1;  // E bit
   unsigned int valid = (int)(data[2] >> 4) & 0x1;  // V bit
@@ -328,34 +308,32 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned int station_addr,
   unsigned int ts_s = (int)data[2] & 0x1;          // S bit
   unsigned int ts_c = (int)(data[2] >> 1) & 0x1;   // C bit
 
-  readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+  readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                        msg_address, value, valid, ts, ts_iv,
                                        ts_c, ts_s, true));
 }
 
-void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned int station_addr,
-                       unsigned char *data) {
+void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TS";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
     unsigned int msg_address = stoi(
         to_string((int)data[1] + (int)i / 8) +
         to_string(i % 8));  // AD0 + i%8 for first 8, (AD0+1) + i%8 for others
-    string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
     int noctet = 2 + (i / 4);
     int dep = (3 - (i % 4)) * 2;
     unsigned int value = (int)(data[noctet] >> dep) & 0x1;  // E
     unsigned int valid = (int)(data[noctet] >> dep) & 0x2;  // V
 
-    readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                          msg_address, value, valid, 0, 0, 0, 0,
                                          false));
   }
 }
 
-void HNZ::m_handleTMN(vector<Reading> &readings, unsigned int station_addr,
-                      unsigned char *data) {
+void HNZ::m_handleTMN(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TMN";
   // 2 or 4 TM inside a TMn
   unsigned int nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
@@ -363,7 +341,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, unsigned int station_addr,
     // 2 or 4 TM inside a TMn
     unsigned int msg_address =
         stoi(to_string((int)data[1]) + to_string(i * 4));  // ADTM + i*4
-    string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
     unsigned int value;
     unsigned int valid;
 
@@ -380,7 +358,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, unsigned int station_addr,
       valid = (int)(data[6] >> i * 2) & 0x1;  // I1 or I3
     }
 
-    readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                          msg_address, value, valid, 0, 0, 0, 0,
                                          false));
   }

@@ -105,38 +105,33 @@ class HNZ {
 
   /**
    * Analyze an information frame
-   * @return trame is good
+   * @return frame is understood
    */
-  bool analyze_info_frame(unsigned char* data, unsigned char station_addr,
-                          int ns, int p, int nr, int size);
+  void analyze_info_frame(unsigned char* data, int size);
 
   /**
    * Handle TM4 messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTM4(vector<Reading>& reading, unsigned int station_addr,
-                   unsigned char* data);
+  void m_handleTM4(vector<Reading>& reading, unsigned char* data);
 
   /**
    * Handle TSCE messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCE(vector<Reading>& reading, unsigned int station_addr,
-                    unsigned char* data);
+  void m_handleTSCE(vector<Reading>& reading, unsigned char* data);
 
   /**
    * Handle TSCG messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCG(vector<Reading>& reading, unsigned int station_addr,
-                    unsigned char* data);
+  void m_handleTSCG(vector<Reading>& reading, unsigned char* data);
 
   /**
    * Handle TMN messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTMN(vector<Reading>& reading, unsigned int station_addr,
-                   unsigned char* data);
+  void m_handleTMN(vector<Reading>& reading, unsigned char* data);
 
   /**
    * Create a reading from the values given in argument.

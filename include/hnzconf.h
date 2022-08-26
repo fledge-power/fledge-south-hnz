@@ -99,8 +99,7 @@ class HNZConf {
    * Get the label related to a message. If this message is not defined in the
    * configuration, then the returned label is empty.
    */
-  string getLabel(const string &msg_code, const int station_address,
-                  const int msg_address);
+  string getLabel(const string &msg_code, const int msg_address);
 
   string get_ip_address() { return m_ip; }
   unsigned int get_port() { return m_port; }

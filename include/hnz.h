@@ -69,6 +69,11 @@ class HNZ {
    */
   void sendToFledge(vector<Reading>& readings);
 
+  /**
+   * Reset the GI queue. Delete previous TSCG received.
+   */
+  void resetGIQueue() { m_gi_readings_temp.clear(); };
+
  private:
   string m_asset;  // Plugin name in fledge
 

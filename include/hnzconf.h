@@ -104,7 +104,7 @@ class HNZConf {
   /**
    * Get the number of CG. Used for the consistency check when GI.
    */
-  int getNumberCG(const int station_address);
+  int getNumberCG();
 
   string get_ip_address() { return m_ip; }
   unsigned int get_port() { return m_port; }

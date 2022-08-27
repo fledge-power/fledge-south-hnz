@@ -67,7 +67,7 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
   Logger::getLogger()->info("Json config parsed successsfully.");
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
-  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client);
+  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client, this);
 
   if (was_running) {
     Logger::getLogger()->warn("Restarting the plugin...");
@@ -332,7 +332,9 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
   }
 
   // Check if GI is complete
-  if (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG(m_remote_address)) {
+  if (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG()) {
+    Logger::getLogger()->info("GI completed, push data to fledge.");
+    m_hnz_connection->GI_completed();
     sendToFledge(m_gi_readings_temp);
     m_gi_readings_temp.clear();
   }

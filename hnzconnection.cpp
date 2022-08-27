@@ -1,7 +1,9 @@
 #include "hnzconnection.h"
 
-HNZConnection::HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client1) {
+HNZConnection::HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client1,
+                             HNZ* m_hnz_fledge1) {
   m_client = m_client1;
+  m_hnz_fledge = m_hnz_fledge1;
   unsigned int remote_address = m_hnz_conf->get_remote_station_addr();
   m_address_ARP = (remote_address << 2) + 3;
   m_address_PA = (remote_address << 2) + 1;
@@ -10,6 +12,8 @@ HNZConnection::HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client1) {
   m_repeat_timeout = m_hnz_conf->get_repeat_timeout();
   m_anticipation_ratio = m_hnz_conf->get_anticipation_ratio();
   m_repeat_max = m_hnz_conf->get_repeat_path_A() - 1;
+  gi_repeat_count_max = m_hnz_conf->get_gi_repeat_count();
+  gi_time_max = m_hnz_conf->get_gi_time() * 1000;
   m_is_running = false;
   m_go_to_connection();
 }
@@ -117,6 +121,25 @@ void HNZConnection::manageMessages() {
           }
         }
       }
+
+      // GI support
+      if (m_gi_repeat != 0) {
+        if (m_gi_start + gi_time_max < current) {
+          // GI not completed in time
+          if (m_gi_repeat > gi_repeat_count_max) {
+            // GI failed
+            Logger::getLogger()->error("General Interrogation FAILED !");
+            // TODO
+          } else {
+            Logger::getLogger()->warn(
+                "General Interrogation Timeout, repeat GI");
+            // Clean queue in HNZ class
+            m_hnz_fledge->resetGIQueue();
+            // Send a new GI
+            m_send_GI();
+          }
+        }
+      }
     }
 
     this_thread::sleep_for(milliseconds(100));
@@ -134,6 +157,7 @@ void HNZConnection::m_go_to_connection() {
   m_NRR = 0;
   m_nbr_sarm_sent = 0;
   m_repeat = 0;
+  m_gi_start = 0;
 
   // TODO : Verify that this is the expected behavior
   if (!m_msg_sent.empty()) {
@@ -347,4 +371,8 @@ void HNZConnection::m_send_GI() {
   unsigned char msg[2]{0x13, 0x01};
   sendInfo(msg, sizeof(msg));
   Logger::getLogger()->warn("GI (General interrogation) request sent");
+  m_gi_repeat++;
+  m_gi_start = duration_cast<milliseconds>(
+                   high_resolution_clock::now().time_since_epoch())
+                   .count();
 }

@@ -40,6 +40,7 @@ void HNZ::stop() {
     }
     Logger::getLogger()->info("Waiting for the receiving thread");
     m_receiving_thread->join();
+    m_receiving_thread = nullptr;
   }
   Logger::getLogger()->info("Plugin stopped");
 }
@@ -65,6 +66,9 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
 
   Logger::getLogger()->info("Json config parsed successsfully.");
 
+  m_remote_address = m_hnz_conf->get_remote_station_addr();
+  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client);
+
   if (was_running) {
     Logger::getLogger()->warn("Restarting the plugin...");
     start();
@@ -83,7 +87,6 @@ bool HNZ::connect() {
 
     if (m_connected) {
       Logger::getLogger()->info("Connected.");
-      m_nr = 0;
       return true;
     } else {
       Logger::getLogger()->warn("Error in connection, retrying in " +
@@ -106,6 +109,8 @@ void HNZ::receive() {
     return;
   }
 
+  m_hnz_connection->start();
+
   Logger::getLogger()->warn("Listening for data ...");
 
   while (m_is_running) {
@@ -114,7 +119,6 @@ void HNZ::receive() {
     // Waiting for data
     frReceived = (m_client->receiveFr());
     if (frReceived != nullptr) {
-      Logger::getLogger()->warn("Data Received !");
       // Checking the CRC
       if (m_client->checkCRC(frReceived)) {
         Logger::getLogger()->debug("CRC is good");
@@ -133,139 +137,57 @@ void HNZ::receive() {
         m_client->stop();
       }
     }
-    // TODO : is it necessary?
-    std::chrono::milliseconds timespan(1000);
-    std::this_thread::sleep_for(timespan);
   }
+
+  m_hnz_connection->stop();
 }
 
 void HNZ::m_analyze_frame(MSG_TRAME *frReceived) {
   unsigned char *data = frReceived->aubTrame;
   int size = frReceived->usLgBuffer;
-  unsigned char address = data[0];  // address byte
-  unsigned char c = data[1];        // Message type
+  unsigned char address = data[0] >> 2;  // remote address
+  unsigned char c = data[1];             // Message type
 
   Logger::getLogger()->debug(convert_data_to_str(data, size));
-  Logger::getLogger()->debug("Frame size : " + to_string(size));
 
-  switch (c) {
-    case UA:
-      Logger::getLogger()->info("Received UA");
-      break;
-    case SARM:
-      Logger::getLogger()->info("Received SARM");
+  if (m_remote_address == address) {
+    switch (c) {
+      case UA:
+        Logger::getLogger()->debug("Received UA");
+        m_hnz_connection->receivedUA();
+        break;
+      case SARM:
+        Logger::getLogger()->debug("Received SARM");
+        m_hnz_connection->receivedSARM();
+        module10M = 0;
+        break;
+      default:
+        // Get NR, P/F ans NS field
+        int ns = (c >> 1) & 0x07;
+        int pf = (c >> 4) & 0x01;
+        int nr = (c >> 5) & 0x07;
+        if ((c & 0x01) == 0) {
+          // Information frame
+          Logger::getLogger()->warn("Data received (ns = " + to_string(ns) +
+                                    ", p = " + to_string(pf) +
+                                    ", nr = " + to_string(nr) + ")");
 
-      m_initialize_procedure(address);
-
-      m_send_date_setting(address);
-
-      m_send_time_setting(address);
-
-      m_send_CG(address);
-
-      break;
-    default:
-      // Information frame
-      // Get NR, P ans NS field
-      int ns = (c >> 1) & 0x07;
-      int pf = (c >> 4) & 0x01;
-      int nr = (c >> 5) & 0x07;
-      bool info = (c & 0x01) == 0;
-      if (info) {
-        // Trame d'info
-        Logger::getLogger()->info("Trame info reçu : ns = " + to_string(ns) +
-                                  ", p = " + to_string(pf) +
-                                  ", nr = " + to_string(nr));
-      } else {
-        // Trame de supervision
-        Logger::getLogger()->info("Trame de supervision : f = " +
-                                  to_string(pf) + ", nr = " + to_string(nr));
-      }
-
-      int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
-
-      if (analyze_info_frame(data + 2, (address >> 2), ns, pf, nr,
-                             payloadSize)) {
-        // Computing the frame number & sending RR
-        unsigned char msg[1];
-        if (!pf) {
-          m_nr = (m_nr + 1) % 8;
-          msg[0] = 0x01 + m_nr * 0x20;
-          m_client->createAndSendFr(address, msg, sizeof(msg));
-          Logger::getLogger()->info("RR sent");
+          int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
+          analyze_info_frame(data + 2, payloadSize);
+          // Computing the frame number & sending RR
+          m_hnz_connection->sendRR(pf == 1, ns, nr);
         } else {
-          msg[0] = 0x01 + m_nr * 0x20 + 0x10;
-          m_client->createAndSendFr(address, msg, sizeof(msg));
-          Logger::getLogger()->info("Repetition, renvoi du RR");
+          // Supervision frame
+          Logger::getLogger()->warn("RR received (f = " + to_string(pf) +
+                                    ", nr = " + to_string(nr) + ")");
+          m_hnz_connection->receivedRR(nr, pf == 1);
         }
-      }
-      break;
+
+        break;
+    }
+  } else {
+    Logger::getLogger()->warn("The address don't match the configuration!");
   }
-}
-
-void HNZ::m_initialize_procedure(unsigned char address) {
-  m_nr = 0;
-  module10M = 0;
-
-  // Sending UA
-  unsigned char msg[1];
-  msg[0] = UA;
-  m_client->createAndSendFr(address, msg, sizeof(msg));
-  Logger::getLogger()->info("UA sent");
-
-  // Envoi d'un SARM
-  msg[0] = SARM;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->info("SARM sent");
-  // TODO : Wait for the reception of the UA ?
-  Logger::getLogger()->warn("Procedure initialized.");
-}
-
-void HNZ::m_send_date_setting(unsigned char address) {
-  unsigned char msg[5];
-  time_t now = time(0);
-  tm *time_struct = gmtime(&now);
-  msg[0] = m_nr * 0x20;
-  msg[1] = 0x1c;
-  msg[2] = time_struct->tm_mday;
-  msg[3] = time_struct->tm_mon + 1;
-  msg[4] = time_struct->tm_year % 100;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->warn("Time setting sent : " + to_string((int)msg[2]) +
-                            "/" + to_string((int)msg[3]) + "/" +
-                            to_string((int)msg[4]));
-}
-
-void HNZ::m_send_time_setting(unsigned char address) {
-  unsigned char msg[5];
-  long int ms_since_epoch, mod10m, frac;
-  ms_since_epoch = duration_cast<milliseconds>(
-                       high_resolution_clock::now().time_since_epoch())
-                       .count();
-  long int ms_today = (ms_since_epoch % 86400000);
-  mod10m = ms_today / 600000;
-  frac = (ms_today - (mod10m * 600000)) / 10;
-  msg[0] = (m_nr % 8) * 0x20 + 0x02;
-  msg[1] = 0x1d;
-  msg[2] = mod10m;
-  msg[3] = frac >> 8;
-  msg[4] = frac & 0xff;
-  msg[5] = 0x00;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->warn(
-      "Time setting sent : mod10m = " + to_string(mod10m) +
-      " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) +
-      "h" + to_string((mod10m % 6) * 10) + "m and " + to_string(frac / 100) +
-      "s " + to_string(frac % 100) + "ms");
-}
-
-void HNZ::m_send_CG(unsigned char address) {
-  unsigned char msg[3];
-  msg[0] = m_nr * 0x20 + 0x04;
-  msg[1] = 0x13;
-  msg[2] = 0x01;
-  m_client->createAndSendFr(address + 2, msg, sizeof(msg));
-  Logger::getLogger()->warn("CG (General interrogation) request sent");
 }
 
 string HNZ::convert_data_to_str(unsigned char *data, int len) {
@@ -277,46 +199,40 @@ string HNZ::convert_data_to_str(unsigned char *data, int len) {
   return s;
 }
 
-bool HNZ::analyze_info_frame(unsigned char *data, unsigned char station_addr,
-                             int ns, int p, int nr, int payloadSize) {
-  int len = 0;  // Length of message to push in Fledge
-
+void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
+  int len = 0;                // Length of message to push in Fledge
   unsigned char t = data[0];  // Payload type
-
-  vector<Reading> readings;
+  vector<Reading> readings;   // Contains data object to push to fledge
 
   switch (t) {
     case TM4:
       Logger::getLogger()->info("Received TMA");
-
-      m_handleTM4(readings, station_addr, data);
-
+      m_handleTM4(readings, data);
       len = 6;
       break;
     case TSCE:
       Logger::getLogger()->info("Received TSCE");
-
-      m_handleTSCE(readings, station_addr, data);
-
+      m_handleTSCE(readings, data);
       len = 5;
       break;
     case TSCG:
       Logger::getLogger()->info("Received TSCG");
-
-      m_handleTSCG(readings, station_addr, data);
-
+      m_handleTSCG(readings, data);
       len = 6;
       break;
     case TMN:
       Logger::getLogger()->info("Received TMN");
-
-      m_handleTMN(readings, station_addr, data);
-
+      m_handleTMN(readings, data);
       len = 7;
       break;
     case 0x13:
-      Logger::getLogger()->info("Received CG request/BULLE");
-      len = 2;
+      if (data[1] == 0x04) {
+        Logger::getLogger()->info("Received BULLE");
+        m_hnz_connection->receivedBULLE();
+        len = 2;
+      } else {
+        Logger::getLogger()->info("Received GI Request");
+      }
       break;
     case 0x0F:
       module10M = (int)data[1];
@@ -337,9 +253,7 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char station_addr,
   }
 
   if (len != 0) {
-    // Logging
-    Logger::getLogger()->debug("Data : [ " + convert_data_to_str(data, len) +
-                               " ]");
+    Logger::getLogger()->debug("[" + convert_data_to_str(data, len) + "]");
 
     if (!readings.empty()) {
       sendToFledge(readings);
@@ -349,25 +263,20 @@ bool HNZ::analyze_info_frame(unsigned char *data, unsigned char station_addr,
     // There can be several messages in the same frame
     if (len != payloadSize) {
       // Analyze the rest of the payload
-      return analyze_info_frame(data + len, station_addr, ns, p, nr,
-                                payloadSize - len);
+      analyze_info_frame(data + len, payloadSize - len);
     }
-    return true;
   } else {
     Logger::getLogger()->info("Unknown message");
-    // TODO : Send a RR if the message is unknown
-    return false;
   }
 }
 
-void HNZ::m_handleTM4(vector<Reading> &readings, unsigned int station_addr,
-                      unsigned char *data) {
+void HNZ::m_handleTM4(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TMA";
   for (size_t i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
     unsigned int msg_address =
         stoi(to_string((int)data[1]) + to_string(i));  // ADTM + i
-    string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
     if (!label.empty()) {
       int noctet = 2 + i;
@@ -376,20 +285,19 @@ void HNZ::m_handleTM4(vector<Reading> &readings, unsigned int station_addr,
                                         : data[noctet]);  // VALTMi
       unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
 
-      readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+      readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                            msg_address, value, valid, 0, 0, 0,
                                            0, false));
     }
   }
 }
 
-void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned int station_addr,
-                       unsigned char *data) {
+void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TSCE";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
-  string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+  string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
   unsigned int value = (int)(data[2] >> 3) & 0x1;  // E bit
   unsigned int valid = (int)(data[2] >> 4) & 0x1;  // V bit
@@ -399,34 +307,32 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned int station_addr,
   unsigned int ts_s = (int)data[2] & 0x1;          // S bit
   unsigned int ts_c = (int)(data[2] >> 1) & 0x1;   // C bit
 
-  readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+  readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                        msg_address, value, valid, ts, ts_iv,
                                        ts_c, ts_s, true));
 }
 
-void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned int station_addr,
-                       unsigned char *data) {
+void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TS";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
     unsigned int msg_address = stoi(
         to_string((int)data[1] + (int)i / 8) +
         to_string(i % 8));  // AD0 + i%8 for first 8, (AD0+1) + i%8 for others
-    string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
     int noctet = 2 + (i / 4);
     int dep = (3 - (i % 4)) * 2;
     unsigned int value = (int)(data[noctet] >> dep) & 0x1;  // E
     unsigned int valid = (int)(data[noctet] >> dep) & 0x2;  // V
 
-    readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                          msg_address, value, valid, 0, 0, 0, 0,
                                          false));
   }
 }
 
-void HNZ::m_handleTMN(vector<Reading> &readings, unsigned int station_addr,
-                      unsigned char *data) {
+void HNZ::m_handleTMN(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "TMN";
   // 2 or 4 TM inside a TMn
   unsigned int nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
@@ -434,7 +340,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, unsigned int station_addr,
     // 2 or 4 TM inside a TMn
     unsigned int msg_address =
         stoi(to_string((int)data[1]) + to_string(i * 4));  // ADTM + i*4
-    string label = m_hnz_conf->getLabel(msg_code, station_addr, msg_address);
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
     unsigned int value;
     unsigned int valid;
 
@@ -451,7 +357,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, unsigned int station_addr,
       valid = (int)(data[6] >> i * 2) & 0x1;  // I1 or I3
     }
 
-    readings.push_back(m_prepare_reading(label, msg_code, station_addr,
+    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
                                          msg_address, value, valid, 0, 0, 0, 0,
                                          false));
   }

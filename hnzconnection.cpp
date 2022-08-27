@@ -107,7 +107,7 @@ void HNZConnection::manageMessages() {
             // Repeat the message
             Logger::getLogger()->warn(
                 "Timeout, sending back first unacknowledged message");
-            sendBackInfo(msg);
+            m_sendBackInfo(msg);
 
             // Move other unacknowledged messages to waiting queue
             while (m_msg_sent.size() > 1) {
@@ -119,7 +119,7 @@ void HNZConnection::manageMessages() {
       }
     }
 
-    this_thread::sleep_for(milliseconds(500));
+    this_thread::sleep_for(milliseconds(100));
   } while (m_is_running);
 }
 
@@ -169,43 +169,39 @@ void HNZConnection::receivedRR(int nr, bool repetition) {
   if (nr != m_NRR) {
     int frameOk = (nr - m_NRR + 7) % 8 + 1;
     if (frameOk <= m_anticipation_ratio) {
-      // valid NR, message(s) well received
-      // remove them from msg sent list
-      for (size_t i = 0; i < frameOk; i++) {
-        if (!m_msg_sent.empty()) m_msg_sent.pop_front();
-      }
+      if (!repetition || (m_repeat > 0)) {
+        // valid NR, message(s) well received
+        // remove them from msg sent list
+        for (size_t i = 0; i < frameOk; i++) {
+          if (!m_msg_sent.empty()) m_msg_sent.pop_front();
+        }
 
-      m_NRR = nr;
-      m_repeat = 0;
+        m_NRR = nr;
+        m_repeat = 0;
 
-      // Waiting for other RR, set timer
-      if (!m_msg_sent.empty())
-        m_last_sent =
-            duration_cast<milliseconds>(system_clock::now().time_since_epoch())
-                .count();
+        // Waiting for other RR, set timer
+        if (!m_msg_sent.empty())
+          m_last_sent = duration_cast<milliseconds>(
+                            system_clock::now().time_since_epoch())
+                            .count();
 
-      // Sent message in waiting queue
-      while (!m_msg_waiting.empty() &&
-             (m_msg_sent.size() < m_anticipation_ratio)) {
-        sendInfoImmediately(m_msg_waiting.front());
-        m_msg_waiting.pop_front();
+        // Sent message in waiting queue
+        while (!m_msg_waiting.empty() &&
+               (m_msg_sent.size() < m_anticipation_ratio)) {
+          m_sendInfoImmediately(m_msg_waiting.front());
+          m_msg_waiting.pop_front();
+        }
+      } else {
+        Logger::getLogger()->warn(
+            "Received an unexpected repeated RR, ignoring it");
       }
     } else {
       // invalid NR
-      if (repetition) {
-        Logger::getLogger()->warn("Received RR repeated, ignoring it");
-      } else {
-        Logger::getLogger()->warn(
-            "Error with the RR, NR (=" + to_string(nr) +
-            ") is invalid. Expected : " + to_string(m_NRR + 1));
-      }
+      Logger::getLogger()->warn(
+          "Ignoring the RR, NR (=" + to_string(nr) +
+          ") is invalid. Current NRR : " + to_string(m_NRR + 1));
     }
   }
-}
-
-int HNZConnection::m_distRR(int a, int b) {
-  int diff = fabs(b - a);
-  return min(diff, 8 - diff);
 }
 
 void HNZConnection::m_sendSARM() {
@@ -232,22 +228,30 @@ void HNZConnection::sendRR(bool repetition, int ns, int nr) {
   receivedRR(nr, 0);
 
   // send RR message
-  unsigned char msg[1];
-  if (!repetition) {
-    if (ns == m_nr) {
-      m_nr = (m_nr + 1) % 8;
-      msg[0] = 0x01 + m_nr * 0x20;
-      m_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
-      Logger::getLogger()->info("RR sent");
+  if (ns == m_nr) {
+    m_nr = (m_nr + 1) % 8;
+
+    unsigned char msg[1];
+    if (repetition) {
+      msg[0] = 0x01 + m_nr * 0x20 + 0x10;
+      Logger::getLogger()->info("RR sent with repeated=1");
     } else {
-      // TODO
+      msg[0] = 0x01 + m_nr * 0x20;
+      Logger::getLogger()->info("RR sent");
+    }
+
+    m_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
+  } else {
+    if (repetition) {
+      // Repeat the last RR
+      unsigned char msg[1];
+      msg[0] = 0x01 + m_nr * 0x20 + 0x10;
+      m_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
+      Logger::getLogger()->info("Repeat the last RR sent");
+    } else {
       Logger::getLogger()->warn(
           "The NS of the received frame is not the expected one");
     }
-  } else {
-    msg[0] = 0x01 + (ns + 1) * 0x20 + 0x10;
-    m_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
-    Logger::getLogger()->info("Frame is repeated, send back RR");
   }
 
   // Update timer
@@ -259,13 +263,13 @@ void HNZConnection::sendInfo(unsigned char* msg, unsigned long size) {
   message.payload = vector<unsigned char>(msg, msg + size);
 
   if (m_msg_sent.size() < m_anticipation_ratio) {
-    sendInfoImmediately(message);
+    m_sendInfoImmediately(message);
   } else {
     m_msg_waiting.push_back(message);
   }
 }
 
-void HNZConnection::sendInfoImmediately(Message message) {
+void HNZConnection::m_sendInfoImmediately(Message message) {
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
 
@@ -287,7 +291,7 @@ void HNZConnection::sendInfoImmediately(Message message) {
   m_ns = (m_ns + 1) % 8;
 }
 
-void HNZConnection::sendBackInfo(Message& message) {
+void HNZConnection::m_sendBackInfo(Message& message) {
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
 

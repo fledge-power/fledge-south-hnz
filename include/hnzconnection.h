@@ -99,14 +99,17 @@ class HNZConnection {
   // Plugin configuration
   unsigned char m_address_PA;   // remote address + 1
   unsigned char m_address_ARP;  // remote address + 3
-  int m_max_sarm;
-  int m_inacc_timeout;
-  int m_repeat_timeout;
-  int m_anticipation_ratio;
-  int m_repeat_max;
+  int m_max_sarm;  // max number of SARM messages before handing over to the
+                   // passive path
+  int m_inacc_timeout;   // timeout before declaring the remote server
+                         // unreachable
+  int m_repeat_timeout;  // time allowed for the receiver to acknowledge a frame
+  int m_anticipation_ratio;  // number of frames allowed to be received without
+                             // acknowledgement
+  int m_repeat_max;          // max number of authorized repeats
 
-  long m_last_msg_time;  // timestamp of the last reception of a BULLE
-  long m_last_sent;
+  long m_last_msg_time;  // Timestamp of the last reception
+  long m_last_sent;      // Timestamp of the last send
 
   bool sarm_PA_received;  // The SARM sent by the PA was received
   bool sarm_ARP_UA;  // The UA sent by the PA after receiving SARM was received
@@ -121,13 +124,13 @@ class HNZConnection {
    * Resend a message that has already been sent but not acknowledged.
    * @param message The message to send back
    */
-  void sendBackInfo(Message& message);
+  void m_sendBackInfo(Message& message);
 
   /**
    * Send a message immediately
    * @param message The message to send
    */
-  void sendInfoImmediately(Message message);
+  void m_sendInfoImmediately(Message message);
 
   void m_sendSARM();
 
@@ -152,8 +155,6 @@ class HNZConnection {
 
   void m_go_to_connection();
   void m_go_to_connected();
-
-  int m_distRR(int a, int b);
 
   HNZClient* m_client;  // HNZ Client (lib hnz)
 };

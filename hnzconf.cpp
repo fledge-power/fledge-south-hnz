@@ -168,19 +168,19 @@ void HNZConf::importExchangedDataJson(const string &json) {
   m_exchange_data_is_complete = is_complete;
 }
 
-string HNZConf::getLabel(const string &msg_code, const int station_address,
-                         const int msg_address) {
+string HNZConf::getLabel(const string &msg_code, const int msg_address) {
   string label;
   try {
-    label = m_msg_list.at(msg_code).at(station_address).at(msg_address);
+    label = m_msg_list.at(msg_code).at(m_remote_station_addr).at(msg_address);
   } catch (const std::out_of_range &e) {
     string code = MESSAGE_CODE;
     string st_addr = STATION_ADDRESS;
     string msg_addr = MESSAGE_ADDRESS;
     Logger::getLogger()->warn(
         "The message received does not exist in the configuration (" + code +
-        " : " + msg_code + ", " + st_addr + " : " + to_string(station_address) +
-        " and " + msg_addr + " : " + to_string(msg_address) + ").");
+        " : " + msg_code + ", " + st_addr + " : " +
+        to_string(m_remote_station_addr) + " and " + msg_addr + " : " +
+        to_string(msg_address) + ").");
   }
   return label;
 }

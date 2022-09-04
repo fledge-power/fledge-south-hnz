@@ -100,6 +100,7 @@ class HNZ {
   void* m_data;        // Ingest function data
   bool m_connected;
   int m_remote_address;
+  BulleFormat m_test_msg_receive;
 
   int module10M;  // HNZ Protocol related vars
 

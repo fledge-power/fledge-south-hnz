@@ -383,3 +383,34 @@ void HNZConnection::m_send_GI() {
                    high_resolution_clock::now().time_since_epoch())
                    .count();
 }
+
+bool HNZConnection::sendTVCCommand(unsigned char address, int value,
+                                   unsigned char val_coding) {
+  unsigned char msg[4];
+  msg[0] = 0x1A;
+  msg[1] = (address & 0x1F) | ((val_coding & 0x1) << 5);
+  if ((val_coding & 0x1) == 1) {
+    msg[2] = value & 0xFF;
+    msg[3] = ((value >= 0) ? 0 : 0x80) | value & 0xF00;
+  } else {
+    msg[2] = value & 0x7F;
+    msg[3] = (value >= 0) ? 0 : 0x80;
+  }
+  // TODO : Check later for priority / ACK_TVC
+  sendInfo(msg, sizeof(msg));
+  Logger::getLogger()->warn("TVC sent (address = " + to_string(address) +
+                            ", value = " + to_string(value) +
+                            " and value coding = " + to_string(val_coding));
+}
+
+bool HNZConnection::sendTCCommand(unsigned char address, unsigned char value) {
+  string address_str = to_string(address);
+  unsigned char msg[3];
+  msg[0] = 0x19;
+  msg[1] = stoi(address_str.substr(0, address_str.length() - 2));
+  msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
+  // TODO : Check later for priority / ACK_TC
+  sendInfo(msg, sizeof(msg));
+  Logger::getLogger()->warn("TC sent (address = " + to_string(address) +
+                            " and value = " + to_string(value));
+}

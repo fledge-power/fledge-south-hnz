@@ -96,6 +96,17 @@ class HNZConnection {
    */
   void GI_completed() { m_gi_repeat = 0; };
 
+  /**
+   * Send a TVC command.
+   */
+  bool sendTVCCommand(unsigned char address, int value,
+                      unsigned char val_coding);
+
+  /**
+   * Send a TC command.
+   */
+  bool sendTCCommand(unsigned char address, unsigned char value);
+
  private:
   thread* m_connection_thread;  // Main thread that maintains the connection
   thread* m_messages_thread;    // Main thread that monitors messages

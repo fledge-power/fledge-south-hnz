@@ -175,6 +175,7 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) {
     string code = MESSAGE_CODE;
     string st_addr = STATION_ADDRESS;
     string msg_addr = MESSAGE_ADDRESS;
+    label = "";
     Logger::getLogger()->warn(
         "The message received does not exist in the configuration (" + code +
         " : " + msg_code + ", " + st_addr + " : " +

@@ -67,6 +67,7 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
   Logger::getLogger()->info("Json config parsed successsfully.");
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
+  m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
   m_hnz_connection = new HNZConnection(m_hnz_conf, m_client, this);
 
   if (was_running) {
@@ -225,15 +226,6 @@ void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
       m_handleTMN(readings, data);
       len = 7;
       break;
-    case 0x13:
-      if (data[1] == 0x04) {
-        Logger::getLogger()->info("Received BULLE");
-        m_hnz_connection->receivedBULLE();
-        len = 2;
-      } else {
-        Logger::getLogger()->info("Received GI Request");
-      }
-      break;
     case 0x0F:
       module10M = (int)data[1];
       Logger::getLogger()->info("Received Modulo 10mn");
@@ -250,7 +242,14 @@ void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
       len = 3;
       break;
     default:
-      Logger::getLogger()->info("Received an unknown type");
+      if (t == m_test_msg_receive.first &&
+          data[1] == m_test_msg_receive.second) {
+        Logger::getLogger()->info("Received BULLE");
+        m_hnz_connection->receivedBULLE();
+        len = 2;
+      } else {
+        Logger::getLogger()->info("Received an unknown type");
+      }
       break;
   }
 

@@ -160,6 +160,7 @@ class HNZConnection {
   bool sarm_PA_received;  // The SARM sent by the PA was received
   bool sarm_ARP_UA;  // The UA sent by the PA after receiving SARM was received
   int m_nbr_sarm_sent;  // Number of SARM sent
+  BulleFormat m_test_msg_send;
 
   int m_state;                   // Connection state
   int m_repeat;                  // Number of times the sent message is repeated

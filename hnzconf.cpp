@@ -149,7 +149,6 @@ void HNZConf::importExchangedDataJson(const string &json) {
         is_complete &= m_retrieve(protocol, NAME, &protocol_name);
 
         if (protocol_name == HNZ_NAME) {
-          // TODO : save the following value
           unsigned int station_address;
           unsigned int msg_address;
           string msg_code;
@@ -183,6 +182,18 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) {
         to_string(msg_address) + ").");
   }
   return label;
+}
+
+int HNZConf::getNumberCG() {
+  int nb;
+  try {
+    nb = m_msg_list.at("TSCG").at(m_remote_station_addr).size();
+    Logger::getLogger()->debug(to_string(nb) + " TSCG in the configuration.");
+  } catch (const std::out_of_range &e) {
+    nb = 0;
+    Logger::getLogger()->error("Error while retrieving the number of TSCG");
+  }
+  return nb;
 }
 
 bool HNZConf::m_check_string(const Value &json, const char *key) {

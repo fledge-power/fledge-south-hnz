@@ -531,18 +531,20 @@ bool HNZ::sendTCCommand(unsigned char address, unsigned char value) {
 
 bool HNZ::operation(const std::string &operation, int count,
                     PLUGIN_PARAMETER **params) {
-  if (operation.compare("HNZ_sendTC") == 0) {
+  Logger::getLogger()->error("Operation %s", operation.c_str());
+
+  if (operation.compare("TC") == 0) {
     // TODO : Read a json in input ?
-    int address = atoi(params[0]->value.c_str());
-    int value = atoi(params[1]->value.c_str());
+    int address = atoi(params[1]->value.c_str());
+    int value = atoi(params[2]->value.c_str());
 
     sendTCCommand(address, value);  // TODO : Use a thread ?
     return true;
-  } else if (operation.compare("HNZ_sendTVC") == 0) {
+  } else if (operation.compare("TVC") == 0) {
     // TODO : Read a json in input ?
-    int address = atoi(params[0]->value.c_str());
-    int value = atoi(params[1]->value.c_str());
-    int val_coding = atoi(params[2]->value.c_str());
+    int address = atoi(params[1]->value.c_str());
+    int value = atoi(params[2]->value.c_str());
+    int val_coding = atoi(params[3]->value.c_str());
 
     sendTVCCommand(address, value, val_coding);  // TODO : Use a thread ?
     return true;

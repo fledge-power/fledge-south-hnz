@@ -25,7 +25,7 @@
 using namespace std;
 using namespace std::chrono;
 
-class HNZFledge;
+class HNZConnection;
 
 class HNZ {
  public:
@@ -69,6 +69,11 @@ class HNZ {
    */
   void sendToFledge(vector<Reading>& readings);
 
+  /**
+   * Reset the GI queue. Delete previous TSCG received.
+   */
+  void resetGIQueue() { m_gi_readings_temp.clear(); };
+
  private:
   string m_asset;  // Plugin name in fledge
 
@@ -86,6 +91,9 @@ class HNZ {
   int m_remote_address;
 
   int module10M;  // HNZ Protocol related vars
+
+  vector<Reading> m_gi_readings_temp;  // Contains all Reading of GI waiting for
+                                       // the completeness check
 
   /**
    * Waits for new messages and processes them

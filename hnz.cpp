@@ -332,7 +332,8 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
   }
 
   // Check if GI is complete
-  if (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG()) {
+  if (!m_gi_readings_temp.empty() &&
+      (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG())) {
     Logger::getLogger()->info("GI completed, push data to fledge.");
     m_hnz_connection->GI_completed();
     sendToFledge(m_gi_readings_temp);

@@ -191,6 +191,7 @@ int HNZConf::getNumberCG() {
     nb = m_msg_list.at("TSCG").at(m_remote_station_addr).size();
     Logger::getLogger()->debug(to_string(nb) + " TSCG in the configuration.");
   } catch (const std::out_of_range &e) {
+    nb = 0;
     Logger::getLogger()->error("Error while retrieving the number of TSCG");
   }
   return nb;

@@ -67,7 +67,7 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
   Logger::getLogger()->info("Json config parsed successsfully.");
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
-  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client);
+  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client, this);
 
   if (was_running) {
     Logger::getLogger()->warn("Restarting the plugin...");
@@ -313,7 +313,7 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned char *data) {
 }
 
 void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
-  string msg_code = "TS";
+  string msg_code = "TSCG";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
     unsigned int msg_address = stoi(
@@ -326,9 +326,18 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
     unsigned int value = (int)(data[noctet] >> dep) & 0x1;  // E
     unsigned int valid = (int)(data[noctet] >> dep) & 0x2;  // V
 
-    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                         msg_address, value, valid, 0, 0, 0, 0,
-                                         false));
+    m_gi_readings_temp.push_back(
+        m_prepare_reading(label, msg_code, m_remote_address, msg_address, value,
+                          valid, 0, 0, 0, 0, false));
+  }
+
+  // Check if GI is complete
+  if (!m_gi_readings_temp.empty() &&
+      (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG())) {
+    Logger::getLogger()->info("GI completed, push data to fledge.");
+    m_hnz_connection->GI_completed();
+    sendToFledge(m_gi_readings_temp);
+    m_gi_readings_temp.clear();
   }
 }
 

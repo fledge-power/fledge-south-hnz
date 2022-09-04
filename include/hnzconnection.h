@@ -17,6 +17,7 @@
 #include <queue>
 
 #include "../../libhnz/src/inc/hnz_client.h"
+#include "hnz.h"
 #include "hnzconf.h"
 
 #define CONNECTION 0
@@ -31,9 +32,11 @@ struct Message {
   uint64_t timestamp;
 } typedef Message;
 
+class HNZ;
+
 class HNZConnection {
  public:
-  HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client);
+  HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client, HNZ* m_hnz_fledge);
   ~HNZConnection();
 
   /**
@@ -88,6 +91,11 @@ class HNZConnection {
    */
   void sendInfo(unsigned char* msg, unsigned long size);
 
+  /**
+   * GI is complete, stop timers.
+   */
+  void GI_completed() { m_gi_repeat = 0; };
+
  private:
   thread* m_connection_thread;  // Main thread that maintains the connection
   thread* m_messages_thread;    // Main thread that monitors messages
@@ -95,6 +103,7 @@ class HNZConnection {
 
   int m_nr, m_ns;  // Number in reception
   int m_NRR;       // Received aquit number
+  int m_gi_repeat;
 
   // Plugin configuration
   unsigned char m_address_PA;   // remote address + 1
@@ -107,9 +116,13 @@ class HNZConnection {
   int m_anticipation_ratio;  // number of frames allowed to be received without
                              // acknowledgement
   int m_repeat_max;          // max number of authorized repeats
+  int gi_repeat_count_max;   // time to wait for GI completion
+  int gi_time_max;           // repeat GI for this number of times in case it is
+                             // incomplete
 
   long m_last_msg_time;  // Timestamp of the last reception
   long m_last_sent;      // Timestamp of the last send
+  long m_gi_start;       // GI start time
 
   bool sarm_PA_received;  // The SARM sent by the PA was received
   bool sarm_ARP_UA;  // The UA sent by the PA after receiving SARM was received
@@ -157,6 +170,7 @@ class HNZConnection {
   void m_go_to_connected();
 
   HNZClient* m_client;  // HNZ Client (lib hnz)
+  HNZ* m_hnz_fledge;    // HNZ Fledge
 };
 
 #endif

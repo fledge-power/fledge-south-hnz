@@ -164,6 +164,7 @@ void HNZConnection::m_go_to_connection() {
   m_nbr_sarm_sent = 0;
   m_repeat = 0;
   m_gi_start = 0;
+  m_gi_repeat = 0;
   m_last_msg_time = time(nullptr);
 
   // Put unacknowledged messages in the list of messages waiting to be sent

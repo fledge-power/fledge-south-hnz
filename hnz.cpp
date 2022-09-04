@@ -242,13 +242,11 @@ void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
     case 0x09:
       Logger::getLogger()->info("Received TC ACK");
       m_handleATC(readings, data);
-      // TODO : Stop timer in hnzconnection
       len = 3;
       break;
     case 0x0A:
       Logger::getLogger()->info("Received TVC ACK");
       m_handleATVC(readings, data);
-      // TODO : Stop timer in hnzconnection
       len = 3;
       break;
     default:
@@ -387,6 +385,9 @@ void HNZ::m_handleATVC(vector<Reading> &readings, unsigned char *data) {
   string msg_code = "ACK_TVC";
 
   unsigned int msg_address = data[1] & 0x1F;  // AD0
+
+  m_hnz_connection->receivedCommandACK("TVC", msg_address);
+
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
   if (!label.empty()) {
@@ -413,6 +414,8 @@ void HNZ::m_handleATC(vector<Reading> &readings, unsigned char *data) {
 
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
+
+  m_hnz_connection->receivedCommandACK("TC", msg_address);
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
@@ -509,20 +512,17 @@ bool HNZ::operation(const std::string &operation, int count,
   Logger::getLogger()->error("Operation %s", operation.c_str());
 
   if (operation.compare("TC") == 0) {
-    // TODO : Read a json in input ?
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
-    m_hnz_connection->sendTCCommand(address, value);  // TODO : Use a thread ?
+    m_hnz_connection->sendTCCommand(address, value);
     return true;
   } else if (operation.compare("TVC") == 0) {
-    // TODO : Read a json in input ?
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
     int val_coding = atoi(params[3]->value.c_str());
 
-    m_hnz_connection->sendTVCCommand(address, value,
-                                     val_coding);  // TODO : Use a thread ?
+    m_hnz_connection->sendTVCCommand(address, value, val_coding);
     return true;
   }
 

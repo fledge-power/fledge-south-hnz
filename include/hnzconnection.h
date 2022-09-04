@@ -14,6 +14,7 @@
 #include <logger.h>
 #include <math.h>
 
+#include <list>
 #include <queue>
 
 #include "../../libhnz/src/inc/hnz_client.h"
@@ -31,6 +32,13 @@ struct Message {
   vector<unsigned char> payload;
   uint64_t timestamp;
 } typedef Message;
+
+struct Command_message {
+  string type;
+  int addr;
+  uint64_t timestamp_max;
+  bool ack;
+} typedef Command_message;
 
 class HNZ;
 
@@ -98,14 +106,26 @@ class HNZConnection {
 
   /**
    * Send a TVC command.
+   * @param address ADO
+   * @param value value
+   * @param val_coding boolean that indicate the format of the value
    */
   bool sendTVCCommand(unsigned char address, int value,
                       unsigned char val_coding);
 
   /**
    * Send a TC command.
+   * @param address ADO + ADB
+   * @param value value
    */
   bool sendTCCommand(unsigned char address, unsigned char value);
+
+  /**
+   * Received a TC or TVC ACK. Remove the command from the list of command sent.
+   * @param type TC or TVC
+   * @param addr Message address (ADO+ADB or ADO)
+   */
+  void receivedCommandACK(string type, int addr);
 
  private:
   thread* m_connection_thread;  // Main thread that maintains the connection
@@ -130,6 +150,8 @@ class HNZConnection {
   int gi_repeat_count_max;   // time to wait for GI completion
   int gi_time_max;           // repeat GI for this number of times in case it is
                              // incomplete
+  int c_ack_time_max;  // Max time to wait before receving a acknowledgement for
+                       // a control command
 
   long m_last_msg_time;  // Timestamp of the last reception
   long m_last_sent;      // Timestamp of the last send
@@ -143,6 +165,8 @@ class HNZConnection {
   int m_repeat;                  // Number of times the sent message is repeated
   deque<Message> m_msg_sent;     // Queue of information messages already sent
   deque<Message> m_msg_waiting;  // Queue of information messages not yet sent
+  list<Command_message>
+      m_command_sent;  // List of command already sent waiting to be ack
 
   /**
    * Resend a message that has already been sent but not acknowledged.

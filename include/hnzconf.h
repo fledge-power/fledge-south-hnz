@@ -77,6 +77,12 @@ struct BulleFormat {
   unsigned char second;
 } typedef BulleFormat;
 
+struct GIScheduleFormat {
+  bool activate;
+  int hour;
+  int min;
+} typedef GIScheduleFormat;
+
 class HNZConf {
  public:
   HNZConf();
@@ -125,7 +131,7 @@ class HNZConf {
   unsigned int get_default_msg_period() { return m_default_msg_period; }
   BulleFormat get_test_msg_send() { return m_test_msg_send; }
   BulleFormat get_test_msg_receive() { return m_test_msg_receive; }
-  string get_gi_schedule() { return m_gi_schedule; }
+  GIScheduleFormat get_gi_schedule() { return m_gi_schedule; }
   unsigned int get_gi_repeat_count() { return m_gi_repeat_count; }
   unsigned int get_gi_time() { return m_gi_time; }
   unsigned int get_c_ack_time() { return m_c_ack_time; }
@@ -143,7 +149,7 @@ class HNZConf {
   unsigned int m_default_msg_period;
   BulleFormat m_test_msg_send;
   BulleFormat m_test_msg_receive;
-  string m_gi_schedule;
+  GIScheduleFormat m_gi_schedule;
   unsigned int m_gi_repeat_count;
   unsigned int m_gi_time;
   unsigned int m_c_ack_time;
@@ -166,6 +172,8 @@ class HNZConf {
                          string def);
   static bool m_retrieve(const Value &json, const char *key,
                          BulleFormat *target);
+  static bool m_retrieve(const Value &json, const char *key,
+                         GIScheduleFormat *target);
 };
 
 #endif

@@ -152,15 +152,18 @@ class HNZConnection {
                              // incomplete
   int c_ack_time_max;  // Max time to wait before receving a acknowledgement for
                        // a control command
+  BulleFormat m_test_msg_send;
+  GIScheduleFormat m_gi_schedule;
 
   long m_last_msg_time;  // Timestamp of the last reception
   long m_last_sent;      // Timestamp of the last send
   long m_gi_start;       // GI start time
+  bool m_gi_schedule_send;
+  long m_gi_schedule_time;
 
   bool sarm_PA_received;  // The SARM sent by the PA was received
   bool sarm_ARP_UA;  // The UA sent by the PA after receiving SARM was received
   int m_nbr_sarm_sent;  // Number of SARM sent
-  BulleFormat m_test_msg_send;
 
   int m_state;                   // Connection state
   int m_repeat;                  // Number of times the sent message is repeated

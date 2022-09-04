@@ -16,6 +16,8 @@ HNZConnection::HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client1,
   gi_time_max = m_hnz_conf->get_gi_time() * 1000;
   c_ack_time_max = m_hnz_conf->get_c_ack_time() * 1000;
   m_test_msg_send = m_hnz_conf->get_test_msg_send();
+  m_gi_schedule = m_hnz_conf->get_gi_schedule();
+  m_gi_schedule_send = false;
   m_is_running = false;
   m_go_to_connection();
 }
@@ -99,7 +101,25 @@ void HNZConnection::manageConnection() {
 }
 
 void HNZConnection::manageMessages() {
-  uint64_t current;
+  uint64_t current =
+      duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+          .count();
+  int day_since_epoch = current / 86400000;
+  m_gi_schedule_time = ((m_gi_schedule.hour * 60 + m_gi_schedule.min) * 60000);
+  if (m_gi_schedule.activate) {
+    // If GI schedule is activated, check if time scheduled is outdated
+    int today_ms = current % 86400000;
+    Logger::getLogger()->info("Today ms : " + to_string(today_ms) +
+                              " & schedule at " +
+                              to_string(m_gi_schedule_time));
+    if (today_ms >= m_gi_schedule_time) {
+      Logger::getLogger()->info(
+          "No GI for today because the programmed time has already passed.");
+      m_gi_schedule_send = true;
+    }
+    m_gi_schedule_time = current - today_ms + m_gi_schedule_time;
+  }
+
   do {
     if (m_state == CONNECTED) {
       current =
@@ -163,6 +183,23 @@ void HNZConnection::manageMessages() {
             ++it;
           }
         }
+      }
+
+      // Schedule GI
+      if ((current / 86400000) != day_since_epoch) {
+        m_gi_schedule_send = false;
+        m_gi_schedule_time =
+            current - (current % 86400000) +
+            ((m_gi_schedule.hour * 60 + m_gi_schedule.min) * 60000);
+      }
+      long int ms_today = current % 86400000;
+      if (!m_gi_schedule_send && m_gi_schedule.activate &&
+          (m_gi_schedule_time <= current)) {
+        Logger::getLogger()->warn("It's " + to_string(m_gi_schedule.hour) +
+                                  "h" + to_string(m_gi_schedule.min) +
+                                  ". GI schedule.");
+        m_send_GI();
+        m_gi_schedule_send = true;
       }
     }
 
@@ -376,7 +413,7 @@ void HNZConnection::m_send_time_setting() {
   ms_since_epoch = duration_cast<milliseconds>(
                        high_resolution_clock::now().time_since_epoch())
                        .count();
-  long int ms_today = (ms_since_epoch % 86400000);
+  long int ms_today = ms_since_epoch % 86400000;
   mod10m = ms_today / 600000;
   frac = (ms_today - (mod10m * 600000)) / 10;
   msg[0] = 0x1d;

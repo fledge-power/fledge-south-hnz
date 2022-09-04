@@ -93,8 +93,7 @@ void HNZConf::importConfigJson(const string &json) {
 
     is_complete &= m_retrieve(conf, TST_MSG_RECEIVE, &m_test_msg_receive);
 
-    is_complete &=
-        m_retrieve(conf, GI_SCHEDULE, &m_gi_schedule, DEFAULT_GI_SCHEDULE);
+    is_complete &= m_retrieve(conf, GI_SCHEDULE, &m_gi_schedule);
 
     is_complete &= m_retrieve(conf, GI_REPEAT_COUNT, &m_gi_repeat_count,
                               DEFAULT_GI_REPEAT_COUNT);
@@ -287,23 +286,77 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, string *target,
 
 bool HNZConf::m_retrieve(const Value &json, const char *key,
                          BulleFormat *target) {
-  if (!json.HasMember(key) || !json[key].IsString()) {
-    string s = key;
-    Logger::getLogger()->error(
-        "Error with the field " + s +
-        ", the value does not exist or is not a string.");
-    return false;
-  }
-  string temp = json[key].GetString();
-  if (temp.size() != 4) {
-    string s = key;
-    Logger::getLogger()->error("Error with the field " + s +
-                               ", the value isn't correct. Must be 4 digits.");
-    return false;
-  }
   BulleFormat bulle;
+  string temp;
+  if (!json.HasMember(key)) {
+    temp = DEFAULT_TST_MSG;
+  } else {
+    if (!json[key].IsString()) {
+      string s = key;
+      Logger::getLogger()->error(
+          "Error with the field " + s +
+          ", the value does not exist or is not a string.");
+      return false;
+    }
+
+    temp = json[key].GetString();
+    if (temp.size() != 4) {
+      string s = key;
+      Logger::getLogger()->error(
+          "Error with the field " + s +
+          ", the value isn't correct. Must be 4 digits.");
+      return false;
+    }
+  }
   bulle.first = stoul(temp.substr(0, 2), nullptr, 16);
   bulle.second = stoul(temp.substr(2), nullptr, 16);
+
   *target = bulle;
+  return true;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key,
+                         GIScheduleFormat *target) {
+  GIScheduleFormat time;
+  time.activate = false;
+  time.hour = 99;
+  time.min = 99;
+  if (json.HasMember(key)) {
+    if (!json[key].IsString()) {
+      string s = key;
+      Logger::getLogger()->error(
+          "Error with the field " + s +
+          ", the value does not exist or is not a string.");
+      return false;
+    }
+
+    string temp = json[key].GetString();
+
+    if (temp != DEFAULT_GI_SCHEDULE) {
+      if (temp.size() != 5 && temp.substr(2, 1) == ":") {
+        string s = key;
+        Logger::getLogger()->error(
+            "Error with the field " + s +
+            ", the value isn't correct. Format : 'HH:MM'.");
+        return false;
+      }
+
+      time.hour = stoi(temp.substr(0, 2));
+      time.min = stoi(temp.substr(3));
+
+      if (time.hour >= 0 && time.hour < 24 && time.min >= 0 && time.min < 60) {
+        time.activate = true;
+      } else {
+        string s = key;
+        Logger::getLogger()->error(
+            "Error with the field " + s +
+            ", the value isn't correct. Example of correct "
+            "value : 18:00, 07:25, 00:00.");
+        return false;
+      }
+    }
+  }
+
+  *target = time;
   return true;
 }

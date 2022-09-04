@@ -14,6 +14,7 @@ HNZConnection::HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client1,
   m_repeat_max = m_hnz_conf->get_repeat_path_A() - 1;
   gi_repeat_count_max = m_hnz_conf->get_gi_repeat_count();
   gi_time_max = m_hnz_conf->get_gi_time() * 1000;
+  c_ack_time_max = m_hnz_conf->get_c_ack_time() * 1000;
   m_is_running = false;
   m_go_to_connection();
 }
@@ -146,6 +147,22 @@ void HNZConnection::manageMessages() {
           }
         }
       }
+
+      // Manage command ACK
+      if (!m_command_sent.empty()) {
+        list<Command_message>::iterator it = m_command_sent.begin();
+        while (it != m_command_sent.end()) {
+          if (it->timestamp_max < current) {
+            Logger::getLogger()->error(
+                "A remote control was not acknowledged in time !");
+            m_go_to_connection();
+            it = m_command_sent.erase(it);
+            // TODO : Send DF.GLOB.TC
+          } else {
+            ++it;
+          }
+        }
+      }
     }
 
     this_thread::sleep_for(milliseconds(100));
@@ -154,7 +171,6 @@ void HNZConnection::manageMessages() {
 
 void HNZConnection::m_go_to_connection() {
   Logger::getLogger()->warn("[HNZ Connection] Going to connection state...");
-  // TODO : add timer inacc ?
   m_state = CONNECTION;
   sarm_PA_received = false;
   sarm_ARP_UA = false;
@@ -164,6 +180,7 @@ void HNZConnection::m_go_to_connection() {
   m_nbr_sarm_sent = 0;
   m_repeat = 0;
   m_gi_start = 0;
+  m_gi_repeat = 0;
   m_last_msg_time = time(nullptr);
 
   // Put unacknowledged messages in the list of messages waiting to be sent
@@ -382,4 +399,73 @@ void HNZConnection::m_send_GI() {
   m_gi_start = duration_cast<milliseconds>(
                    high_resolution_clock::now().time_since_epoch())
                    .count();
+}
+
+bool HNZConnection::sendTVCCommand(unsigned char address, int value,
+                                   unsigned char val_coding) {
+  unsigned char msg[4];
+  msg[0] = 0x1A;
+  msg[1] = (address & 0x1F) | ((val_coding & 0x1) << 5);
+  if ((val_coding & 0x1) == 1) {
+    msg[2] = value & 0xFF;
+    msg[3] = ((value >= 0) ? 0 : 0x80) | value & 0xF00;
+  } else {
+    msg[2] = value & 0x7F;
+    msg[3] = (value >= 0) ? 0 : 0x80;
+  }
+
+  sendInfo(msg, sizeof(msg));
+  Logger::getLogger()->warn("TVC sent (address = " + to_string(address) +
+                            ", value = " + to_string(value) +
+                            " and value coding = " + to_string(val_coding));
+
+  // Add the command in the list of commend sent (to check ACK later)
+  Command_message cmd;
+  cmd.timestamp_max = duration_cast<milliseconds>(
+                          high_resolution_clock::now().time_since_epoch())
+                          .count() +
+                      c_ack_time_max;
+  cmd.type = "TVC";
+  cmd.addr = address;
+  m_command_sent.push_back(cmd);
+
+  return true;
+}
+
+bool HNZConnection::sendTCCommand(unsigned char address, unsigned char value) {
+  string address_str = to_string(address);
+  unsigned char msg[3];
+  msg[0] = 0x19;
+  msg[1] = stoi(address_str.substr(0, address_str.length() - 2));
+  msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
+
+  sendInfo(msg, sizeof(msg));
+  Logger::getLogger()->warn("TC sent (address = " + to_string(address) +
+                            " and value = " + to_string(value));
+
+  // Add the command in the list of commend sent (to check ACK later)
+  Command_message cmd;
+  cmd.timestamp_max = duration_cast<milliseconds>(
+                          high_resolution_clock::now().time_since_epoch())
+                          .count() +
+                      c_ack_time_max;
+  cmd.type = "TC";
+  cmd.addr = address;
+  m_command_sent.push_back(cmd);
+
+  return true;
+}
+
+void HNZConnection::receivedCommandACK(string type, int addr) {
+  // Remove the command from the list of sent commands
+  if (!m_command_sent.empty()) {
+    list<Command_message>::iterator it = m_command_sent.begin();
+    while (it != m_command_sent.end()) {
+      if (it->type == type && it->addr == addr) {
+        it = m_command_sent.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
 }

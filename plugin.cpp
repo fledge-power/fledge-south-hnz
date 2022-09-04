@@ -235,4 +235,24 @@ void plugin_shutdown(PLUGIN_HANDLE *handle) {
   auto *hnz = (HNZ *)handle;
   delete hnz;
 }
+
+/**
+ * Plugin_write entry point
+ * NOT USED
+ */
+bool plugin_write(PLUGIN_HANDLE *handle, string &name, string &value) {
+  return false;
+}
+
+/**
+ * Plugin_operation entry point
+ */
+bool plugin_operation(PLUGIN_HANDLE *handle, string &operation, int count,
+                      PLUGIN_PARAMETER **params) {
+  if (!handle) throw exception();
+
+  auto *hnz = reinterpret_cast<HNZ *>(handle);
+
+  return hnz->operation(operation, count, params);
+}
 }

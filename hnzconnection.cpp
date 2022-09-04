@@ -15,6 +15,7 @@ HNZConnection::HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client1,
   gi_repeat_count_max = m_hnz_conf->get_gi_repeat_count();
   gi_time_max = m_hnz_conf->get_gi_time() * 1000;
   c_ack_time_max = m_hnz_conf->get_c_ack_time() * 1000;
+  m_test_msg_send = m_hnz_conf->get_test_msg_send();
   m_is_running = false;
   m_go_to_connection();
 }
@@ -266,7 +267,7 @@ void HNZConnection::m_sendUA() {
 }
 
 void HNZConnection::m_sendBULLE() {
-  unsigned char msg[2]{0x13, 0x04};
+  unsigned char msg[2]{m_test_msg_send.first, m_test_msg_send.second};
   sendInfo(msg, sizeof(msg));
   Logger::getLogger()->info("BULLE sent");
 }

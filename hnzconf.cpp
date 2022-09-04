@@ -284,3 +284,26 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, string *target,
   }
   return true;
 }
+
+bool HNZConf::m_retrieve(const Value &json, const char *key,
+                         BulleFormat *target) {
+  if (!json.HasMember(key) || !json[key].IsString()) {
+    string s = key;
+    Logger::getLogger()->error(
+        "Error with the field " + s +
+        ", the value does not exist or is not a string.");
+    return false;
+  }
+  string temp = json[key].GetString();
+  if (temp.size() != 4) {
+    string s = key;
+    Logger::getLogger()->error("Error with the field " + s +
+                               ", the value isn't correct. Must be 4 digits.");
+    return false;
+  }
+  BulleFormat bulle;
+  bulle.first = stoul(temp.substr(0, 2), nullptr, 16);
+  bulle.second = stoul(temp.substr(2), nullptr, 16);
+  *target = bulle;
+  return true;
+}

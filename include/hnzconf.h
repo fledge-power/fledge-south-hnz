@@ -12,6 +12,7 @@
 #define HNZConf_H
 
 #include <map>
+#include <sstream>
 
 #include "logger.h"
 #include "rapidjson/document.h"
@@ -57,6 +58,7 @@
 #define DEFAULT_REPEAT_PATH 3
 #define DEFAULT_REPEAT_TIMEOUT 3000
 #define DEFAULT_ANTICIPATION_RATIO 3
+#define DEFAULT_TST_MSG "1304"
 #define DEFAULT_GI_SCHEDULE "99:99"
 #define DEFAULT_GI_REPEAT_COUNT 3
 #define DEFAULT_GI_TIME 255
@@ -69,6 +71,11 @@
 
 using namespace rapidjson;
 using namespace std;
+
+struct BulleFormat {
+  unsigned char first;
+  unsigned char second;
+} typedef BulleFormat;
 
 class HNZConf {
  public:
@@ -116,8 +123,8 @@ class HNZConf {
   unsigned int get_repeat_timeout() { return m_repeat_timeout; }
   unsigned int get_anticipation_ratio() { return m_anticipation_ratio; }
   unsigned int get_default_msg_period() { return m_default_msg_period; }
-  string get_test_msg_send() { return m_test_msg_send; }
-  string get_test_msg_receive() { return m_test_msg_receive; }
+  BulleFormat get_test_msg_send() { return m_test_msg_send; }
+  BulleFormat get_test_msg_receive() { return m_test_msg_receive; }
   string get_gi_schedule() { return m_gi_schedule; }
   unsigned int get_gi_repeat_count() { return m_gi_repeat_count; }
   unsigned int get_gi_time() { return m_gi_time; }
@@ -134,8 +141,8 @@ class HNZConf {
   unsigned int m_repeat_timeout;
   unsigned int m_anticipation_ratio;
   unsigned int m_default_msg_period;
-  string m_test_msg_send;
-  string m_test_msg_receive;
+  BulleFormat m_test_msg_send;
+  BulleFormat m_test_msg_receive;
   string m_gi_schedule;
   unsigned int m_gi_repeat_count;
   unsigned int m_gi_time;
@@ -157,6 +164,8 @@ class HNZConf {
   static bool m_retrieve(const Value &json, const char *key, string *target);
   static bool m_retrieve(const Value &json, const char *key, string *target,
                          string def);
+  static bool m_retrieve(const Value &json, const char *key,
+                         BulleFormat *target);
 };
 
 #endif

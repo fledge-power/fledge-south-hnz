@@ -32,6 +32,8 @@ struct Message {
   uint64_t timestamp;
 } typedef Message;
 
+class HNZ;
+
 class HNZConnection {
  public:
   HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client, HNZ* m_hnz_fledge);

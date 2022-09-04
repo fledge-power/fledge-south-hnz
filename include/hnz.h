@@ -25,7 +25,7 @@
 using namespace std;
 using namespace std::chrono;
 
-class HNZFledge;
+class HNZConnection;
 
 class HNZ {
  public:

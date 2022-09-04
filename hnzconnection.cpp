@@ -53,14 +53,19 @@ void HNZConnection::manageConnection() {
     switch (m_state) {
       case CONNECTION:
         if (!sarm_ARP_UA || !sarm_PA_received) {
-          if (m_nbr_sarm_sent < m_max_sarm) {
-            m_sendSARM();
-            sleep = milliseconds(m_repeat_timeout);
+          if (now - m_last_msg_time <= m_inacc_timeout) {
+            if (m_nbr_sarm_sent < m_max_sarm) {
+              m_sendSARM();
+              sleep = milliseconds(m_repeat_timeout);
+            } else {
+              Logger::getLogger()->debug(
+                  "The maximum number of SARM was reached.");
+              m_is_running = false;
+              sleep = milliseconds(10);
+            }
           } else {
-            Logger::getLogger()->debug(
-                "The maximum number of SARM was reached.");
-            m_is_running = false;
-            sleep = milliseconds(10);
+            Logger::getLogger()->error("Inacc timeout !");
+            // TODO : Send DF.GLOB.TS
           }
         } else {
           Logger::getLogger()->debug("Connection initialized !!");
@@ -129,7 +134,8 @@ void HNZConnection::manageMessages() {
           if (m_gi_repeat > gi_repeat_count_max) {
             // GI failed
             Logger::getLogger()->error("General Interrogation FAILED !");
-            // TODO
+            m_gi_repeat = 0;
+            // TODO : send TS DF.GLOB.TS
           } else {
             Logger::getLogger()->warn(
                 "General Interrogation Timeout, repeat GI");
@@ -158,8 +164,9 @@ void HNZConnection::m_go_to_connection() {
   m_nbr_sarm_sent = 0;
   m_repeat = 0;
   m_gi_start = 0;
+  m_last_msg_time = time(nullptr);
 
-  // TODO : Verify that this is the expected behavior
+  // Put unacknowledged messages in the list of messages waiting to be sent
   if (!m_msg_sent.empty()) {
     while (!m_msg_sent.empty()) {
       m_msg_waiting.push_front(m_msg_sent.back());

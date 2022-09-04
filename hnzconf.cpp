@@ -149,7 +149,6 @@ void HNZConf::importExchangedDataJson(const string &json) {
         is_complete &= m_retrieve(protocol, NAME, &protocol_name);
 
         if (protocol_name == HNZ_NAME) {
-          // TODO : save the following value
           unsigned int station_address;
           unsigned int msg_address;
           string msg_code;

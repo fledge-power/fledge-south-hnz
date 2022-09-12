@@ -28,6 +28,9 @@ using namespace std::chrono;
 
 class HNZConnection;
 
+/**
+ * @brief Class used to receive messages and push them to fledge.
+ */
 class HNZ {
  public:
   typedef void (*INGEST_CB)(void*, Reading);
@@ -51,7 +54,7 @@ class HNZ {
    * Set the configuration of the HNZ South Plugin. Two JSON configuration are
    * required.
    * @param protocol_conf_json Contain value to configure the protocol
-   * @param msg_conf_json describe the messages that the plugin can received
+   * @param msg_conf_json Describe the messages that the plugin can received
    */
   bool setJsonConfig(const string& protocol_conf_json,
                      const string& msg_configuration);

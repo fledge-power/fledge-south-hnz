@@ -27,21 +27,39 @@
 using namespace std;
 using namespace std::chrono;
 
+/**
+ * @brief Structure containing internal informations about a message
+ */
 struct Message {
+  /// Number in sending
   int ns;
+  /// Payload of the message
   vector<unsigned char> payload;
+  /// Timestamp of the sending
   uint64_t timestamp;
 } typedef Message;
 
+/**
+ * @brief Structure containing internal informations about a command message.
+ * Used when waiting for message acknowledgment.
+ */
 struct Command_message {
+  /// Type of the command : TV or TVC
   string type;
+  /// Address
   int addr;
+  /// Max timestamp for acknowledgment
   uint64_t timestamp_max;
+  /// Is the message acknowledged
   bool ack;
 } typedef Command_message;
 
 class HNZ;
 
+/**
+ * @brief Class used to manage the HNZ connection. Manage message numbering,
+ * sending queues, timers, ...
+ */
 class HNZConnection {
  public:
   HNZConnection(HNZConf* m_hnz_conf, HNZClient* m_client, HNZ* m_hnz_fledge);

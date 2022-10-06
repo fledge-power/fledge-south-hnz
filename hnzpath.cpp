@@ -135,6 +135,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
               // If the path is the active one, switch to passive path if
               // available
               if (m_is_active_path) m_hnz_connection->switchPath();
+              m_nbr_sarm_sent = 0;
             }
             // Send SARM and wait
             m_sendSARM();
@@ -412,7 +413,7 @@ void HNZPath::m_sendSARM() {
   unsigned char msg[1]{SARM};
   m_hnz_client->createAndSendFr(m_address_ARP, msg, sizeof(msg));
   Logger::getLogger()->info(m_name_log + " SARM sent [" +
-                            to_string(m_nbr_sarm_sent) + " / " +
+                            to_string(m_nbr_sarm_sent + 1) + " / " +
                             to_string(m_max_sarm) + "]");
   m_nbr_sarm_sent++;
 }

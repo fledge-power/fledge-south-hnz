@@ -130,18 +130,32 @@ class HNZConf {
   int getNumberCG();
 
   /**
-   * Get the IP address to remote IEC 104 server
+   * Get the IP address to remote IEC 104 server (A path)
    *
    * @return string
    */
-  string get_ip_address() { return m_ip; }
+  string get_ip_address_A() { return m_ip_A; }
 
   /**
-   * Get the port number to remote IEC 104 server
+   * Get the port number to remote IEC 104 server (A path)
    *
    * @return unsigned int
    */
-  unsigned int get_port() { return m_port; }
+  unsigned int get_port_A() { return m_port_A; }
+
+  /**
+   * Get the IP address to remote IEC 104 server (B path)
+   *
+   * @return string
+   */
+  string get_ip_address_B() { return m_ip_B; }
+
+  /**
+   * Get the port number to remote IEC 104 server (B path)
+   *
+   * @return unsigned int
+   */
+  unsigned int get_port_B() { return m_port_B; }
 
   /**
    * Get the remote server station address
@@ -238,8 +252,8 @@ class HNZConf {
   unsigned int get_c_ack_time() { return m_c_ack_time; }
 
  private:
-  string m_ip;
-  unsigned int m_port;
+  string m_ip_A, m_ip_B = "";
+  unsigned int m_port_A, m_port_B;
   unsigned int m_remote_station_addr;
   unsigned int m_inacc_timeout;
   unsigned int m_max_sarm;

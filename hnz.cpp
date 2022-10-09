@@ -1,657 +1,530 @@
-//
-// Created by Lucas Barret on 26/05/2021.
-//
+/*
+ * Fledge HNZ south plugin.
+ *
+ * Copyright (c) 2022, RTE (https://www.rte-france.com)
+ *
+ * Released under the Apache 2.0 Licence
+ *
+ * Author: Lucas Barret, Colin Constans, Justin Facquet
+ */
 
 #include "include/hnz.h"
-#include <reading.h>
-#include <logger.h>
-#include <config_category.h>
-#include <fstream>
-#include <iostream>
-#include <string>
-#include <utility>
-#include <chrono>
-#include <sstream>
-#include <ctime>
 
-using namespace nlohmann;
-using namespace std;
-using namespace std::chrono;
+HNZ::HNZ()
+    : m_hnz_conf(new HNZConf),
+      m_is_running(false),
+      m_connected(false),
+      m_client(new HNZClient) {}
 
-json HNZ::m_stack_configuration;
-json HNZ::m_msg_configuration;
-json HNZ::m_pivot_configuration;
-
-HNZ::HNZ(const char *ip, int port)
-{
-    if (strlen(ip) > 1)
-        this->m_ip = ip;
-    else
-    {
-        this->m_ip = "127.0.0.1";
-    }
-
-    if (port > 0)
-    {
-        m_port = port;
-    }
-    else
-    {
-        m_port = 6001;
-    }
-}
-
-void HNZ::setJsonConfig(const std::string &stack_configuration, const std::string &msg_configuration, const std::string &pivot_configuration)
-{
-    Logger::getLogger()->info("Reading json config string...");
-
-    try
-    {
-        m_stack_configuration = json::parse(stack_configuration)["protocol_stack"];
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't read protocol_stack json config string : " + string(e.what()));
-    }
-
-    try
-    {
-        m_msg_configuration = json::parse(msg_configuration)["exchanged_data"];
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't read exchanged_data json config string : " + string(e.what()));
-    }
-
-    try
-    {
-        m_pivot_configuration = json::parse(pivot_configuration)["protocol_translation"];
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't read protocol_translation json config string : " + string(e.what()));
-    }
-
-    Logger::getLogger()->info("Json config parsed successsfully.");
-}
-
-void HNZ::restart()
-{
+HNZ::~HNZ() {
+  if (m_is_running) {
     stop();
+  }
+}
+
+void HNZ::start() {
+  Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
+
+  Logger::getLogger()->info("Starting HNZ south plugin...");
+
+  m_receiving_thread = new thread(&HNZ::receive, this);
+  m_is_running = true;
+}
+
+void HNZ::stop() {
+  m_is_running = false;
+
+  if (m_receiving_thread != nullptr) {
+    if (m_connected) {
+      m_client->stop();
+    }
+    Logger::getLogger()->info("Waiting for the receiving thread");
+    m_receiving_thread->join();
+    m_receiving_thread = nullptr;
+  }
+  Logger::getLogger()->info("Plugin stopped");
+}
+
+bool HNZ::setJsonConfig(const string &protocol_conf_json,
+                        const string &msg_conf_json) {
+  bool was_running = m_is_running;
+  if (m_is_running) {
+    Logger::getLogger()->info(
+        "Configuration change requested, stopping the plugin");
+    stop();
+  }
+
+  Logger::getLogger()->info("Reading json config string...");
+
+  m_hnz_conf->importConfigJson(protocol_conf_json);
+  m_hnz_conf->importExchangedDataJson(msg_conf_json);
+  if (!m_hnz_conf->is_complete()) {
+    Logger::getLogger()->fatal(
+        "Unable to set Plugin configuration due to error with the json conf.");
+    return false;
+  }
+
+  Logger::getLogger()->info("Json config parsed successsfully.");
+
+  m_remote_address = m_hnz_conf->get_remote_station_addr();
+  m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
+  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client, this);
+
+  if (was_running) {
+    Logger::getLogger()->warn("Restarting the plugin...");
     start();
+  }
+  return true;
 }
 
-/** Try to connect to server (m_retry_number try) */
-int HNZ::connect()
-{
-    int i = 1;
-    printf(this->m_ip.c_str());
-    while ((i <= m_retry_number) or (m_retry_number == -1))
-    {
+bool HNZ::connect() {
+  int i = 1;
+  while (((i <= RETRY_CONN_NUM) or (RETRY_CONN_NUM == -1)) and m_is_running) {
+    Logger::getLogger()->info("Connecting to server ... [" + to_string(i) +
+                              "/" + to_string(RETRY_CONN_NUM) + "]");
 
-        Logger::getLogger()->info("Connecting to server ... [" + to_string(i) + "/" + to_string(m_retry_number) + "]");
-        m_connected = !(m_client->connect_Server("127.0.0.1"/*m_ip.c_str()*/, 6001/*m_port*/));
-        printf(this->m_ip.c_str());
-        if (m_connected)
-        {
-            Logger::getLogger()->info("Connected.");
-			frame_number = 0;
-            return 0;
-        }
-        else
-        {
-            Logger::getLogger()->warn("Error in connection, retrying in " + to_string(m_retry_delay) + "s ...");
-            high_resolution_clock::time_point beginning_time = high_resolution_clock::now();
-            duration<double, std::milli> time_span = high_resolution_clock::now() - beginning_time;
-            int time_out = m_retry_delay * 1000;
+    m_connected = !(m_client->connect_Server(
+        m_hnz_conf->get_ip_address().c_str(), m_hnz_conf->get_port()));
 
-            while (time_span.count() < time_out)
-            {
-                time_span = high_resolution_clock::now() - beginning_time;
-            }
-        }
-        i++;
+    if (m_connected) {
+      Logger::getLogger()->info("Connected.");
+      return true;
+    } else {
+      Logger::getLogger()->warn("Error in connection, retrying in " +
+                                to_string(RETRY_CONN_DELAY) + "s ...");
+      this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
     }
-    return -1;
+    i++;
+  }
+  return false;
 }
 
-/** Starts the plugin */
-void HNZ::start()
-{
-    m_fledge = new HNZFledge(this, &m_pivot_configuration);
+void HNZ::receive() {
+  if (!m_hnz_conf->is_complete()) {
+    return;
+  }
 
-    // Fledge logging level setting
-    switch (m_getConfigValue<int>(m_stack_configuration, "/transport_layer/llevel"_json_pointer))
-    {
-    case 1:
-        Logger::getLogger()->setMinLevel("debug");
-        break;
-    case 2:
-        Logger::getLogger()->setMinLevel("info");
-        break;
-    case 3:
-        Logger::getLogger()->setMinLevel("warning");
-        break;
-    default:
-        Logger::getLogger()->setMinLevel("error");
-        break;
+  // Connect to the server
+  if (!connect()) {
+    Logger::getLogger()->fatal("Unable to connect to server, stopping ...");
+    return;
+  }
+
+  m_hnz_connection->start();
+
+  Logger::getLogger()->warn("Listening for data ...");
+
+  while (m_is_running) {
+    MSG_TRAME *frReceived;
+
+    // Waiting for data
+    frReceived = (m_client->receiveFr());
+    if (frReceived != nullptr) {
+      // Checking the CRC
+      if (m_client->checkCRC(frReceived)) {
+        Logger::getLogger()->debug("CRC is good");
+
+        m_analyze_frame(frReceived);
+      } else {
+        Logger::getLogger()->warn("The CRC does not match");
+      }
+    } else {
+      Logger::getLogger()->warn("No data available, checking connection ...");
+      // Try to reconnect
+      if (!connect()) {
+        Logger::getLogger()->warn("Connection lost");
+        // stop();
+        m_is_running = false;
+        m_client->stop();
+      }
     }
+  }
 
-    Logger::getLogger()->info("Starting HNZ");
-
-    loopActivated = true;
-    m_ip = m_getConfigValue<string>(m_stack_configuration, "/transport_layer/connection/path/srv_ip"_json_pointer);
-    m_port = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/connection/path/port"_json_pointer);
-    m_retry_number = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_number"_json_pointer);
-    m_retry_delay = m_getConfigValue<int>(m_stack_configuration, "/transport_layer/retry_delay"_json_pointer);
-
-    // Connect to the server
-    m_client = new HNZClient();
-    int conn_ok = !connect();
-
-    if (conn_ok)
-    {
-        // Connected to the server, waiting for data
-        loopThread = std::thread(&HNZ::receive, this);
-    }
-    else
-    {
-        Logger::getLogger()->fatal("Unable to connect to server, stopping ...");
-        stop();
-    }
+  m_hnz_connection->stop();
 }
 
-void HNZ::receive()
-{
-    Logger::getLogger()->warn("Listening for data ...");
+void HNZ::m_analyze_frame(MSG_TRAME *frReceived) {
+  unsigned char *data = frReceived->aubTrame;
+  int size = frReceived->usLgBuffer;
+  unsigned char address = data[0] >> 2;  // remote address
+  unsigned char c = data[1];             // Message type
 
-    while (loopActivated)
-    {
-        std::unique_lock<std::mutex> guard2(loopLock);
+  Logger::getLogger()->debug(convert_data_to_str(data, size));
 
-        MSG_TRAME *frReceived;
-
-        // Waiting for data
-        frReceived = (m_client->receiveFr());
-        if (frReceived != nullptr)
-        {
-            Logger::getLogger()->warn("Data Received !");
-            // Checking the CRC
-            if (m_client->checkCRC(frReceived)) {
-               Logger::getLogger()->info("CRC is good");
-                unsigned char *data = frReceived->aubTrame;
-                int size = frReceived->usLgBuffer;
-				Logger::getLogger()->error(convert_data_to_str(data, size));
-                analyze_frame(data, size);
-            } else {
-               Logger::getLogger()->warn("The CRC does not match");
-            }
-        }
-        else
-        {
-            Logger::getLogger()->warn("No data available, checking connection ...");
-            try
-            {
-                // Try to reconnect
-                int conn_ok = !connect();
-                if (not conn_ok)
-                {
-                    Logger::getLogger()->warn("Connection lost");
-                    stop_loop();
-                }
-            }
-            catch (...)
-            {
-                Logger::getLogger()->error("Error in connection, retrying ...");
-            }
-        }
-        guard2.unlock();
-        std::chrono::milliseconds timespan(1000);
-        std::this_thread::sleep_for(timespan);
-    }
-}
-
-void HNZ::analyze_frame(unsigned char *data, int size)
-{
-    // Get address byte
-    unsigned char addr = data[0];
-    // Recognition of the type of message
-    unsigned char c = data[1];
-    auto *myFr = new MSG_TRAME;
-
-    Logger::getLogger()->info("Frame size : " + to_string(size));
-
-    switch (c)
-    {
-    case UA:
-        // Ignoring the UA ?
-		Logger::getLogger()->info("UA reçu");
+  if (m_remote_address == address) {
+    switch (c) {
+      case UA:
+        Logger::getLogger()->debug("Received UA");
+        m_hnz_connection->receivedUA();
         break;
-    case SARM:
-    {
-		frame_number = 0;
+      case SARM:
+        Logger::getLogger()->debug("Received SARM");
+        m_hnz_connection->receivedSARM();
         module10M = 0;
-        Logger::getLogger()->info("SARM reçu");
-        // Sending UA
-        unsigned char msg[1];
-        msg[0] = UA; 
-		//Logger::getLogger()->warn(to_string(sizeof(msg)));
-        m_client->createAndSendFr(addr, msg, sizeof(msg));
-        Logger::getLogger()->info("UA envoyé");
-        // Envoi d'un SARM
-        unsigned char addrA = addr+2;
-        msg[0] = SARM;
-        m_client->createAndSendFr(addrA, msg, sizeof(msg));
-        Logger::getLogger()->info("SARM envoyé");
-		Logger::getLogger()->warn("Procedure initialized.");
-		
-		unsigned char msg_date[5];
-		time_t now = time(0);
-		tm *time_struct = gmtime(&now);
-		msg_date[0] = (frame_number % 8) * 0x20;
-		msg_date[1] = 0x1c;
-		msg_date[2] = time_struct->tm_mday;
-		msg_date[3] = time_struct->tm_mon + 1;
-		msg_date[4] = time_struct->tm_year -100;
-		m_client->createAndSendFr(addrA, msg_date, sizeof(msg_date));
-		Logger::getLogger()->warn("Mise a la date envoyée : "+to_string((int)msg_date[1])+"/"+to_string((int)msg_date[2])+"/"+to_string((int)msg_date[3]));
-								 
-		unsigned char msg_hour[5];
-		long int ms_since_epoch, mod10m, millis;
-		ms_since_epoch = duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
-		mod10m = (ms_since_epoch % 86400000) / 600000; //ms_since_beginning_of_day / ms_in_10min_interval
-		millis = ms_since_epoch - (mod10m * 600000); //ms_since_beginning_of_10min_interval
-		msg_hour[0] = (frame_number % 8) * 0x20 + 0x02;
-		msg_hour[1] = 0x1d;
-		msg_hour[2] = mod10m;
-		msg_hour[3] = (millis / 10) >> 8;
-		msg_hour[4] = (millis / 10) & 0xff;
-		msg_hour[5] = 0x00;
-		m_client->createAndSendFr(addrA, msg_hour, sizeof(msg_hour));
-		Logger::getLogger()->warn("Mise a l'heure envoyée : "+to_string(msg_hour[1]*10/60)+":"+to_string((msg_hour[1]*10)%60)+","+to_string(millis)+"ms");
-
-        unsigned char msg_dmd_cg[3];
-		msg_dmd_cg[0] = (frame_number % 8) * 0x20 + 0x04;
-        msg_dmd_cg[1] = 0x13;
-		msg_dmd_cg[2] = 0x01;
-		m_client->createAndSendFr(addrA, msg_dmd_cg, sizeof(msg_dmd_cg));
-        Logger::getLogger()->warn("Demande de CG envoyé");
-        
-		break;
-    }
-    default:
-        // Information frame
-        // Get NR, P ans NS field
+        break;
+      default:
+        // Get NR, P/F ans NS field
         int ns = (c >> 1) & 0x07;
         int pf = (c >> 4) & 0x01;
         int nr = (c >> 5) & 0x07;
-        bool info = (c & 0x01) == 0;
-        if (info) {
-            // Trame d'info
-            Logger::getLogger()->info("Trame info reçu : ns = " + to_string(ns) + ", p = " + to_string(pf) + ", nr = " + to_string(nr));
+        if ((c & 0x01) == 0) {
+          // Information frame
+          Logger::getLogger()->warn("Data received (ns = " + to_string(ns) +
+                                    ", p = " + to_string(pf) +
+                                    ", nr = " + to_string(nr) + ")");
+
+          int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
+          analyze_info_frame(data + 2, payloadSize);
+          // Computing the frame number & sending RR
+          m_hnz_connection->sendRR(pf == 1, ns, nr);
         } else {
-            // Trame de supervision
-            Logger::getLogger()->info("Trame de supervision : f = " + to_string(pf) + ", nr = " + to_string(nr));
+          // Supervision frame
+          Logger::getLogger()->warn("RR received (f = " + to_string(pf) +
+                                    ", nr = " + to_string(nr) + ")");
+          m_hnz_connection->receivedRR(nr, pf == 1);
         }
 
-        int payloadSize = size - 4; // Remove address, type, CRC (2 bytes)
-        
-        if (analyze_info_frame(data+2, addr, ns, pf, nr, payloadSize)) {
-            // Computing the frame number & sending RR
-			unsigned char msg[1];
-			if (!pf)
-			{
-            	frame_number++;
-				msg[0] = 0x01 + (frame_number % 8) * 0x20;
-				m_client->createAndSendFr(addr, msg, sizeof(msg));
-				Logger::getLogger()->info("RR envoyé");
-			}
-			else
-			{
-				msg[0] = 0x01 + (frame_number % 8) * 0x20 + 0x10;
-				m_client->createAndSendFr(addr, msg, sizeof(msg));
-				Logger::getLogger()->info("Repetition, renvoi du RR");
-			}            
-        }
         break;
     }
+  } else {
+    Logger::getLogger()->warn("The address don't match the configuration!");
+  }
 }
 
-std::string HNZ::convert_data_to_str(unsigned char *data, int len)
-{
-    std::string s = "";
-    for (int i = 0; i < len; i++)
-    {
-        s += to_string(data[i]);
-        if (i < len - 1) s += " ";
-    }
-    return s;
+string HNZ::convert_data_to_str(unsigned char *data, int len) {
+  string s = "";
+  for (int i = 0; i < len; i++) {
+    s += to_string(data[i]);
+    if (i < len - 1) s += " ";
+  }
+  return s;
 }
 
-/* Analyze a frame of information and return a bool if frame is good */
-bool HNZ::analyze_info_frame(unsigned char *data, unsigned char addr, int ns, int p, int nr, int payloadSize)
-{
-    int len = 0; // Length of message to push in Fledge
-    confDatas confDatas;
-    int value, quality, ts, ts_qual;
-	long int scd_since_epoch, epoch_mod_day;
+void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
+  int len = 0;                // Length of message to push in Fledge
+  unsigned char t = data[0];  // Payload type
+  vector<Reading> readings;   // Contains data object to push to fledge
 
-    unsigned char t = data[0]; // Payload type
-    int info_address = 0;
-
-    addr = (int) (addr >> 2); // 6 bits de poids fort = adresse
-	
-	bool nbrTM;
-
-    // Analyzing the payload type
-    switch (t)
-    {
+  switch (t) {
     case TM4:
-        Logger::getLogger()->info("Received TM4");
-        for (size_t i = 0; i < 4; i++)
-        {
-            // 4 TM inside a TM cyclique
-            // Header
-            info_address += stoi(to_string((int) data[1]) + to_string(i)); // ADTM + i
-            confDatas = HNZ::m_checkExchangedDataLayer(addr, "02", info_address);
-
-            // Item
-            int noctet = 2 + i;
-            value = (int) data[noctet]; // VALTMi
-            quality = (value == 0xFF); // Invalide si VALTMi = 0xFF
-            ts = 0;
-            ts_qual = 0;
-
-            sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
-        }
-
-        len = 6;
-        break;
+      Logger::getLogger()->info("Received TMA");
+      m_handleTM4(readings, data);
+      len = 6;
+      break;
     case TSCE:
-        Logger::getLogger()->info("Received TSCE");
-        // Header
-        info_address += stoi(to_string((int) data[1]) + to_string((int) (data[2] >> 5))); // AD0 + ADB
-        //Logger::getLogger()->info("Info address = " + to_string(info_address) + " et addr = " + to_string(addr));
-        confDatas = HNZ::m_checkExchangedDataLayer(addr, "0B", info_address);
-
-        // Item
-        value = (int) (data[2] >> 3) & 0x1; // E
-        quality = (int) (data[2] >> 4) & 0x1; // V
-		scd_since_epoch = duration_cast<seconds>(high_resolution_clock::now().time_since_epoch()).count();
-		epoch_mod_day = scd_since_epoch - scd_since_epoch % 86400;
-        ts = epoch_mod_day;
-		ts += module10M * 10 * 60000;
-        ts += (int) ((data[3] << 8) | data[4]) * 10;
-        ts_qual = stoi(to_string((int) (data[2] >> 2) & 0x1) + to_string((int) (data[2] >> 1) & 0x1) + to_string((int) (data[2] & 0x1)));
-
-        sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
-
-        // Size of this message
-        len = 5;
-        break;
+      Logger::getLogger()->info("Received TSCE");
+      m_handleTSCE(readings, data);
+      len = 5;
+      break;
     case TSCG:
-        Logger::getLogger()->info("Received TSCG");
-        for (size_t i = 0; i < 16; i++)
-        {
-            // 16 TS inside a TSCG
-            // Header
-            info_address += stoi(to_string((int) data[1] + (int) i/8) + to_string(i % 8)); // AD0 + i%8  ou (AD0+1) + i%8
-            confDatas = HNZ::m_checkExchangedDataLayer(addr, "16", info_address);
-
-            // Item
-            int noctet = 2 + (i / 4);
-            value = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x1; // E
-            quality = (int) (data[noctet] >> (3 - (i % 4)) * 2) & 0x2; // V
-            ts = 0;
-            ts_qual = 0;
-
-            sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
-        }
-        // Size of this message
-        len = 6;
-        break;
+      Logger::getLogger()->info("Received TSCG");
+      m_handleTSCG(readings, data);
+      len = 6;
+      break;
     case TMN:
-		Logger::getLogger()->info("Received TMN");
-		// 2 or 4 TM inside a TMn
-		nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
-		for (size_t i = 0; i < nbrTM; i++)
-		{
-			// 2 or 4 TM inside a TMn
-			// Header
-			info_address += stoi(to_string((int) data[1]) + to_string(i*4)); // ADTM + i*4
-			confDatas = HNZ::m_checkExchangedDataLayer(addr, "0C", info_address);
-
-			// Item
-			if (nbrTM == 4) {
-				int noctet = 2 + i;
-
-				value = (int) (data[noctet]); // Vi
-				quality = (int) (data[6] >> i) & 0x1; // Ii
-			} else {
-				int noctet = 2 + (i * 2);
-
-				value = (int) (data[noctet + 1] << 8 || data[noctet]); // Concat V1/V2 and V3/V4
-				quality = (int) (data[6] >> i*2) & 0x1; // I1 or I3
-			}
-
-			ts = 0;
-			ts_qual = 0;
-
-			sendToFledge(t, value, quality, ts, ts_qual, confDatas.label, confDatas.internal_id);
-		}
-
-		len = 7;
-		break;
-    case 0x13:
-        Logger::getLogger()->info("Received CG request/BULLE");
-        //confDatas = HNZ::m_checkExchangedDataLayer(addr,"13",0);
-		confDatas = protocolDatas;
-        len = 2;
-        break;
+      Logger::getLogger()->info("Received TMN");
+      m_handleTMN(readings, data);
+      len = 7;
+      break;
     case 0x0F:
-        module10M = (int) data[1];
-        Logger::getLogger()->info("Received Modulo 10mn");
-        //confDatas = HNZ::m_checkExchangedDataLayer(addr,"0F",0);
-		confDatas = protocolDatas;
-        len = 2;
-        break;
+      module10M = (int)data[1];
+      Logger::getLogger()->info("Received Modulo 10mn");
+      len = 2;
+      break;
     case 0x09:
-        Logger::getLogger()->info("Received ATC, not implemented");
-        //confDatas = HNZ::m_checkExchangedDataLayer(addr,"09",0);
-		confDatas = protocolDatas;
-        len = 3;
-        break;
+      Logger::getLogger()->info("Received TC ACK");
+      m_handleATC(readings, data);
+      len = 3;
+      break;
+    case 0x0A:
+      Logger::getLogger()->info("Received TVC ACK");
+      m_handleATVC(readings, data);
+      len = 3;
+      break;
     default:
+      if (t == m_test_msg_receive.first &&
+          data[1] == m_test_msg_receive.second) {
+        Logger::getLogger()->info("Received BULLE");
+        m_hnz_connection->receivedBULLE();
+        len = 2;
+      } else {
         Logger::getLogger()->info("Received an unknown type");
-        break;
+      }
+      break;
+  }
+
+  if (len != 0) {
+    Logger::getLogger()->debug("[" + convert_data_to_str(data, len) + "]");
+
+    if (!readings.empty()) {
+      sendToFledge(readings);
     }
 
-    if (len != 0) {
-        // Logging
-        std::string content = convert_data_to_str(data, len);
-        Logger::getLogger()->info("Data : [ " + content + " ]");
+    // Check the length of the payload
+    // There can be several messages in the same frame
+    if (len != payloadSize) {
+      // Analyze the rest of the payload
+      analyze_info_frame(data + len, payloadSize - len);
+    }
+  } else {
+    Logger::getLogger()->info("Unknown message");
+  }
+}
 
-        // Check the length of the payload (There can be several messages in the same frame)
-        if (len != payloadSize) {
-            // Analyze the rest of the payload
-            return analyze_info_frame(data+len, addr, ns, p, nr, payloadSize - len);
-        }
-        // We analyzed all the payload, the sizes correspond
-        return true;
+void HNZ::m_handleTM4(vector<Reading> &readings, unsigned char *data) {
+  string msg_code = "TMA";
+  for (size_t i = 0; i < 4; i++) {
+    // 4 TM inside a TM cyclique
+    unsigned int msg_address =
+        stoi(to_string((int)data[1]) + to_string(i));  // ADTM + i
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
+
+    if (!label.empty()) {
+      int noctet = 2 + i;
+      int value =
+          (((data[noctet] >> 7) == 0x1) ? (-1 * ((int)data[noctet] ^ 0xFF) - 1)
+                                        : data[noctet]);  // VALTMi
+      unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
+
+      readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
+                                           msg_address, value, valid, 0, 0, 0,
+                                           0, false));
+    }
+  }
+}
+
+void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned char *data) {
+  string msg_code = "TSCE";
+  unsigned int msg_address = stoi(to_string((int)data[1]) +
+                                  to_string((int)(data[2] >> 5)));  // AD0 + ADB
+
+  string label = m_hnz_conf->getLabel(msg_code, msg_address);
+
+  if (!label.empty()) {
+    unsigned int value = (int)(data[2] >> 3) & 0x1;  // E bit
+    unsigned int valid = (int)(data[2] >> 4) & 0x1;  // V bit
+
+    unsigned int ts = (int)((data[3] << 8) | data[4]);
+    unsigned int ts_iv = (int)(data[2] >> 2) & 0x1;  // HNV bit
+    unsigned int ts_s = (int)data[2] & 0x1;          // S bit
+    unsigned int ts_c = (int)(data[2] >> 1) & 0x1;   // C bit
+
+    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
+                                         msg_address, value, valid, ts, ts_iv,
+                                         ts_c, ts_s, true));
+  }
+}
+
+void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
+  string msg_code = "TSCG";
+  for (size_t i = 0; i < 16; i++) {
+    // 16 TS inside a TSCG
+    unsigned int msg_address = stoi(
+        to_string((int)data[1] + (int)i / 8) +
+        to_string(i % 8));  // AD0 + i%8 for first 8, (AD0+1) + i%8 for others
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
+
+    if (!label.empty()) {
+      int noctet = 2 + (i / 4);
+      int dep = (3 - (i % 4)) * 2;
+      unsigned int value = (int)(data[noctet] >> dep) & 0x1;  // E
+      unsigned int valid = (int)(data[noctet] >> dep) & 0x2;  // V
+
+      m_gi_readings_temp.push_back(
+          m_prepare_reading(label, msg_code, m_remote_address, msg_address,
+                            value, valid, 0, 0, 0, 0, false));
+    }
+  }
+
+  // Check if GI is complete
+  if (!m_gi_readings_temp.empty() &&
+      (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG())) {
+    Logger::getLogger()->info("GI completed, push data to fledge.");
+    m_hnz_connection->GI_completed();
+    sendToFledge(m_gi_readings_temp);
+    m_gi_readings_temp.clear();
+  }
+}
+
+void HNZ::m_handleTMN(vector<Reading> &readings, unsigned char *data) {
+  string msg_code = "TMN";
+  // 2 or 4 TM inside a TMn
+  unsigned int nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
+  for (size_t i = 0; i < nbrTM; i++) {
+    // 2 or 4 TM inside a TMn
+    unsigned int msg_address =
+        stoi(to_string((int)data[1]) + to_string(i * 4));  // ADTM + i*4
+    string label = m_hnz_conf->getLabel(msg_code, msg_address);
+
+    if (!label.empty()) {
+      unsigned int value;
+      unsigned int valid;
+
+      if (nbrTM == 4) {
+        int noctet = 2 + i;
+
+        value = (int)(data[noctet]);        // Vi
+        valid = (int)(data[6] >> i) & 0x1;  // Ii
+      } else {
+        int noctet = 2 + (i * 2);
+
+        value = (int)(data[noctet + 1] << 8 |
+                      data[noctet]);            // Concat V1/V2 and V3/V4
+        valid = (int)(data[6] >> i * 2) & 0x1;  // I1 or I3
+      }
+
+      readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
+                                           msg_address, value, valid, 0, 0, 0,
+                                           0, false));
+    }
+  }
+}
+
+void HNZ::m_handleATVC(vector<Reading> &readings, unsigned char *data) {
+  string msg_code = "ACK_TVC";
+
+  unsigned int msg_address = data[1] & 0x1F;  // AD0
+
+  m_hnz_connection->receivedCommandACK("TVC", msg_address);
+
+  string label = m_hnz_conf->getLabel(msg_code, msg_address);
+
+  if (!label.empty()) {
+    unsigned int value_coding = (data[1] >> 5) & 0x1;  // X
+    unsigned int a = (data[1] >> 6) & 0x1;             // A
+    int value;
+
+    if (value_coding == 1) {
+      value = ((data[3] & 0xF) << 8) | data[2];
     } else {
-        Logger::getLogger()->info("Message inconnu");
-        // TODO : Envoyer un RR si le message est inconnu ?
-        return false;
-    }
-}
-
-void HNZ::sendToFledge(unsigned char t, int value, int quality, int ts, int ts_qual, std::string label, std::string internal_id) {
-    printf("Salut je vais envoyer à fledge");
-    if (label == "internal" && internal_id == "internal")
-    {
-        Logger::getLogger()->warn("Message protocolaire");
-        return;
-    }
-    if (label != "" && internal_id != "")
-    {
-        printf("Salut je vais envoyer à fledge 2S");
-        // Prepare the value datapoint
-        Datapoint* dp = m_fledge->m_addData<std::string>(value, quality, ts, ts_qual);
-        // Send datapoint to fledge
-        m_fledge->sendData(dp, to_string(t), internal_id, label);
-    }
-    else
-    {
-        Logger::getLogger()->warn("Message not found in exchanged msg config..");
-    }
-}
-
-void HNZ::stop_loop()
-{
-    this->loopActivated = false;
-    m_client->stop();
-    loopThread.join();
-    this->stop();
-}
-
-/** Disconnect from the HNZ server */
-void HNZ::stop()
-{
-    delete m_client;
-    m_client = nullptr;
-}
-
-/**
- * Called when a data changed event is received. This calls back to the south service
- * and adds the points to the readings queue to send.
- *
- * @param points    The points in the reading we must create
- */
-void HNZ::ingest(Reading &reading)
-{
-    (*m_ingest)(m_data, reading);
-}
-
-/**
- * Save the callback function and its data
- * @param data   The Ingest function data
- * @param cb     The callback function to call
- */
-void HNZ::registerIngest(void *data, INGEST_CB cb)
-{
-    m_ingest = cb;
-    m_data = data;
-}
-
-void HNZFledge::sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label)
-{
-    printf("je suis dans send");
-    // Create the header
-    auto* data_header = new vector<Datapoint*>;
-
-    for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object_header"].items())
-    {
-        if (feature.value() == "message_code")
-            data_header->push_back(m_createDatapoint(feature.key(), code));
-        else if (feature.value() == "internal_id")
-            data_header->push_back(m_createDatapoint(feature.key(), internal_id));
+      value = data[2] & 0x7F;
     }
 
-    DatapointValue header_dpv(data_header, true);
+    if (((data[3] >> 7) & 0x1) == 1) -1 * value;  // S
 
-    auto* header_dp = new Datapoint("data_object_header", header_dpv);
-
-    Datapoint* item_dp = dp;
-
-    Reading reading(label, {header_dp, item_dp});
-    printf("gonna call the ingest");
-    m_hnz->ingest(reading);
+    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
+                                         msg_address, value, value_coding,
+                                         true));
+  }
 }
 
-template <class T>
-Datapoint* HNZFledge::m_addData(int value, int quality, int ts, int ts_qual)
-{
-    auto* measure_features = new vector<Datapoint*>;
+void HNZ::m_handleATC(vector<Reading> &readings, unsigned char *data) {
+  string msg_code = "ACK_TC";
 
-    for (auto& feature : (*m_pivot_configuration)["mapping"]["data_object_item"].items())
-    {
-        if (feature.value() == "value")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) value));
-        else if (feature.value() == "quality")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) quality));
-		else if (feature.value() == "timestamp")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts));
-        else if (feature.value() == "ts_qual")
-            measure_features->push_back(m_createDatapoint(feature.key(), (long int) ts_qual));
-    }
+  unsigned int msg_address = stoi(to_string((int)data[1]) +
+                                  to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
-    DatapointValue dpv(measure_features, true);
+  m_hnz_connection->receivedCommandACK("TC", msg_address);
 
-    auto* dp = new Datapoint("data_object_item", dpv);
-    return dp;
+  string label = m_hnz_conf->getLabel(msg_code, msg_address);
+
+  if (!label.empty()) {
+    int value = data[2] & 0x7;
+
+    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
+                                         msg_address, value, 0, false));
+  }
 }
 
-template <class T>
-T HNZ::m_getConfigValue(json configuration, json_pointer<json> path)
-{
-    T typed_value;
+Reading HNZ::m_prepare_reading(string label, string msg_code,
+                               unsigned char station_addr, int msg_address,
+                               int value, int valid, int ts, int ts_iv,
+                               int ts_c, int ts_s, bool time) {
+  Logger::getLogger()->debug(
+      "Send to fledge " + msg_code +
+      " with station address = " + to_string(station_addr) +
+      ", message address = " + to_string(msg_address) +
+      ", value = " + to_string(value) + ", valid = " + to_string(valid) +
+      (time ? ("ts = " + to_string(ts) + ", iv = " + to_string(ts_iv) +
+               ", c = " + to_string(ts_c) + ", s" + to_string(ts_s))
+            : ""));
 
-    try
-    {
-        typed_value = configuration.at(path);
-    }
-    catch (json::parse_error &e)
-    {
-        Logger::getLogger()->fatal("Couldn't parse value " + path.to_string() + " : " + e.what());
-    }
-    catch (json::out_of_range &e)
-    {
-        Logger::getLogger()->fatal("Couldn't reach value " + path.to_string() + " : " + e.what());
-    }
+  auto *measure_features = new vector<Datapoint *>;
+  measure_features->push_back(m_createDatapoint("do_type", msg_code));
+  measure_features->push_back(
+      m_createDatapoint("do_station", (long int)station_addr));
+  measure_features->push_back(
+      m_createDatapoint("do_addr", (long int)msg_address));
+  measure_features->push_back(m_createDatapoint("do_value", (long int)value));
+  measure_features->push_back(m_createDatapoint("do_valid", (long int)valid));
 
-    return typed_value;
+  if (time) {
+    measure_features->push_back(m_createDatapoint("do_ts", (long int)ts));
+    measure_features->push_back(m_createDatapoint("do_ts_iv", (long int)ts_iv));
+    measure_features->push_back(m_createDatapoint("do_ts_c", (long int)ts_c));
+    measure_features->push_back(m_createDatapoint("do_ts_s", (long int)ts_s));
+  }
+
+  DatapointValue dpv(measure_features, true);
+
+  Datapoint *dp = new Datapoint("data_object", dpv);
+
+  return Reading(label, dp);
 }
 
-HNZ::confDatas HNZ::m_checkExchangedDataLayer(const int address, const std::string& message_code, const int info_address)
-{
-    bool know_station_address = false, know_message_code = false, know_info_address = false;
-    confDatas data;
-	
-	//Logger::getLogger()->warn("Checking " + to_string(address) + " " + message_code + " " + to_string(info_address));
-	for (auto& element : m_msg_configuration["msg_list"])
-	{
-		if (m_getConfigValue<unsigned int>(element, "/station_address"_json_pointer) == address)
-		{
-			//Logger::getLogger()->warn("ADDR:" + to_string(m_getConfigValue<unsigned int>(element, "/station_address"_json_pointer)));
-			know_station_address = true;
-			if (m_getConfigValue<string>(element, "/message_code"_json_pointer) == message_code)
-			{
-				//Logger::getLogger()->warn("MSGCODE:" + m_getConfigValue<string>(element, "/message_code"_json_pointer));
-				know_message_code = true;
-				if (m_getConfigValue<unsigned int>(element, "/info_address"_json_pointer) == info_address)
-				{
-					know_info_address = true;
-					//Logger::getLogger()->warn("INFOADDR:"+ to_string(m_getConfigValue<unsigned int>(element, "/info_address"_json_pointer)));
-                    data.label = element["label"];
-                    data.internal_id = element["internal_id"];
-					//Logger::getLogger()->warn("Found : " + data.label + " " + data.internal_id);
-					return data;
-				}
-			}
-		}
-	}
-	//Logger::getLogger()->warn("Legacy : " + data.label + " " + data.internal_id);
-	
-	if (!know_station_address)
-		Logger::getLogger()->warn("Unknown Station Address (" + to_string(address) +")");
-	else if (!know_message_code)
-		Logger::getLogger()->warn("Unknown Message Code (" + message_code + ")");
-	else if (!know_info_address)
-		Logger::getLogger()->warn("Unknown Info Address (" + to_string(info_address) +")");
-	else
-		Logger::getLogger()->warn("Error while checking data layer config");
+Reading HNZ::m_prepare_reading(string label, string msg_code,
+                               unsigned char station_addr, int msg_address,
+                               int value, int value_coding, bool coding) {
+  Logger::getLogger()->debug(
+      "Send to fledge " + msg_code +
+      " with station address = " + to_string(station_addr) +
+      ", message address = " + to_string(msg_address) +
+      ", value = " + to_string(value) +
+      (coding ? ("value coding = " + to_string(value_coding)) : ""));
 
-	data.label = "";
-    data.internal_id = "";
-    return data;
+  auto *measure_features = new vector<Datapoint *>;
+  measure_features->push_back(m_createDatapoint("do_type", msg_code));
+  measure_features->push_back(
+      m_createDatapoint("do_station", (long int)station_addr));
+  measure_features->push_back(
+      m_createDatapoint("do_addr", (long int)msg_address));
+  measure_features->push_back(m_createDatapoint("do_value", (long int)value));
+
+  if (coding) {
+    // TODO : Review the name
+    measure_features->push_back(
+        m_createDatapoint("do_val_coding", (long int)value_coding));
+  }
+
+  DatapointValue dpv(measure_features, true);
+
+  Datapoint *dp = new Datapoint("data_object", dpv);
+
+  return Reading(label, dp);
+}
+
+void HNZ::sendToFledge(vector<Reading> &readings) {
+  for (Reading &reading : readings) {
+    ingest(reading);
+  }
+}
+
+void HNZ::ingest(Reading &reading) { (*m_ingest)(m_data, reading); }
+
+void HNZ::registerIngest(void *data, INGEST_CB cb) {
+  m_ingest = cb;
+  m_data = data;
+}
+
+bool HNZ::operation(const std::string &operation, int count,
+                    PLUGIN_PARAMETER **params) {
+  Logger::getLogger()->error("Operation %s", operation.c_str());
+
+  if (operation.compare("TC") == 0) {
+    int address = atoi(params[1]->value.c_str());
+    int value = atoi(params[2]->value.c_str());
+
+    m_hnz_connection->sendTCCommand(address, value);
+    return true;
+  } else if (operation.compare("TVC") == 0) {
+    int address = atoi(params[1]->value.c_str());
+    int value = atoi(params[2]->value.c_str());
+    int val_coding = atoi(params[3]->value.c_str());
+
+    m_hnz_connection->sendTVCCommand(address, value, val_coding);
+    return true;
+  }
+
+  Logger::getLogger()->error("Unrecognised operation %s", operation.c_str());
+  return false;
 }

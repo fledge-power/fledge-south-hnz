@@ -14,8 +14,8 @@ message("fledge root : ${FLEDGE_ROOT}")
 # then Fledge libraries and header files are pulled from FLEDGE_ROOT path.
 
 set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
-set("-I/home/lucas/dev/git/libhnzlocal/src/inc")
-set("-I/home/lucas/dev/git/libhznlocal/src/hal/inc")
+set("-I${HOME}rte_pmp/hnz/perso_hnz/lib/src/inc")
+set("-I${HOME}rte_pmp/hnz/perso_hnz/lib/src/hal/inc")
 
 # Generation version header file
 set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
@@ -56,15 +56,13 @@ endif()
 if (NOT "$ENV{LIB_HNZ}" STREQUAL "")
 	set(LIB_HNZ "$ENV{LIB_HNZ}")
 else()
-	set(LIB_HNZ "/home/lucas/dev/git/libhnzlocal")
+	set(LIB_HNZ "$ENV{HOME}rte_pmp/hnz/perso_hnz/lib")
 endif()
 
 # Add ./include
 include_directories(include)
 # Add Fledge include dir(s)
 include_directories(${FLEDGE_INCLUDE_DIRS})
-
-include_directories(include)
 
 # Add Fledge lib path
 link_directories(${FLEDGE_LIB_DIRS})

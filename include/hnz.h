@@ -1,121 +1,208 @@
-//
-// Created by Lucas Barret on 26/05/2021.
-//
+#ifndef HNZ_H
+#define HNZ_H
 
-#ifndef WORK_HNZ_H
-#define WORK_HNZ_H
-
-#include <iostream>
-#include <cstring>
-#include <reading.h>
+/*
+ * Fledge HNZ south plugin.
+ *
+ * Copyright (c) 2022, RTE (https://www.rte-france.com)
+ *
+ * Released under the Apache 2.0 Licence
+ *
+ * Author: Lucas Barret, Colin Constans, Justin Facquet
+ */
+#include <config_category.h>
 #include <logger.h>
-#include <cstdlib>
-#include <cstdio>
-#include <thread>
-#include <mutex>
+#include <plugin_api.h>
+#include <reading.h>
+
 #include <atomic>
-#include <utility>
-//#include "../../lib/src/inc/hnz_client.h"
-#include "/home/lucas/dev/git/libhnzlocal/src/inc/hnz_client.h"
-#include "json.hpp" // https://github.com/nlohmann/json
+#include <sstream>
+#include <thread>
 
+#include "../../libhnz/src/inc/hnz_client.h"
+#include "hnzconf.h"
+#include "hnzconnection.h"
 
-class HNZFledge;
+using namespace std;
+using namespace std::chrono;
 
-class HNZ
-{
-public:
-    typedef void (*INGEST_CB)(void *, Reading);
+class HNZConnection;
 
-    HNZ(const char *ip, int port);
-    ~HNZ() = default;
+/**
+ * @brief Class used to receive messages and push them to fledge.
+ */
+class HNZ {
+ public:
+  typedef void (*INGEST_CB)(void*, Reading);
 
-    struct confDatas {
-        std::string label, internal_id;
-    };
-    
-    typedef struct confDatas confDatas;
+  HNZ();
+  ~HNZ();
 
-    void        setIp(const char *ip)  { m_ip = (strlen(ip) > 1) ? ip : "127.0.0.1"; }
-    void        setPort(uint16_t port) { m_port = (port > 0) ? port : 1234; }
-    void		setAssetName(const std::string& asset) { m_asset = asset; }
-    void		restart();
-    void        start();
-    void		stop();
-    void        receive();
-    int		    connect();
-    void        stop_loop();
-    void        analyze_frame(unsigned char* data, int size);
-    bool        analyze_info_frame(unsigned char *data, unsigned char addr, int ns, int p, int nr, int size);
-    void        sendToFledge(unsigned char t, int value, int quality, int ts, int ts_qual, std::string label, std::string internal_id);
-    std::string convert_data_to_str(unsigned char *data, int len);
+  void setAssetName(const string& asset) { m_asset = asset; }
 
-	
-	confDatas protocolDatas = {"na", "na"};
+  /**
+   * Start the HZN south plugin
+   */
+  void start();
 
-    confDatas m_checkExchangedDataLayer(const int address, const std::string& message_code, const int info_address);
+  /**
+   * Stop the HZN south plugin
+   */
+  void stop();
 
-    void		ingest(Reading& reading);
-    void		registerIngest(void *data, void (*cb)(void *, Reading));
+  /**
+   * Set the configuration of the HNZ South Plugin. Two JSON configuration are
+   * required.
+   * @param protocol_conf_json Contain value to configure the protocol
+   * @param msg_conf_json Describe the messages that the plugin can received
+   */
+  bool setJsonConfig(const string& protocol_conf_json,
+                     const string& msg_configuration);
 
-    std::string		m_asset;
-    std::string     m_ip;
-    int             m_port;
-	int             m_retry_number;
-	int             m_retry_delay;
-    HNZClient*      m_client;
+  /**
+   * Save the callback function and its data
+   * @param data   The Ingest function data
+   * @param cb     The callback function to call
+   */
+  void registerIngest(void* data, void (*cb)(void*, Reading));
 
-    std::mutex loopLock;
-    std::atomic<bool> loopActivated;
-    std::thread loopThread;
-	
-	static void setJsonConfig(const std::string& configuration, const std::string& msg_configuration, const std::string& pivot_configuration);
+  /**
+   * Sends the datapoints passed as Reading to Fledge
+   * @param readings Vector of one or more Reading depending on the received
+   * message
+   */
+  void sendToFledge(vector<Reading>& readings);
 
+  /**
+   * Reset the GI queue. Delete previous TSCG received.
+   */
+  void resetGIQueue() { m_gi_readings_temp.clear(); };
 
-private:
-    INGEST_CB			m_ingest;     // Callback function used to send data to south service
-    void*               m_data;       // Ingest function data
-    bool				m_connected;
-    HNZFledge*          m_fledge;
-	int					frame_number, module10M;
-	
-	template <class T>
-    static T m_getConfigValue(nlohmann::json configuration, nlohmann::json_pointer<nlohmann::json> path);
-	static nlohmann::json m_stack_configuration;
-    static nlohmann::json m_msg_configuration;
-    static nlohmann::json m_pivot_configuration;
+  /**
+   * Called by Fledge to send a command message
+   *
+   * @param operation The command name
+   * @param count Number of parameters
+   * @param params Array of parameters
+   */
+  bool operation(const std::string& operation, int count,
+                 PLUGIN_PARAMETER** params);
+
+ private:
+  string m_asset;  // Plugin name in fledge
+
+  HNZConf* m_hnz_conf;              // HNZ Configuration
+  HNZClient* m_client;              // HNZ Client (lib hnz)
+  HNZConnection* m_hnz_connection;  // HNZ Connection handling
+
+  thread* m_receiving_thread;
+
+  atomic<bool> m_is_running;
+
+  INGEST_CB m_ingest;  // Callback function used to send data to south service
+  void* m_data;        // Ingest function data
+  bool m_connected;
+  int m_remote_address;
+  BulleFormat m_test_msg_receive;
+
+  int module10M;  // HNZ Protocol related vars
+
+  vector<Reading> m_gi_readings_temp;  // Contains all Reading of GI waiting for
+                                       // the completeness check
+
+  /**
+   * Waits for new messages and processes them
+   */
+  void receive();
+
+  /**
+   * Connect (or re-connect) to the HNZ RTU
+   */
+  bool connect();
+
+  /**
+   * Analyzes the received frame.
+   * @param frReceived
+   */
+  void m_analyze_frame(MSG_TRAME* frReceived);
+
+  /**
+   * Analyze an information frame
+   * @return frame is understood
+   */
+  void analyze_info_frame(unsigned char* data, int size);
+
+  /**
+   * Handle TM4 messages: analyse them and returns readings for export to
+   * fledge.
+   */
+  void m_handleTM4(vector<Reading>& reading, unsigned char* data);
+
+  /**
+   * Handle TSCE messages: analyse them and returns one reading for export to
+   * fledge.
+   */
+  void m_handleTSCE(vector<Reading>& reading, unsigned char* data);
+
+  /**
+   * Handle TSCG messages: analyse them and returns one reading for export to
+   * fledge.
+   */
+  void m_handleTSCG(vector<Reading>& reading, unsigned char* data);
+
+  /**
+   * Handle TMN messages: analyse them and returns readings for export to
+   * fledge.
+   */
+  void m_handleTMN(vector<Reading>& reading, unsigned char* data);
+
+  /**
+   * Handle TVC ACK messages: analyse them and returns readings for export to
+   * fledge.
+   */
+  void m_handleATVC(vector<Reading>& reading, unsigned char* data);
+
+  /**
+   * Handle TC ACK messages: analyse them and returns readings for export to
+   * fledge.
+   */
+  void m_handleATC(vector<Reading>& reading, unsigned char* data);
+
+  /**
+   * Create a reading from the values given in argument.
+   */
+  static Reading m_prepare_reading(string label, string msg_code,
+                                   unsigned char station_addr, int msg_address,
+                                   int value, int valid, int ts, int ts_iv,
+                                   int ts_c, int ts_s, bool time);
+
+  /**
+   * Create a reading from the values given in argument.
+   */
+  static Reading m_prepare_reading(string label, string msg_code,
+                                   unsigned char station_addr, int msg_address,
+                                   int value, int value_coding, bool coding);
+
+  /**
+   * Create a datapoint.
+   * @param name
+   * @param value
+   */
+  template <class T>
+  static Datapoint* m_createDatapoint(const string& name, const T value) {
+    DatapointValue dp_value = DatapointValue(value);
+    return new Datapoint(name, dp_value);
+  }
+
+  /**
+   * Called when a data changed event is received. This calls back to the
+   * south service and adds the points to the readings queue to send.
+   *
+   * @param reading The reading to push to fledge
+   */
+  void ingest(Reading& reading);
+
+  string convert_data_to_str(unsigned char* data, int len);
 };
 
-class HNZFledge
-{
-public :
-    explicit HNZFledge(HNZ *hnz, nlohmann::json* pivot_configuration) : m_hnz(hnz), m_pivot_configuration(pivot_configuration) {};
-
-    // ==================================================================== //
-    // Note : The overloaded method addData is used to prevent the user from
-    // giving value type that can't be handled. The real work is forwarded
-    // to the private method m_addData
-
-
-    // Sends the datapoints passed as Reading to Fledge
-    void sendData(Datapoint* dp, std::string code, std::string internal_id, const std::string& label);
-
-    template<class T>
-    Datapoint* m_addData(int value, int quality, int ts, int ts_qual);
-
-private:
-
-    template<class T>
-    static Datapoint* m_createDatapoint(const std::string& dataname, const T value)
-    {
-        DatapointValue dp_value = DatapointValue(value);
-        return new Datapoint(dataname,dp_value);
-    }
-
-    HNZ* m_hnz;
-	nlohmann::json* m_pivot_configuration;
-	
-};
-
-
-#endif //WORK_HNZ_H
+#endif

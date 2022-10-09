@@ -465,7 +465,8 @@ bool HNZConnection::sendTVCCommand(unsigned char address, int value,
                       c_ack_time_max;
   cmd.type = "TVC";
   cmd.addr = address;
-  m_command_sent.push_back(cmd);
+  // TVC command has a high priority
+  m_command_sent.push_front(cmd);
 
   return true;
 }
@@ -489,7 +490,8 @@ bool HNZConnection::sendTCCommand(unsigned char address, unsigned char value) {
                       c_ack_time_max;
   cmd.type = "TC";
   cmd.addr = address;
-  m_command_sent.push_back(cmd);
+  // TC command has a high priority
+  m_command_sent.push_front(cmd);
 
   return true;
 }

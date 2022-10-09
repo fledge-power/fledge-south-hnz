@@ -72,17 +72,27 @@
 using namespace rapidjson;
 using namespace std;
 
+/**
+ * @brief Structure containing the 2 bytes of a BULLE
+ */
 struct BulleFormat {
   unsigned char first;
   unsigned char second;
 } typedef BulleFormat;
 
+/**
+ * @brief Structure containing the time for General Interrogation
+ */
 struct GIScheduleFormat {
+  /// indicate if GI is enable
   bool activate;
   int hour;
   int min;
 } typedef GIScheduleFormat;
 
+/**
+ * @brief Class used to manage the HNZ configuration.
+ */
 class HNZConf {
  public:
   HNZConf();
@@ -119,21 +129,112 @@ class HNZConf {
    */
   int getNumberCG();
 
+  /**
+   * Get the IP address to remote IEC 104 server
+   *
+   * @return string
+   */
   string get_ip_address() { return m_ip; }
+
+  /**
+   * Get the port number to remote IEC 104 server
+   *
+   * @return unsigned int
+   */
   unsigned int get_port() { return m_port; }
+
+  /**
+   * Get the remote server station address
+   *
+   * @return unsigned int
+   */
   unsigned int get_remote_station_addr() { return m_remote_station_addr; }
+
+  /**
+   * Get the timeout before declaring the remote server unreachable
+   *
+   * @return unsigned int
+   */
   unsigned int get_inacc_timeout() { return m_inacc_timeout; }
+
+  /**
+   * Get the max number of SARM messages before handing over to the passive path
+   * (A/B)
+   *
+   * @return unsigned int
+   */
   unsigned int get_max_sarm() { return m_max_sarm; }
+
+  /**
+   * Get the max number of authorized repeats for path A
+   *
+   * @return unsigned int
+   */
   unsigned int get_repeat_path_A() { return m_repeat_path_A; }
+
+  /**
+   * Get the max number of authorized repeats for path B
+   *
+   * @return unsigned int
+   */
   unsigned int get_repeat_path_B() { return m_repeat_path_B; }
+
+  /**
+   * Get the time allowed for the receiver to acknowledge a frame, after this
+   * time, the sender repeats the frame.
+   *
+   * @return unsigned int
+   */
   unsigned int get_repeat_timeout() { return m_repeat_timeout; }
+
+  /**
+   * Get the number of frames allowed to be received without acknowledgement.
+   *
+   * @return unsigned int
+   */
   unsigned int get_anticipation_ratio() { return m_anticipation_ratio; }
-  unsigned int get_default_msg_period() { return m_default_msg_period; }
+
+  /**
+   * Get the test message code in sending direction.
+   *
+   * @return unsigned int
+   */
   BulleFormat get_test_msg_send() { return m_test_msg_send; }
+
+  /**
+   * Get the test message code in receiving direction.
+   *
+   * @return unsigned int
+   */
   BulleFormat get_test_msg_receive() { return m_test_msg_receive; }
+
+  /**
+   * Get the scheduled time for General Interrogation sending.
+   *
+   * @return unsigned int
+   */
   GIScheduleFormat get_gi_schedule() { return m_gi_schedule; }
+
+  /**
+   * Get the repeat GI for this number of times in case it is incomplete.
+   *
+   * @return unsigned int
+   */
   unsigned int get_gi_repeat_count() { return m_gi_repeat_count; }
+
+  /**
+   * Get the time to wait for General Interrogation (GI) completion.
+   *
+   * @return unsigned int
+   */
   unsigned int get_gi_time() { return m_gi_time; }
+
+  /**
+   * Get the time to wait before receving a acknowledgement for a control
+   * command.
+   *
+   * @return unsigned int
+   */
   unsigned int get_c_ack_time() { return m_c_ack_time; }
 
  private:
@@ -146,7 +247,6 @@ class HNZConf {
   unsigned int m_repeat_path_B;
   unsigned int m_repeat_timeout;
   unsigned int m_anticipation_ratio;
-  unsigned int m_default_msg_period;
   BulleFormat m_test_msg_send;
   BulleFormat m_test_msg_receive;
   GIScheduleFormat m_gi_schedule;

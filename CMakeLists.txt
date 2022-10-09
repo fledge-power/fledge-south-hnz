@@ -14,8 +14,6 @@ message("fledge root : ${FLEDGE_ROOT}")
 # then Fledge libraries and header files are pulled from FLEDGE_ROOT path.
 
 set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
-set("-I${HOME}rte_pmp/hnz/perso_hnz/lib/src/inc")
-set("-I${HOME}rte_pmp/hnz/perso_hnz/lib/src/hal/inc")
 
 # Generation version header file
 set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
@@ -37,7 +35,7 @@ set(NEEDED_FLEDGE_LIBS common-lib)
 # Find source files
 file(GLOB SOURCES *.cpp)
 
-# Find Fledge includes and libs, by including FindFledge.cmak file
+# Find Fledge includes and libs, by including FindFledge.cmake file
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Fledge)
 # If errors: make clean and remove Makefile
@@ -52,11 +50,18 @@ endif()
 # On success, FLEDGE_INCLUDE_DIRS and FLEDGE_LIB_DIRS variables are set 
 
 
-# Find the lib60870 files
-if (NOT "$ENV{LIB_HNZ}" STREQUAL "")
+# Check that HNZ lib environment var is set
+if (DEFINED ENV{LIB_HNZ})
 	set(LIB_HNZ "$ENV{LIB_HNZ}")
 else()
-	set(LIB_HNZ "$ENV{HOME}rte_pmp/hnz/perso_hnz/lib")
+	message(FATAL_ERROR "The env var LIB_HNZ is not set. You must define it in order to compile the plugin.")
+	return()
+endif()
+
+if (NOT EXISTS "${LIB_HNZ}/src/")
+	message(FATAL_ERROR "LIB_HNZ $(LIB_HNZ)/src \n"
+			"does not appear to be pointing at a valid libhnz source tree")
+	return()
 endif()
 
 # Add ./include
@@ -69,20 +74,13 @@ link_directories(${FLEDGE_LIB_DIRS})
 # Create shared library
 link_directories(${LIB_HNZ}/src/hnz)
 
+# Add other include paths
 if (FLEDGE_SRC)
 	message(STATUS "Using third-party includes " ${FLEDGE_SRC}/C/thirdparty)
 	include_directories(${FLEDGE_SRC}/C/thirdparty/rapidjson/include)
 endif()
-
-# Add other include paths
-if (NOT EXISTS "${LIB_HNZ}/src/")
-	message(FATAL_ERROR "LIB_HNZ ${LIB_HNZ}/src \n"
-			"does not appear to be pointing at a valid libhnz source tree")
-	return()
-endif()
-#include_directories(${LIB_104}/src/hal/inc)
-#include_directories(${LIB_104}/src/common/inc)
-#include_directories(${LIB_104}/src/inc/api)
+message(STATUS "Using hnz lib " ${LIB_HNZ}/src/inc)
+include_directories(${LIB_HNZ}/src/inc)
 
 # Create shared library
 add_library(${PROJECT_NAME} SHARED ${SOURCES} version.h)
@@ -90,14 +88,13 @@ add_library(${PROJECT_NAME} SHARED ${SOURCES} version.h)
 # Add Fledge library names
 target_link_libraries(${PROJECT_NAME} ${NEEDED_FLEDGE_LIBS})
 
-# Add the lib60870
+# Add the hnz lib
 find_library(LIBHNZ libhnz.so "${LIB_HNZ}/src/hnz/")
 if (LIBHNZ-NOTFOUND)
 	message(FATAL_ERROR "The HNZ library libhnz was not found in ${LIB_HNZ}/src/hnz/\n"
 			"Please build the library and set the environment variable LIB_HNZ to root of libhnz source tree")
 	return()
 endif()
-
 target_link_libraries(${PROJECT_NAME} -L${LIB_HNZ}/src/hnz libhnz)
 
 # Add additional libraries

@@ -16,17 +16,16 @@ set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
 # Generation version header file
 set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
 
-
 add_custom_command(
-	  OUTPUT version.h
-	  DEPENDS ${CMAKE_SOURCE_DIR}/../VERSION
-	  COMMAND ${CMAKE_SOURCE_DIR}/../mkversion ${CMAKE_SOURCE_DIR}/..
-	  COMMENT "Generating version header"
-	  VERBATIM
+  OUTPUT version.h
+  DEPENDS ${CMAKE_SOURCE_DIR}/../VERSION
+  COMMAND ${CMAKE_SOURCE_DIR}/../mkversion ${CMAKE_SOURCE_DIR}/..
+  COMMENT "Generating version header"
+  VERBATIM
 )
 
 include_directories(${CMAKE_BINARY_DIR})
-include_directories(/home/lucas/fledge/C/thirdparty/rapidjson/include)
+#include_directories(/home/lucas/fledge/C/thirdparty/rapidjson/include)
 
 # Set plugin type (south, north, filter)
 set(PLUGIN_TYPE "south")
@@ -61,6 +60,20 @@ endif()
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 
+# Check that HNZ lib environment var is set
+if (DEFINED ENV{LIB_HNZ})
+	set(LIB_HNZ "$ENV{LIB_HNZ}")
+else()
+	message(FATAL_ERROR "The env var LIB_HNZ is not set. You must define it in order to compile the plugin.")
+	return()
+endif()
+
+if (NOT EXISTS "${LIB_HNZ}/src/")
+	message(FATAL_ERROR "LIB_HNZ $(LIB_HNZ)/src \n"
+			"does not appear to be pointing at a valid libhnz source tree")
+	return()
+endif()
+
 # Add ../include
 include_directories(../include)
 include_directories(/usr/local/include/libliblocalhnz)
@@ -69,6 +82,16 @@ include_directories(${FLEDGE_INCLUDE_DIRS})
 
 # Add Fledge lib path
 link_directories(${FLEDGE_LIB_DIRS})
+# Create shared library
+link_directories(${LIB_HNZ}/src/hnz)
+
+# Add other include paths
+if (FLEDGE_SRC)
+	message(STATUS "Using third-party includes " ${FLEDGE_SRC}/C/thirdparty)
+	include_directories(${FLEDGE_SRC}/C/thirdparty/rapidjson/include)
+endif()
+message(STATUS "Using hnz lib " ${LIB_HNZ}/src/inc)
+include_directories(${LIB_HNZ}/src/inc)
 
 # Link runTests with what we want to test and the GTest and pthread library
 add_executable(RunTests ${unittests} ${SOURCES} version.h)
@@ -83,5 +106,12 @@ endif()
 target_link_libraries(${PROJECT_NAME} ${GTEST_LIBRARIES} pthread)
 target_link_libraries(${PROJECT_NAME} ${NEEDED_FLEDGE_LIBS})
 target_link_libraries(${PROJECT_NAME}  ${Boost_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} liblibhnz.so)
+# Add the hnz lib
+find_library(LIBHNZ libhnz.so "${LIB_HNZ}/src/hnz/")
+if (LIBHNZ-NOTFOUND)
+	message(FATAL_ERROR "The HNZ library libhnz was not found in ${LIB_HNZ}/src/hnz/\n"
+			"Please build the library and set the environment variable LIB_HNZ to root of libhnz source tree")
+	return()
+endif()
+target_link_libraries(${PROJECT_NAME} -L${LIB_HNZ}/src/hnz libhnz)
 target_link_libraries(${PROJECT_NAME} -lpthread -ldl )

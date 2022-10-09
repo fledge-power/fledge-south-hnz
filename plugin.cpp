@@ -102,7 +102,7 @@ using namespace std;
  * Default configuration
  */
 
-const char *default_config = QUOTE({
+static const char *default_config = QUOTE({
   "plugin" : {
     "description" : "hnz south plugin",
     "type" : "string",
@@ -198,7 +198,7 @@ void plugin_start(PLUGIN_HANDLE *handle) {
  * Register ingest callback
  */
 void plugin_register_ingest(PLUGIN_HANDLE *handle, INGEST_CB cb, void *data) {
-  if (!handle) throw new exception();
+  if (!handle) throw exception();
 
   HNZ *hnz = (HNZ *)handle;
   hnz->registerIngest(data, cb);

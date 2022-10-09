@@ -141,27 +141,27 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
   vector<Reading> readings;   // Contains data object to push to fledge
 
   switch (t) {
-    case TM4:
+    case TM4_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TMA");
       m_handleTM4(readings, data);
       break;
-    case TSCE:
+    case TSCE_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TSCE");
       m_handleTSCE(readings, data);
       break;
-    case TSCG:
+    case TSCG_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TSCG");
       m_handleTSCG(readings, data);
       break;
-    case TMN:
+    case TMN_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TMN");
       m_handleTMN(readings, data);
       break;
-    case 0x09:
+    case TC_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TC ACK");
       m_handleATC(readings, data);
       break;
-    case 0x0A:
+    case TVCACK_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TVC ACK");
       m_handleATVC(readings, data);
       break;

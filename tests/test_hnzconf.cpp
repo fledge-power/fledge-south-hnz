@@ -1,14 +1,9 @@
 #include <gtest/gtest.h>
 #include <plugin_api.h>
-#include <rapidjson/document.h>
-#include <string.h>
-
-#include <string>
 
 #include "hnzconf.h"
 
 using namespace std;
-using namespace rapidjson;
 
 string protocol_stack_def = QUOTE({
   "protocol_stack" : {

@@ -60,7 +60,7 @@ void HNZ::stop() {
     m_receiving_thread_B->join();
     m_receiving_thread_B = nullptr;
   }
-  Logger::getLogger()->info("Plugin stopped");
+  Logger::getLogger()->info("Plugin stopped !");
 }
 
 bool HNZ::setJsonConfig(const string &protocol_conf_json,

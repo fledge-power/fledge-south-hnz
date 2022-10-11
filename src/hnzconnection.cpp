@@ -1,3 +1,13 @@
+/*
+ * Fledge HNZ south plugin.
+ *
+ * Copyright (c) 2022, RTE (https://www.rte-france.com)
+ *
+ * Released under the Apache 2.0 Licence
+ *
+ * Author: Justin Facquet
+ */
+
 #include "hnzconnection.h"
 
 HNZConnection::HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge) {

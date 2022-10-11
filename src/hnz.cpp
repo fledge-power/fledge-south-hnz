@@ -8,7 +8,7 @@
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
 
-#include "include/hnz.h"
+#include "hnz.h"
 
 HNZ::HNZ() : m_hnz_conf(new HNZConf), m_is_running(false) {}
 

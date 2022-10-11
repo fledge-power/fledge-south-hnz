@@ -242,11 +242,11 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
 
   if (m_remote_address == address) {
     switch (type) {
-      case UA:
+      case UA_CODE:
         Logger::getLogger()->info(m_name_log + " Received UA");
         m_receivedUA();
         break;
-      case SARM:
+      case SARM_CODE:
         Logger::getLogger()->info(m_name_log + " Received SARM");
         m_receivedSARM();
         break;
@@ -295,32 +295,32 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data,
   unsigned char t = data[0];  // Payload type
 
   switch (t) {
-    case TM4:
+    case TM4_CODE:
       Logger::getLogger()->info(m_name_log + " Received TMA");
       len = 6;
       break;
-    case TSCE:
+    case TSCE_CODE:
       Logger::getLogger()->info(m_name_log + " Received TSCE");
       len = 5;
       break;
-    case TSCG:
+    case TSCG_CODE:
       Logger::getLogger()->info(m_name_log + " Received TSCG");
       len = 6;
       break;
-    case TMN:
+    case TMN_CODE:
       Logger::getLogger()->info(m_name_log + " Received TMN");
       len = 7;
       break;
-    case MODULO:
+    case MODULO_CODE:
       module10M = (int)data[1];
       Logger::getLogger()->info(m_name_log + " Received Modulo 10mn");
       len = 2;
       break;
-    case TCACK:
+    case TCACK_CODE:
       Logger::getLogger()->info(m_name_log + " Received TC ACK");
       len = 3;
       break;
-    case TVCACK:
+    case TVCACK_CODE:
       Logger::getLogger()->info(m_name_log + " Received TVC ACK");
       len = 3;
       break;
@@ -410,7 +410,7 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
 }
 
 void HNZPath::m_sendSARM() {
-  unsigned char msg[1]{SARM};
+  unsigned char msg[1]{SARM_CODE};
   m_hnz_client->createAndSendFr(m_address_ARP, msg, sizeof(msg));
   Logger::getLogger()->info(m_name_log + " SARM sent [" +
                             to_string(m_nbr_sarm_sent + 1) + " / " +
@@ -419,7 +419,7 @@ void HNZPath::m_sendSARM() {
 }
 
 void HNZPath::m_sendUA() {
-  unsigned char msg[1]{UA};
+  unsigned char msg[1]{UA_CODE};
   m_hnz_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
   Logger::getLogger()->info(m_name_log + " UA sent");
 }
@@ -520,7 +520,7 @@ void HNZPath::m_send_date_setting() {
   unsigned char msg[4];
   time_t now = time(0);
   tm* time_struct = gmtime(&now);
-  msg[0] = SETDATE;
+  msg[0] = SETDATE_CODE;
   msg[1] = time_struct->tm_mday;
   msg[2] = time_struct->tm_mon + 1;
   msg[3] = time_struct->tm_year % 100;
@@ -539,7 +539,7 @@ void HNZPath::m_send_time_setting() {
   long int ms_today = ms_since_epoch % 86400000;
   mod10m = ms_today / 600000;
   frac = (ms_today - (mod10m * 600000)) / 10;
-  msg[0] = SETTIME;
+  msg[0] = SETTIME_CODE;
   msg[1] = mod10m & 0xFF;
   msg[2] = frac >> 8;
   msg[3] = frac & 0xff;
@@ -566,7 +566,7 @@ void HNZPath::sendGeneralInterrogation() {
 bool HNZPath::sendTVCCommand(unsigned char address, int value,
                              unsigned char val_coding) {
   unsigned char msg[4];
-  msg[0] = TVC;
+  msg[0] = TVC_CODE;
   msg[1] = (address & 0x1F) | ((val_coding & 0x1) << 5);
   if ((val_coding & 0x1) == 1) {
     msg[2] = value & 0xFF;
@@ -599,7 +599,7 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value,
 bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   string address_str = to_string(address);
   unsigned char msg[3];
-  msg[0] = TC;
+  msg[0] = TC_CODE;
   msg[1] = stoi(address_str.substr(0, address_str.length() - 2));
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 

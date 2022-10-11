@@ -104,6 +104,7 @@ class HNZTestComp : public HNZ {
 class HNZTest : public testing::Test {
  protected:
   void SetUp() {
+    // Create HNZ Plugin object
     if (hnz == nullptr) {
       hnz = new HNZTestComp();
 
@@ -111,6 +112,9 @@ class HNZTest : public testing::Test {
 
       hnz->registerIngest(NULL, ingestCallback);
     }
+
+    // Create a hnz server object
+    if (server == nullptr) server = new HNZServer();
   }
 
   void TearDown() {
@@ -122,7 +126,12 @@ class HNZTest : public testing::Test {
       delete storedReadings.front();
       storedReadings.pop();
     }
+
+    server->stop();
+    delete server;
   }
+
+  static void startHNZServer(int port) { server->start(port); }
 
   static void startHNZ() { hnz->start(); }
 
@@ -207,25 +216,35 @@ class HNZTest : public testing::Test {
 
   // static boost::thread thread_;
   static HNZTestComp* hnz;
+  static HNZServer* server;
   static int ingestCallbackCalled;
   static queue<Reading*> storedReadings;
 };
 
 // boost::thread HNZTest::thread_;
 HNZTestComp* HNZTest::hnz;
+HNZServer* HNZTest::server;
 int HNZTest::ingestCallbackCalled;
 queue<Reading*> HNZTest::storedReadings;
 
 TEST_F(HNZTest, ReceivingMessages) {
+  // Start a hnz test server
+  long start = time(NULL);
+  thread t1(startHNZServer, TEST_PORT);
+
   // Start HNZ Plugin
   startHNZ();
 
-  // Create a test server
-  HNZServer* server = new HNZServer();
-  server->start(TEST_PORT);
-
-  // Wait for connection to be established
-  this_thread::sleep_for(chrono::milliseconds(2000));
+  // Check server is connected
+  while (!server->isConnected()) {
+    if (time(NULL) - start > 10) {
+      // server->stop();
+      FAIL() << "Something went wrong. Connection is not established in 10s...";
+      break;
+    }
+    this_thread::sleep_for(chrono::milliseconds(500));
+  }
+  t1.join();
 
   // Send SARM
   unsigned char message[1];
@@ -297,7 +316,6 @@ TEST_F(HNZTest, ReceivingMessages) {
   delete currentReading;
   storedReadings.pop();
 
-  // TODO : Send other messages
   printf("[HNZ Server] Sending a TM4\n");
   unsigned char message2[8]{0x02, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
   server->createAndSendFr(0x05, message2, sizeof(message2));
@@ -330,10 +348,4 @@ TEST_F(HNZTest, ReceivingMessages) {
     delete currentReading;
     storedReadings.pop();
   }
-
-  printf("[HNZ Server] Stopping server...\n");
-  server->stop();
-  printf("[HNZ Server] Server stopped...\n");
-
-  delete server;
 }

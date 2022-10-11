@@ -19,14 +19,15 @@
 #include <sstream>
 #include <thread>
 
-#include "../../libhnz/src/inc/hnz_client.h"
 #include "hnzconf.h"
 #include "hnzconnection.h"
+#include "hnzpath.h"
 
 using namespace std;
 using namespace std::chrono;
 
 class HNZConnection;
+class HNZPath;
 
 /**
  * @brief Class used to receive messages and push them to fledge.
@@ -90,83 +91,68 @@ class HNZ {
 
  private:
   string m_asset;  // Plugin name in fledge
-
-  HNZConf* m_hnz_conf;              // HNZ Configuration
-  HNZClient* m_client;              // HNZ Client (lib hnz)
-  HNZConnection* m_hnz_connection;  // HNZ Connection handling
-
-  thread* m_receiving_thread;
-
   atomic<bool> m_is_running;
-
-  INGEST_CB m_ingest;  // Callback function used to send data to south service
-  void* m_data;        // Ingest function data
-  bool m_connected;
-  int m_remote_address;
-  BulleFormat m_test_msg_receive;
-
-  int module10M;  // HNZ Protocol related vars
-
+  thread *m_receiving_thread_A, *m_receiving_thread_B;  // Receiving threads
   vector<Reading> m_gi_readings_temp;  // Contains all Reading of GI waiting for
                                        // the completeness check
+
+  // Others HNZ related class
+  HNZConf* m_hnz_conf;              // HNZ Configuration
+  HNZConnection* m_hnz_connection;  // HNZ Connection handling
+
+  // Fledge related
+  INGEST_CB m_ingest;  // Callback function used to send data to south service
+  void* m_data;        // Ingest function data
+
+  // Configuration defined variables
+  int m_remote_address;
+  BulleFormat m_test_msg_receive;
 
   /**
    * Waits for new messages and processes them
    */
-  void receive();
+  void receive(HNZPath* hnz_path_in_use);
 
   /**
-   * Connect (or re-connect) to the HNZ RTU
+   * Handle a message: translate the message and send it to Fledge.
    */
-  bool connect();
-
-  /**
-   * Analyzes the received frame.
-   * @param frReceived
-   */
-  void m_analyze_frame(MSG_TRAME* frReceived);
-
-  /**
-   * Analyze an information frame
-   * @return frame is understood
-   */
-  void analyze_info_frame(unsigned char* data, int size);
+  void m_handle_message(vector<unsigned char> data);
 
   /**
    * Handle TM4 messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTM4(vector<Reading>& reading, unsigned char* data);
+  void m_handleTM4(vector<Reading>& reading, vector<unsigned char> data);
 
   /**
    * Handle TSCE messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCE(vector<Reading>& reading, unsigned char* data);
+  void m_handleTSCE(vector<Reading>& reading, vector<unsigned char> data);
 
   /**
    * Handle TSCG messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCG(vector<Reading>& reading, unsigned char* data);
+  void m_handleTSCG(vector<Reading>& reading, vector<unsigned char> data);
 
   /**
    * Handle TMN messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTMN(vector<Reading>& reading, unsigned char* data);
+  void m_handleTMN(vector<Reading>& reading, vector<unsigned char> data);
 
   /**
    * Handle TVC ACK messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleATVC(vector<Reading>& reading, unsigned char* data);
+  void m_handleATVC(vector<Reading>& reading, vector<unsigned char> data);
 
   /**
    * Handle TC ACK messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleATC(vector<Reading>& reading, unsigned char* data);
+  void m_handleATC(vector<Reading>& reading, vector<unsigned char> data);
 
   /**
    * Create a reading from the values given in argument.
@@ -201,8 +187,6 @@ class HNZ {
    * @param reading The reading to push to fledge
    */
   void ingest(Reading& reading);
-
-  string convert_data_to_str(unsigned char* data, int len);
 };
 
 #endif

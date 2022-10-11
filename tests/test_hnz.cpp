@@ -4,6 +4,7 @@
 
 #include <boost/thread.hpp>
 #include <chrono>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -28,24 +29,70 @@ static string exchanged_data_def = QUOTE({
   "exchanged_data" : {
     "name" : "SAMPLE",
     "version" : "1.0",
-    "datapoints" : [ {
-      "label" : "TS1",
-      "pivot_id" : "ID114562",
-      "pivot_type" : "SpsTyp",
-      "protocols" : [
-        {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_1"}, {
-          "name" : "tase2",
-          "address" : "S_114562",
-          "typeid" : "Data_StateQTimeTagExtended"
-        },
-        {
+    "datapoints" : [
+      {
+        "label" : "TS1",
+        "pivot_id" : "ID114562",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [
+          {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_1"}, {
+            "name" : "tase2",
+            "address" : "S_114562",
+            "typeid" : "Data_StateQTimeTagExtended"
+          },
+          {
+            "name" : "hnz",
+            "station_address" : 1,
+            "message_address" : 511,
+            "message_code" : "TSCE"
+          }
+        ]
+      },
+      {
+        "label" : "TM1",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
           "name" : "hnz",
           "station_address" : 1,
-          "message_address" : 511,
-          "message_code" : "TSCE"
-        }
-      ]
-    } ]
+          "message_address" : 20,
+          "message_code" : "TMA"
+        } ]
+      },
+      {
+        "label" : "TM2",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
+          "name" : "hnz",
+          "station_address" : 1,
+          "message_address" : 21,
+          "message_code" : "TMA"
+        } ]
+      },
+      {
+        "label" : "TM3",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
+          "name" : "hnz",
+          "station_address" : 1,
+          "message_address" : 22,
+          "message_code" : "TMA"
+        } ]
+      },
+      {
+        "label" : "TM4",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
+          "name" : "hnz",
+          "station_address" : 1,
+          "message_address" : 23,
+          "message_code" : "TMA"
+        } ]
+      }
+    ]
   }
 });
 
@@ -68,7 +115,13 @@ class HNZTest : public testing::Test {
 
   void TearDown() {
     hnz->stop();
+
     delete hnz;
+
+    while (!storedReadings.empty()) {
+      delete storedReadings.front();
+      storedReadings.pop();
+    }
   }
 
   static void startHNZ() { hnz->start(); }
@@ -146,7 +199,8 @@ class HNZTest : public testing::Test {
     //     printf("name: %s value: %s\n", sdp->getName().c_str(),
     //     sdp->getData().toString().c_str());
     // }
-    storedReading = new Reading(reading);
+
+    storedReadings.push(new Reading(reading));
 
     ingestCallbackCalled++;
   }
@@ -154,15 +208,15 @@ class HNZTest : public testing::Test {
   // static boost::thread thread_;
   static HNZTestComp* hnz;
   static int ingestCallbackCalled;
-  static Reading* storedReading;
+  static queue<Reading*> storedReadings;
 };
 
 // boost::thread HNZTest::thread_;
 HNZTestComp* HNZTest::hnz;
 int HNZTest::ingestCallbackCalled;
-Reading* HNZTest::storedReading;
+queue<Reading*> HNZTest::storedReadings;
 
-TEST_F(HNZTest, ReceivingMessage) {
+TEST_F(HNZTest, ReceivingMessages) {
   // Start HNZ Plugin
   startHNZ();
 
@@ -171,7 +225,7 @@ TEST_F(HNZTest, ReceivingMessage) {
   server->start(TEST_PORT);
 
   // Wait for connection to be established
-  this_thread::sleep_for(chrono::milliseconds(5000));
+  this_thread::sleep_for(chrono::milliseconds(2000));
 
   // Send SARM
   unsigned char message[1];
@@ -205,8 +259,8 @@ TEST_F(HNZTest, ReceivingMessage) {
   printf("[HNZ Server] Connection OK !!\n");
 
   printf("[HNZ Server] Sending a TSCE\n");
-  unsigned char message3[6]{0x04, 0x0B, 0x33, 0x28, 0x36, 0xF2};
-  server->createAndSendFr(0x05, message3, sizeof(message3));
+  unsigned char message1[6]{0x00, 0x0B, 0x33, 0x28, 0x36, 0xF2};
+  server->createAndSendFr(0x05, message1, sizeof(message1));
   printf("[HNZ Server] TSCE sent\n");
 
   // Wait a lit bit to received the frame
@@ -214,10 +268,11 @@ TEST_F(HNZTest, ReceivingMessage) {
 
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
-  ASSERT_EQ("TS1", storedReading->getAssetName());
+  Reading* currentReading = storedReadings.front();
+  ASSERT_EQ("TS1", currentReading->getAssetName());
 
-  ASSERT_TRUE(hasObject(*storedReading, "data_object"));
-  Datapoint* data_object = getObject(*storedReading, "data_object");
+  ASSERT_TRUE(hasObject(*currentReading, "data_object"));
+  Datapoint* data_object = getObject(*currentReading, "data_object");
   ASSERT_NE(nullptr, data_object);
   ASSERT_TRUE(hasChild(*data_object, "do_type"));
   ASSERT_TRUE(hasChild(*data_object, "do_station"));
@@ -239,9 +294,42 @@ TEST_F(HNZTest, ReceivingMessage) {
   ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_c")));
   ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_s")));
 
-  delete storedReading;
+  delete currentReading;
+  storedReadings.pop();
 
   // TODO : Send other messages
+  printf("[HNZ Server] Sending a TM4\n");
+  unsigned char message2[8]{0x02, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
+  server->createAndSendFr(0x05, message2, sizeof(message2));
+  printf("[HNZ Server] TM4 sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(2000));
+
+  // Check that ingestCallback had been called 4x time more
+  ASSERT_EQ(ingestCallbackCalled, 5);
+  for (int i = 0; i < 4; i++) {
+    currentReading = storedReadings.front();
+
+    ASSERT_EQ("TM" + to_string(i + 1), currentReading->getAssetName());
+    ASSERT_TRUE(hasObject(*currentReading, "data_object"));
+    data_object = getObject(*currentReading, "data_object");
+    ASSERT_NE(nullptr, data_object);
+    ASSERT_TRUE(hasChild(*data_object, "do_type"));
+    ASSERT_TRUE(hasChild(*data_object, "do_station"));
+    ASSERT_TRUE(hasChild(*data_object, "do_addr"));
+    ASSERT_TRUE(hasChild(*data_object, "do_value"));
+    ASSERT_TRUE(hasChild(*data_object, "do_valid"));
+
+    ASSERT_EQ("TMA", getStrValue(getChild(*data_object, "do_type")));
+    ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
+    ASSERT_EQ((int64_t)20 + i, getIntValue(getChild(*data_object, "do_addr")));
+    ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_value")));
+    ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
+
+    delete currentReading;
+    storedReadings.pop();
+  }
 
   printf("[HNZ Server] Stopping server...\n");
   server->stop();

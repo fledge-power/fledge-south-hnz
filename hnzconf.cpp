@@ -47,15 +47,19 @@ void HNZConf::importConfigJson(const string &json) {
     const Value &transport = info[TRANSPORT_LAYER];
 
     if (m_check_array(transport, CONNECTIONS)) {
-      // Use only the first ip/port (TODO : redundancy)
       const Value &conn = transport[CONNECTIONS];
-      if (conn.Size() >= 1) {
-        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip);
-        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port, DEFAULT_PORT);
+      if (conn.Size() == 1) {
+        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
+        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
+      } else if (conn.Size() == 2) {
+        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
+        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
+        is_complete &= m_retrieve(conn[1], IP_ADDR, &m_ip_B);
+        is_complete &= m_retrieve(conn[1], IP_PORT, &m_port_B, DEFAULT_PORT);
       } else {
         string s = IP_ADDR;
         Logger::getLogger()->error(
-            "Missing connections informations (at least one " + s + ").");
+            "Bad connections informations (needed one or two " + s + ").");
         is_complete = false;
       }
     }

@@ -174,7 +174,7 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
   }
 
   if (!readings.empty()) {
-    sendToFledge(readings);
+    m_sendToFledge(readings);
   }
 }
 
@@ -248,7 +248,7 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, vector<unsigned char> data) {
       (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG())) {
     Logger::getLogger()->info("GI completed, push data to fledge.");
     m_hnz_connection->GI_completed();
-    sendToFledge(m_gi_readings_temp);
+    m_sendToFledge(m_gi_readings_temp);
     m_gi_readings_temp.clear();
   }
 }
@@ -400,7 +400,7 @@ Reading HNZ::m_prepare_reading(string label, string msg_code,
   return Reading(label, dp);
 }
 
-void HNZ::sendToFledge(vector<Reading> &readings) {
+void HNZ::m_sendToFledge(vector<Reading> &readings) {
   for (Reading &reading : readings) {
     ingest(reading);
   }

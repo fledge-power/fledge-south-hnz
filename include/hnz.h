@@ -68,13 +68,6 @@ class HNZ {
   void registerIngest(void* data, void (*cb)(void*, Reading));
 
   /**
-   * Sends the datapoints passed as Reading to Fledge
-   * @param readings Vector of one or more Reading depending on the received
-   * message
-   */
-  void sendToFledge(vector<Reading>& readings);
-
-  /**
    * Reset the GI queue. Delete previous TSCG received.
    */
   void resetGIQueue() { m_gi_readings_temp.clear(); };
@@ -169,6 +162,13 @@ class HNZ {
   static Reading m_prepare_reading(string label, string msg_code,
                                    unsigned char station_addr, int msg_address,
                                    int value, int value_coding, bool coding);
+
+  /**
+   * Sends the datapoints passed as Reading to Fledge
+   * @param readings Vector of one or more Reading depending on the received
+   * message
+   */
+  void m_sendToFledge(vector<Reading>& readings);
 
   /**
    * Create a datapoint.

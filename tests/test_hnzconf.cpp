@@ -12,7 +12,7 @@ string protocol_stack_def = QUOTE({
     "transport_layer" : {
       "connections" : [
         {"srv_ip" : "192.168.0.10", "port" : 6001},
-        {"srv_ip" : "192.168.0.10", "port" : 6002}
+        {"srv_ip" : "192.168.0.12", "port" : 6002}
       ]
     },
     "application_layer" : {
@@ -116,9 +116,13 @@ TEST_F(HNZConfTest, ConfComplete) { EXPECT_TRUE(hnz_conf->is_complete()); }
 
 TEST_F(HNZConfTest, GetIPAdress) {
   ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "192.168.0.10");
+  ASSERT_STREQ(hnz_conf->get_ip_address_B().c_str(), "192.168.0.12");
 }
 
-TEST_F(HNZConfTest, GetPort) { ASSERT_EQ(hnz_conf->get_port_A(), 6001); }
+TEST_F(HNZConfTest, GetPort) {
+  ASSERT_EQ(hnz_conf->get_port_A(), 6001);
+  ASSERT_EQ(hnz_conf->get_port_B(), 6002);
+}
 
 TEST_F(HNZConfTest, GetRemoteStationAddr) {
   ASSERT_EQ(hnz_conf->get_remote_station_addr(), 12);
@@ -192,6 +196,8 @@ TEST(HNZCONF, MinimumConf) {
   ASSERT_TRUE(hnz_conf->is_complete());
 
   ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "0.0.0.0");
+
+  ASSERT_STREQ(hnz_conf->get_ip_address_B().c_str(), "");
 
   ASSERT_EQ(hnz_conf->get_port_A(), 6001);
 

@@ -39,14 +39,20 @@ void HNZConnection::stop() {
 
   // Stop the path used (close the TCP connection and stop the threads that
   // manage HNZ connections)
-  if (m_active_path != nullptr) m_active_path->disconnect();
-  if (m_passive_path != nullptr) m_passive_path->disconnect();
+  if (m_active_path != nullptr) {
+    m_active_path->disconnect();
+    delete m_active_path;
+  }
+  if (m_passive_path != nullptr) {
+    m_passive_path->disconnect();
+    delete m_active_path;
+  }
 
   // Wait for the end of the thread that manage the messages
   if (m_messages_thread != nullptr) {
     Logger::getLogger()->debug("Waiting for the messages thread");
     m_messages_thread->join();
-    m_messages_thread = nullptr;
+    delete m_messages_thread;
   }
 
   Logger::getLogger()->info("HNZ Connection stoped !");

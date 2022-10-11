@@ -53,12 +53,12 @@ void HNZ::stop() {
   if (m_receiving_thread_A != nullptr) {
     Logger::getLogger()->info("Waiting for the receiving thread (path A)");
     m_receiving_thread_A->join();
-    m_receiving_thread_A = nullptr;
+    delete m_receiving_thread_A;
   }
   if (m_receiving_thread_B != nullptr) {
     Logger::getLogger()->info("Waiting for the receiving thread (path B)");
     m_receiving_thread_B->join();
-    m_receiving_thread_B = nullptr;
+    delete m_receiving_thread_B;
   }
   Logger::getLogger()->info("Plugin stopped !");
 }

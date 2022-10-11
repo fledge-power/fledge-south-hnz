@@ -115,10 +115,10 @@ TEST(HNZCONF, EmptyConf) {
 TEST_F(HNZConfTest, ConfComplete) { EXPECT_TRUE(hnz_conf->is_complete()); }
 
 TEST_F(HNZConfTest, GetIPAdress) {
-  ASSERT_STREQ(hnz_conf->get_ip_address().c_str(), "192.168.0.10");
+  ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "192.168.0.10");
 }
 
-TEST_F(HNZConfTest, GetPort) { ASSERT_EQ(hnz_conf->get_port(), 6001); }
+TEST_F(HNZConfTest, GetPort) { ASSERT_EQ(hnz_conf->get_port_A(), 6001); }
 
 TEST_F(HNZConfTest, GetRemoteStationAddr) {
   ASSERT_EQ(hnz_conf->get_remote_station_addr(), 12);
@@ -191,9 +191,9 @@ TEST(HNZCONF, MinimumConf) {
 
   ASSERT_TRUE(hnz_conf->is_complete());
 
-  ASSERT_STREQ(hnz_conf->get_ip_address().c_str(), "0.0.0.0");
+  ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "0.0.0.0");
 
-  ASSERT_EQ(hnz_conf->get_port(), 6001);
+  ASSERT_EQ(hnz_conf->get_port_A(), 6001);
 
   ASSERT_EQ(hnz_conf->get_remote_station_addr(), 18);
 

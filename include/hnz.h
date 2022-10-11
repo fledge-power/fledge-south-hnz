@@ -92,7 +92,8 @@ class HNZ {
  private:
   string m_asset;  // Plugin name in fledge
   atomic<bool> m_is_running;
-  thread *m_receiving_thread_A, *m_receiving_thread_B;  // Receiving threads
+  thread *m_receiving_thread_A,
+      *m_receiving_thread_B = nullptr;  // Receiving threads
   vector<Reading> m_gi_readings_temp;  // Contains all Reading of GI waiting for
                                        // the completeness check
 

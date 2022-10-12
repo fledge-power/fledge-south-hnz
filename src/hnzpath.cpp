@@ -46,6 +46,7 @@ HNZPath::~HNZPath() {
   if (m_is_running) {
     disconnect();
   }
+  if (m_hnz_client != nullptr) delete m_hnz_client;
 }
 
 /**
@@ -106,18 +107,21 @@ bool HNZPath::connect() {
 }
 
 void HNZPath::disconnect() {
-  Logger::getLogger()->info(m_name_log + " HNZ Connection stopping...");
+  Logger::getLogger()->debug(m_name_log + " HNZ Connection stopping...");
 
   m_is_running = false;
-  if (m_connected) {
-    m_hnz_client->stop();
-  }
+  m_connected = false;
+  m_hnz_client->stop();
 
   if (m_connection_thread != nullptr) {
+    // To avoid to be here at the same time, we put m_connection_thread =
+    // nullptr
+    thread* temp = m_connection_thread;
+    m_connection_thread = nullptr;
     Logger::getLogger()->debug(m_name_log +
                                " Waiting for the connection thread");
-    m_connection_thread->join();
-    m_connection_thread = nullptr;
+    temp->join();
+    delete temp;
   }
 
   Logger::getLogger()->info(m_name_log + " stopped !");
@@ -193,7 +197,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
     this_thread::sleep_for(sleep);
   } while (m_is_running);
 
-  Logger::getLogger()->info(
+  Logger::getLogger()->debug(
       m_name_log + " HNZ Connection Management thread is shutting down...");
 }
 

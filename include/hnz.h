@@ -91,8 +91,8 @@ class HNZ {
                                        // the completeness check
 
   // Others HNZ related class
-  HNZConf* m_hnz_conf;              // HNZ Configuration
-  HNZConnection* m_hnz_connection;  // HNZ Connection handling
+  HNZConf* m_hnz_conf = nullptr;              // HNZ Configuration
+  HNZConnection* m_hnz_connection = nullptr;  // HNZ Connection handling
 
   // Fledge related
   INGEST_CB m_ingest;  // Callback function used to send data to south service

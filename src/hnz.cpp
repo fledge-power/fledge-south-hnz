@@ -16,6 +16,8 @@ HNZ::~HNZ() {
   if (m_is_running) {
     stop();
   }
+  if (m_hnz_connection != nullptr) delete m_hnz_connection;
+  if (m_hnz_conf != nullptr) delete m_hnz_conf;
 }
 
 void HNZ::start() {
@@ -46,17 +48,18 @@ void HNZ::start() {
 }
 
 void HNZ::stop() {
+  Logger::getLogger()->info("Starting shutdown of HNZ plugin");
   m_is_running = false;
 
-  m_hnz_connection->stop();
+  if (m_hnz_connection != nullptr) m_hnz_connection->stop();
 
   if (m_receiving_thread_A != nullptr) {
-    Logger::getLogger()->info("Waiting for the receiving thread (path A)");
+    Logger::getLogger()->debug("Waiting for the receiving thread (path A)");
     m_receiving_thread_A->join();
     delete m_receiving_thread_A;
   }
   if (m_receiving_thread_B != nullptr) {
-    Logger::getLogger()->info("Waiting for the receiving thread (path B)");
+    Logger::getLogger()->debug("Waiting for the receiving thread (path B)");
     m_receiving_thread_B->join();
     delete m_receiving_thread_B;
   }

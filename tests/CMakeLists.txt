@@ -25,7 +25,6 @@ add_custom_command(
 )
 
 include_directories(${CMAKE_BINARY_DIR})
-#include_directories(/home/lucas/fledge/C/thirdparty/rapidjson/include)
 
 # Set plugin type (south, north, filter)
 set(PLUGIN_TYPE "south")
@@ -39,8 +38,8 @@ find_package(Boost 1.53.0 COMPONENTS ${BOOST_COMPONENTS} REQUIRED)
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
 # Find source files
-file(GLOB SOURCES ../plugin.cpp ../src/*.cpp)
-file(GLOB unittests "*.cpp")
+file(GLOB SOURCES ../plugin.cpp ../src/*.cpp ./server/*.cpp)
+file(GLOB unittests *.cpp)
 
 # Find Fledge includes and libs, by including FindFledge.cmak file
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/..)

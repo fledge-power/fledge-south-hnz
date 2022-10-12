@@ -97,21 +97,6 @@ TEST(HNZCONF, EmptyConf) {
   delete conf;
 }
 
-// TEST(HNZCONF,ConfWithConfigJsonButNotComplete)
-// {
-//     HNZConf* conf = new HNZConf();
-//     conf->importConfigJson();
-//     EXPECT_FALSE(conf->is_complete());
-// }
-
-// TEST(HNZCONF,ConfWithExchangedDataButNotComplete)
-// {
-//     HNZConf* conf = new HNZConf();
-//     conf->importExchangedDataJson();
-//     EXPECT_FALSE(conf->is_complete());
-
-// }
-
 TEST_F(HNZConfTest, ConfComplete) { EXPECT_TRUE(hnz_conf->is_complete()); }
 
 TEST_F(HNZConfTest, GetIPAdress) {
@@ -228,5 +213,22 @@ TEST(HNZCONF, MinimumConf) {
 
   ASSERT_EQ(hnz_conf->get_c_ack_time(), 10);
 
+  delete hnz_conf;
+}
+
+string wrong_protocol_stack_def = QUOTE({
+  "protocol_stack" : {
+    "name" : "hnzclient",
+    "version" : "1.0",
+    "transport_layer" : {"connections" : [ {"srv_ip" : "0.0.0.0"} ]}
+  }
+});
+
+TEST(HNZCONF, ConfNotComplete) {
+  HNZConf* hnz_conf = new HNZConf();
+  hnz_conf->importConfigJson(wrong_protocol_stack_def);
+  hnz_conf->importExchangedDataJson(exchanged_data_def);
+
+  ASSERT_FALSE(hnz_conf->is_complete());
   delete hnz_conf;
 }

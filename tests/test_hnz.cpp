@@ -9,21 +9,9 @@
 #include <vector>
 
 #include "hnz.h"
-#include "hnz_server.h"
+#include "server/basic_hnz_server.h"
 
 using namespace std;
-
-#define TEST_PORT 6001
-
-static string protocol_stack_def = QUOTE({
-  "protocol_stack" : {
-    "name" : "hnzclient",
-    "version" : "1.0",
-    "transport_layer" :
-        {"connections" : [ {"srv_ip" : "0.0.0.0", "port" : TEST_PORT} ]},
-    "application_layer" : {"remote_station_addr" : 1}
-  }
-});
 
 static string exchanged_data_def = QUOTE({
   "exchanged_data" : {
@@ -96,6 +84,18 @@ static string exchanged_data_def = QUOTE({
   }
 });
 
+string protocol_stack_generator(int port) {
+  // For tests, we have to use different ports for the server because between 2
+  // tests, socket isn't properly closed.
+  return "{ \"protocol_stack\" : { \"name\" : \"hnzclient\", \"version\" : "
+         "\"1.0\", \"transport_layer\" : { \"connections\" : [ {\"srv_ip\" : "
+         "\"0.0.0.0\", \"port\" : " +
+         to_string(port) +
+         "} ]}, \"application_layer\" : { "
+         "\"remote_station_addr\" : "
+         "1 } } }";
+}
+
 class HNZTestComp : public HNZ {
  public:
   HNZTestComp() : HNZ() {}
@@ -105,16 +105,11 @@ class HNZTest : public testing::Test {
  protected:
   void SetUp() {
     // Create HNZ Plugin object
-    if (hnz == nullptr) {
-      hnz = new HNZTestComp();
+    hnz = new HNZTestComp();
 
-      hnz->setJsonConfig(protocol_stack_def, exchanged_data_def);
+    hnz->registerIngest(NULL, ingestCallback);
 
-      hnz->registerIngest(NULL, ingestCallback);
-    }
-
-    // Create a hnz server object
-    if (server == nullptr) server = new HNZServer();
+    ingestCallbackCalled = 0;
   }
 
   void TearDown() {
@@ -126,14 +121,13 @@ class HNZTest : public testing::Test {
       delete storedReadings.front();
       storedReadings.pop();
     }
-
-    server->stop();
-    delete server;
   }
 
-  static void startHNZServer(int port) { server->start(port); }
+  static void startHNZ(int port) {
+    hnz->setJsonConfig(protocol_stack_generator(port), exchanged_data_def);
 
-  static void startHNZ() { hnz->start(); }
+    hnz->start();
+  }
 
   static bool hasChild(Datapoint& dp, string childLabel) {
     DatapointValue& dpv = dp.getData();
@@ -216,70 +210,43 @@ class HNZTest : public testing::Test {
 
   // static boost::thread thread_;
   static HNZTestComp* hnz;
-  static HNZServer* server;
   static int ingestCallbackCalled;
   static queue<Reading*> storedReadings;
 };
 
 // boost::thread HNZTest::thread_;
 HNZTestComp* HNZTest::hnz;
-HNZServer* HNZTest::server;
 int HNZTest::ingestCallbackCalled;
 queue<Reading*> HNZTest::storedReadings;
 
-TEST_F(HNZTest, ReceivingMessages) {
-  // Start a hnz test server
-  long start = time(NULL);
-  thread t1(startHNZServer, TEST_PORT);
+TEST_F(HNZTest, TCPConnectionOnePathOK) {
+  BasicHNZServer* server = new BasicHNZServer(6001, 0x05);
+
+  server->startHNZServer();
 
   // Start HNZ Plugin
-  startHNZ();
+  startHNZ(6001);
 
-  // Check server is connected
-  while (!server->isConnected()) {
-    if (time(NULL) - start > 10) {
-      // server->stop();
-      FAIL() << "Something went wrong. Connection is not established in 10s...";
-      break;
-    }
-    this_thread::sleep_for(chrono::milliseconds(500));
-  }
-  t1.join();
+  if (!server->HNZServerIsReady())
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
 
-  // Send SARM
-  unsigned char message[1];
-  message[0] = 0x0F;
-  server->createAndSendFr(0x05, message, sizeof(message));
+  SUCCEED();
 
-  // Wait for UA and send UA in response of SARM
-  bool ua_ok = false;
-  bool sarm_ok = false;
-  while (1) {
-    unsigned char* data = server->receiveData();
-    unsigned char c = data[1];
-    switch (c) {
-      case UA_CODE:
-        printf("[HNZ Server] UA received\n");
-        ua_ok = true;
-        break;
-      case SARM_CODE:
-        printf("[HNZ Server] SARM received, sending UA\n");
-        unsigned char message[1];
-        message[0] = 0x63;
-        server->createAndSendFr(0x07, message, sizeof(message));
-        sarm_ok = true;
-        break;
-      default:
-        printf("[HNZ Server] Neither UA nor SARM\n");
-        break;
-    }
-    if (ua_ok && sarm_ok) break;
-  }
-  printf("[HNZ Server] Connection OK !!\n");
+  delete server;
+}
 
-  printf("[HNZ Server] Sending a TSCE\n");
-  unsigned char message1[6]{0x00, 0x0B, 0x33, 0x28, 0x36, 0xF2};
-  server->createAndSendFr(0x05, message1, sizeof(message1));
+TEST_F(HNZTest, ReceivingMessages) {
+  BasicHNZServer* server = new BasicHNZServer(6002, 0x05);
+
+  server->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6002);
+
+  if (!server->HNZServerIsReady())
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   printf("[HNZ Server] TSCE sent\n");
 
   // Wait a lit bit to received the frame
@@ -316,16 +283,15 @@ TEST_F(HNZTest, ReceivingMessages) {
   delete currentReading;
   storedReadings.pop();
 
-  printf("[HNZ Server] Sending a TM4\n");
-  unsigned char message2[8]{0x02, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
-  server->createAndSendFr(0x05, message2, sizeof(message2));
+  server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0x00}, false);
   printf("[HNZ Server] TM4 sent\n");
 
   // Wait a lit bit to received the frame
-  this_thread::sleep_for(chrono::milliseconds(2000));
+  this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called 4x time more
   ASSERT_EQ(ingestCallbackCalled, 5);
+
   for (int i = 0; i < 4; i++) {
     currentReading = storedReadings.front();
 
@@ -348,4 +314,8 @@ TEST_F(HNZTest, ReceivingMessages) {
     delete currentReading;
     storedReadings.pop();
   }
+
+  // server->stop();
+
+  delete server;
 }

@@ -63,6 +63,8 @@ void HNZConf::importConfigJson(const string &json) {
         is_complete = false;
       }
     }
+  } else {
+    is_complete = false;
   }
 
   if (m_check_object(info, APP_LAYER)) {
@@ -106,6 +108,8 @@ void HNZConf::importConfigJson(const string &json) {
 
     is_complete &=
         m_retrieve(conf, C_ACK_TIME, &m_c_ack_time, DEFAULT_C_ACK_TIME);
+  } else {
+    is_complete = false;
   }
 
   m_config_is_complete = is_complete;

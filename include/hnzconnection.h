@@ -69,7 +69,7 @@ class HNZConnection {
  private:
   HNZPath* m_active_path = nullptr;
   HNZPath* m_passive_path = nullptr;
-  thread* m_messages_thread;  // Main thread that monitors messages
+  thread* m_messages_thread = nullptr;  // Main thread that monitors messages
   atomic<bool> m_is_running;  // If false, the connection thread will stop
   uint64_t m_current;         // Store the last time requested
   uint64_t m_days_since_epoch;
@@ -118,8 +118,8 @@ class HNZConnection {
    */
   uint64_t m_update_current_time();
 
-  HNZConf* m_hnz_conf;  // HNZ Configuration
-  HNZ* m_hnz_fledge;    // HNZ Fledge
+  HNZConf* m_hnz_conf = nullptr;  // HNZ Configuration
+  HNZ* m_hnz_fledge = nullptr;    // HNZ Fledge
 };
 
 #endif

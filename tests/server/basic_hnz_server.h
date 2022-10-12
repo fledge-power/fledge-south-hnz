@@ -8,13 +8,11 @@ using namespace std;
 class BasicHNZServer {
  public:
   BasicHNZServer(int port, int addr) {
-    printf("New server");
     this->server = new HNZServer();
     this->addr = addr;
     this->m_port = port;
   };
   ~BasicHNZServer() {
-    printf("Destroy server");
     server->stop();
     delete server;
   };

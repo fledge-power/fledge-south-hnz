@@ -9,7 +9,6 @@ bool BasicHNZServer::HNZServerIsReady() {
 
   // Check server is connected
   while (!server->isConnected()) {
-    printf("Not connected..\n");
     if (time(NULL) - start > 10) {
       return false;
     }

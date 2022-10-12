@@ -15,6 +15,7 @@ bool BasicHNZServer::HNZServerIsReady() {
     this_thread::sleep_for(chrono::milliseconds(500));
   }
   m_t1->join();
+  delete m_t1;
 
   // Wait for UA and send UA in response of SARM
   bool ua_ok = false;

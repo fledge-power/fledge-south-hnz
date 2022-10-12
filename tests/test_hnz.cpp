@@ -2,7 +2,6 @@
 #include <gtest/gtest.h>
 #include <plugin_api.h>
 
-#include <boost/thread.hpp>
 #include <chrono>
 #include <queue>
 #include <utility>
@@ -84,14 +83,17 @@ static string exchanged_data_def = QUOTE({
   }
 });
 
-string protocol_stack_generator(int port) {
+string protocol_stack_generator(int port, int port2) {
   // For tests, we have to use different ports for the server because between 2
   // tests, socket isn't properly closed.
   return "{ \"protocol_stack\" : { \"name\" : \"hnzclient\", \"version\" : "
          "\"1.0\", \"transport_layer\" : { \"connections\" : [ {\"srv_ip\" : "
          "\"0.0.0.0\", \"port\" : " +
-         to_string(port) +
-         "} ]}, \"application_layer\" : { "
+         to_string(port) + "}" +
+         ((port2 != 0) ? ",{ \"srv_ip\" : \"0.0.0.0\", \"port\" : " +
+                             to_string(port2) + "}"
+                       : "") +
+         " ] } , \"application_layer\" : { "
          "\"remote_station_addr\" : "
          "1 } } }";
 }
@@ -123,8 +125,9 @@ class HNZTest : public testing::Test {
     }
   }
 
-  static void startHNZ(int port) {
-    hnz->setJsonConfig(protocol_stack_generator(port), exchanged_data_def);
+  static void startHNZ(int port, int port2) {
+    hnz->setJsonConfig(protocol_stack_generator(port, port2),
+                       exchanged_data_def);
 
     hnz->start();
   }
@@ -208,13 +211,11 @@ class HNZTest : public testing::Test {
     ingestCallbackCalled++;
   }
 
-  // static boost::thread thread_;
   static HNZTestComp* hnz;
   static int ingestCallbackCalled;
   static queue<Reading*> storedReadings;
 };
 
-// boost::thread HNZTest::thread_;
 HNZTestComp* HNZTest::hnz;
 int HNZTest::ingestCallbackCalled;
 queue<Reading*> HNZTest::storedReadings;
@@ -225,7 +226,7 @@ TEST_F(HNZTest, TCPConnectionOnePathOK) {
   server->startHNZServer();
 
   // Start HNZ Plugin
-  startHNZ(6001);
+  startHNZ(6001, 0);
 
   if (!server->HNZServerIsReady())
     FAIL() << "Something went wrong. Connection is not established in 10s...";
@@ -241,7 +242,7 @@ TEST_F(HNZTest, ReceivingMessages) {
   server->startHNZServer();
 
   // Start HNZ Plugin
-  startHNZ(6002);
+  startHNZ(6002, 0);
 
   if (!server->HNZServerIsReady())
     FAIL() << "Something went wrong. Connection is not established in 10s...";
@@ -315,7 +316,30 @@ TEST_F(HNZTest, ReceivingMessages) {
     storedReadings.pop();
   }
 
-  // server->stop();
+  delete server;
+}
+
+TEST_F(HNZTest, TCPConnectionTwoPathOK) {
+  BasicHNZServer* server = new BasicHNZServer(6003, 0x05);
+  BasicHNZServer* server2 = new BasicHNZServer(6004, 0x05);
+
+  server->startHNZServer();
+  server2->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6003, 6004);
+
+  if (!server->HNZServerIsReady()) {
+    delete server2;
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+  }
+  if (!server2->HNZServerIsReady()) {
+    delete server;
+    FAIL() << "Something went wrong. Connection is not established in 10s... ";
+  }
+
+  SUCCEED();
 
   delete server;
+  delete server2;
 }

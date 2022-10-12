@@ -68,9 +68,9 @@ TEST(HNZConnection, OnlyOnePathConfigured) {
   ASSERT_NE(nullptr, hnz_connection->getActivePath());
   ASSERT_EQ(nullptr, hnz_connection->getPassivePath());
 
+  delete hnz_connection;
   delete conf;
   delete hnz;
-  delete hnz_connection;
 }
 
 TEST(HNZConnection, TwoPathConfigured) {
@@ -84,7 +84,7 @@ TEST(HNZConnection, TwoPathConfigured) {
   ASSERT_NE(nullptr, hnz_connection->getActivePath());
   ASSERT_NE(nullptr, hnz_connection->getPassivePath());
 
+  delete hnz_connection;
   delete conf;
   delete hnz;
-  delete hnz_connection;
 }

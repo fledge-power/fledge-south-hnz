@@ -95,7 +95,7 @@ string protocol_stack_generator(int port, int port2) {
                        : "") +
          " ] } , \"application_layer\" : { "
          "\"remote_station_addr\" : "
-         "1 } } }";
+         "1, \"max_sarm\" : 5 } } }";
 }
 
 class HNZTestComp : public HNZ {
@@ -339,6 +339,57 @@ TEST_F(HNZTest, TCPConnectionTwoPathOK) {
   }
 
   SUCCEED();
+
+  delete server;
+  delete server2;
+}
+
+TEST_F(HNZTest, ReceivingMessagesTwoPath) {
+  BasicHNZServer* server = new BasicHNZServer(6005, 0x05);
+  BasicHNZServer* server2 = new BasicHNZServer(6006, 0x05);
+
+  server->startHNZServer();
+  server2->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6005, 6006);
+
+  if (!server->HNZServerIsReady()) {
+    delete server2;
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+  }
+  if (!server2->HNZServerIsReady()) {
+    delete server;
+    FAIL() << "Something went wrong. Connection is not established in 10s... ";
+  }
+
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  printf("[HNZ Server] TSCE sent on both path\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(ingestCallbackCalled, 1);
+
+  // Send a SARM to put hnz plugin on path A in connection state
+  // and don't send UA then to switch on path B
+  server->sendSARM();
+
+  // Wait 20s
+  this_thread::sleep_for(chrono::milliseconds(30000));
+
+  ingestCallbackCalled = 0;
+
+  server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  printf("[HNZ Server] TSCE sent on path B\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(ingestCallbackCalled, 1);
 
   delete server;
   delete server2;

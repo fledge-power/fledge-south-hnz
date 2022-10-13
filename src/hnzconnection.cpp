@@ -214,8 +214,6 @@ void HNZConnection::switchPath() {
       Logger::getLogger()->error("New active path is " +
                                  m_active_path->getName());
 
-      // TODO ? Forward the messages waiting for acknowledgement on the new path
-      // (except bulle) ? Resend a GI if there was one pending ?
     } else {
       Logger::getLogger()->error(
           "Impossible to change the path, the TCP connection on the passive "

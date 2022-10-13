@@ -1,21 +1,102 @@
 #include <config_category.h>
 #include <gtest/gtest.h>
 #include <plugin_api.h>
-#include <string.h>
 
-#include "../include/hnz.h"
-// pour l'instant
-#include <boost/thread.hpp>
 #include <chrono>
+#include <queue>
 #include <utility>
 #include <vector>
 
-#include "/home/lucas/dev/git/libhnzlocal/src/inc/hnz_server.h"
+#include "hnz.h"
+#include "server/basic_hnz_server.h"
 
 using namespace std;
-// using namespace nlohmann;
 
-#define TEST_PORT 6001
+static string exchanged_data_def = QUOTE({
+  "exchanged_data" : {
+    "name" : "SAMPLE",
+    "version" : "1.0",
+    "datapoints" : [
+      {
+        "label" : "TS1",
+        "pivot_id" : "ID114562",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [
+          {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_1"}, {
+            "name" : "tase2",
+            "address" : "S_114562",
+            "typeid" : "Data_StateQTimeTagExtended"
+          },
+          {
+            "name" : "hnz",
+            "station_address" : 1,
+            "message_address" : 511,
+            "message_code" : "TSCE"
+          }
+        ]
+      },
+      {
+        "label" : "TM1",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
+          "name" : "hnz",
+          "station_address" : 1,
+          "message_address" : 20,
+          "message_code" : "TMA"
+        } ]
+      },
+      {
+        "label" : "TM2",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
+          "name" : "hnz",
+          "station_address" : 1,
+          "message_address" : 21,
+          "message_code" : "TMA"
+        } ]
+      },
+      {
+        "label" : "TM3",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
+          "name" : "hnz",
+          "station_address" : 1,
+          "message_address" : 22,
+          "message_code" : "TMA"
+        } ]
+      },
+      {
+        "label" : "TM4",
+        "pivot_id" : "ID111111",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [ {
+          "name" : "hnz",
+          "station_address" : 1,
+          "message_address" : 23,
+          "message_code" : "TMA"
+        } ]
+      }
+    ]
+  }
+});
+
+string protocol_stack_generator(int port, int port2) {
+  // For tests, we have to use different ports for the server because between 2
+  // tests, socket isn't properly closed.
+  return "{ \"protocol_stack\" : { \"name\" : \"hnzclient\", \"version\" : "
+         "\"1.0\", \"transport_layer\" : { \"connections\" : [ {\"srv_ip\" : "
+         "\"0.0.0.0\", \"port\" : " +
+         to_string(port) + "}" +
+         ((port2 != 0) ? ",{ \"srv_ip\" : \"0.0.0.0\", \"port\" : " +
+                             to_string(port2) + "}"
+                       : "") +
+         " ] } , \"application_layer\" : { "
+         "\"remote_station_addr\" : "
+         "1, \"max_sarm\" : 5 } } }";
+}
 
 class HNZTestComp : public HNZ {
  public:
@@ -24,30 +105,34 @@ class HNZTestComp : public HNZ {
 
 class HNZTest : public testing::Test {
  protected:
-  struct sTestInfo {
-    int callbackCalled;
-    Reading* storedReading;
-  };
+  void SetUp() {
+    // Create HNZ Plugin object
+    hnz = new HNZTestComp();
 
-  // Per-test-suite set-up.
-  // Called before the first test in this test suite.
-  // Can be omitted if not needed.
-  static void SetUpTestSuite() {
-    // Avoid reallocating static objects if called in subclasses of FooTest.
-    if (hnz == nullptr) {
-      hnz = new HNZTestComp();
-      hnz->registerIngest(NULL, ingestCallback);
+    hnz->registerIngest(NULL, ingestCallback);
+
+    ingestCallbackCalled = 0;
+  }
+
+  void TearDown() {
+    hnz->stop();
+
+    delete hnz;
+
+    while (!storedReadings.empty()) {
+      delete storedReadings.front();
+      storedReadings.pop();
     }
   }
 
-  // Per-test-suite tear-down.
-  // Called after the last test in this test suite.
-  // Can be omitted if not needed.
-  static void TearDownTestSuite() { hnz->stop(); }
+  static void startHNZ(int port, int port2) {
+    hnz->setJsonConfig(protocol_stack_generator(port, port2),
+                       exchanged_data_def);
 
-  static void startHNZ() { hnz->start(); }
+    hnz->start();
+  }
 
-  static bool hasChild(Datapoint& dp, std::string childLabel) {
+  static bool hasChild(Datapoint& dp, string childLabel) {
     DatapointValue& dpv = dp.getData();
 
     auto dps = dpv.getDpVec();
@@ -61,7 +146,7 @@ class HNZTest : public testing::Test {
     return false;
   }
 
-  static Datapoint* getChild(Datapoint& dp, std::string childLabel) {
+  static Datapoint* getChild(Datapoint& dp, string childLabel) {
     DatapointValue& dpv = dp.getData();
 
     auto dps = dpv.getDpVec();
@@ -80,12 +165,12 @@ class HNZTest : public testing::Test {
     return dpValue.toInt();
   }
 
-  static std::string getStrValue(Datapoint* dp) {
+  static string getStrValue(Datapoint* dp) {
     return dp->getData().toStringValue();
   }
 
-  static bool hasObject(Reading& reading, std::string label) {
-    std::vector<Datapoint*> dataPoints = reading.getReadingData();
+  static bool hasObject(Reading& reading, string label) {
+    vector<Datapoint*> dataPoints = reading.getReadingData();
 
     for (Datapoint* dp : dataPoints) {
       if (dp->getName() == label) {
@@ -96,8 +181,8 @@ class HNZTest : public testing::Test {
     return false;
   }
 
-  static Datapoint* getObject(Reading& reading, std::string label) {
-    std::vector<Datapoint*> dataPoints = reading.getReadingData();
+  static Datapoint* getObject(Reading& reading, string label) {
+    vector<Datapoint*> dataPoints = reading.getReadingData();
 
     for (Datapoint* dp : dataPoints) {
       if (dp->getName() == label) {
@@ -112,7 +197,7 @@ class HNZTest : public testing::Test {
     printf("ingestCallback called -> asset: (%s)\n",
            reading.getAssetName().c_str());
 
-    std::vector<Datapoint*> dataPoints = reading.getReadingData();
+    vector<Datapoint*> dataPoints = reading.getReadingData();
 
     printf("  number of readings: %lu\n", dataPoints.size());
 
@@ -120,162 +205,192 @@ class HNZTest : public testing::Test {
     //     printf("name: %s value: %s\n", sdp->getName().c_str(),
     //     sdp->getData().toString().c_str());
     // }
-    storedReading = new Reading(reading);
+
+    storedReadings.push(new Reading(reading));
 
     ingestCallbackCalled++;
-    printf("My value is");
-    printf("Mu value is%u", ingestCallbackCalled);
   }
 
-  static boost::thread thread_;
   static HNZTestComp* hnz;
   static int ingestCallbackCalled;
-  static Reading* storedReading;
+  static queue<Reading*> storedReadings;
 };
 
-boost::thread HNZTest::thread_;
 HNZTestComp* HNZTest::hnz;
 int HNZTest::ingestCallbackCalled;
-Reading* HNZTest::storedReading;
+queue<Reading*> HNZTest::storedReadings;
 
-TEST_F(HNZTest, ReceivingMessage) {
-  startHNZ();
-  std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+TEST_F(HNZTest, TCPConnectionOnePathOK) {
+  BasicHNZServer* server = new BasicHNZServer(6001, 0x05);
+
+  server->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6001, 0);
+
+  if (!server->HNZServerIsReady())
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+
+  SUCCEED();
+
+  delete server;
+}
+
+TEST_F(HNZTest, ReceivingMessages) {
+  BasicHNZServer* server = new BasicHNZServer(6002, 0x05);
+
+  server->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6002, 0);
+
+  if (!server->HNZServerIsReady())
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  printf("[HNZ Server] TSCE sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  Reading* currentReading = storedReadings.front();
+  ASSERT_EQ("TS1", currentReading->getAssetName());
+
+  ASSERT_TRUE(hasObject(*currentReading, "data_object"));
+  Datapoint* data_object = getObject(*currentReading, "data_object");
+  ASSERT_NE(nullptr, data_object);
+  ASSERT_TRUE(hasChild(*data_object, "do_type"));
+  ASSERT_TRUE(hasChild(*data_object, "do_station"));
+  ASSERT_TRUE(hasChild(*data_object, "do_addr"));
+  ASSERT_TRUE(hasChild(*data_object, "do_value"));
+  ASSERT_TRUE(hasChild(*data_object, "do_valid"));
+  ASSERT_TRUE(hasChild(*data_object, "do_ts"));
+  ASSERT_TRUE(hasChild(*data_object, "do_ts_iv"));
+  ASSERT_TRUE(hasChild(*data_object, "do_ts_c"));
+  ASSERT_TRUE(hasChild(*data_object, "do_ts_s"));
+
+  ASSERT_EQ("TSCE", getStrValue(getChild(*data_object, "do_type")));
+  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
+  ASSERT_EQ((int64_t)511, getIntValue(getChild(*data_object, "do_addr")));
+  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_value")));
+  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
+  ASSERT_EQ((int64_t)14066, getIntValue(getChild(*data_object, "do_ts")));
+  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_iv")));
+  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_c")));
+  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_s")));
+
+  delete currentReading;
+  storedReadings.pop();
+
+  server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0x00}, false);
+  printf("[HNZ Server] TM4 sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called 4x time more
+  ASSERT_EQ(ingestCallbackCalled, 5);
+
+  for (int i = 0; i < 4; i++) {
+    currentReading = storedReadings.front();
+
+    ASSERT_EQ("TM" + to_string(i + 1), currentReading->getAssetName());
+    ASSERT_TRUE(hasObject(*currentReading, "data_object"));
+    data_object = getObject(*currentReading, "data_object");
+    ASSERT_NE(nullptr, data_object);
+    ASSERT_TRUE(hasChild(*data_object, "do_type"));
+    ASSERT_TRUE(hasChild(*data_object, "do_station"));
+    ASSERT_TRUE(hasChild(*data_object, "do_addr"));
+    ASSERT_TRUE(hasChild(*data_object, "do_value"));
+    ASSERT_TRUE(hasChild(*data_object, "do_valid"));
+
+    ASSERT_EQ("TMA", getStrValue(getChild(*data_object, "do_type")));
+    ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
+    ASSERT_EQ((int64_t)20 + i, getIntValue(getChild(*data_object, "do_addr")));
+    ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_value")));
+    ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
+
+    delete currentReading;
+    storedReadings.pop();
+  }
+
+  delete server;
+}
+
+TEST_F(HNZTest, TCPConnectionTwoPathOK) {
+  BasicHNZServer* server = new BasicHNZServer(6003, 0x05);
+  BasicHNZServer* server2 = new BasicHNZServer(6004, 0x05);
+
+  server->startHNZServer();
+  server2->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6003, 6004);
+
+  if (!server->HNZServerIsReady()) {
+    delete server2;
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+  }
+  if (!server2->HNZServerIsReady()) {
+    delete server;
+    FAIL() << "Something went wrong. Connection is not established in 10s... ";
+  }
+
+  SUCCEED();
+
+  delete server;
+  delete server2;
+}
+
+TEST_F(HNZTest, ReceivingMessagesTwoPath) {
+  BasicHNZServer* server = new BasicHNZServer(6005, 0x05);
+  BasicHNZServer* server2 = new BasicHNZServer(6006, 0x05);
+
+  server->startHNZServer();
+  server2->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6005, 6006);
+
+  if (!server->HNZServerIsReady()) {
+    delete server2;
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+  }
+  if (!server2->HNZServerIsReady()) {
+    delete server;
+    FAIL() << "Something went wrong. Connection is not established in 10s... ";
+  }
+
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  printf("[HNZ Server] TSCE sent on both path\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  // Check that ingestCallback had been called only one time
   ASSERT_EQ(ingestCallbackCalled, 1);
 
-  // CS101_ASDU newAsdu = CS101_ASDU_create(alParams, false, CS101_COT_PERIODIC,
-  // 0, 41025, false, false);
+  // Send a SARM to put hnz plugin on path A in connection state
+  // and don't send UA then to switch on path B
+  server->sendSARM();
 
-  // struct sCP56Time2a ts;
+  // Wait 20s
+  this_thread::sleep_for(chrono::milliseconds(30000));
 
-  // uint64_t timestamp = Hal_getTimeInMs();
+  ingestCallbackCalled = 0;
 
-  // CP56Time2a_createFromMsTimestamp(&ts, timestamp);
+  server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  printf("[HNZ Server] TSCE sent on path B\n");
 
-  // InformationObject io = (InformationObject)
-  // SinglePointWithCP56Time2a_create(NULL, 4206948, true,
-  // IEC60870_QUALITY_GOOD, &ts);
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(3000));
 
-  // CS101_ASDU_addInformationObject(newAsdu, io);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(ingestCallbackCalled, 1);
 
-  // InformationObject_destroy(io);
-
-  // /* Add ASDU to slave event queue */
-  // CS104_Slave_enqueueASDU(slave, newAsdu);
-
-  // CS101_ASDU_destroy(newAsdu);
-
-  // Thread_sleep(500);
-
-  // ASSERT_EQ(ingestCallbackCalled, 1);
-  // ASSERT_EQ("TS-1", storedReading->getAssetName());
-  // ASSERT_TRUE(hasObject(*storedReading, "data_object"));
-  // Datapoint* data_object = getObject(*storedReading, "data_object");
-  // ASSERT_NE(nullptr, data_object);
-  // ASSERT_TRUE(hasChild(*data_object, "do_type"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ca"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_oa"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_cot"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_test"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_negative"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ioa"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_value"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_iv"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_bl"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_sb"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_nt"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ts"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ts_iv"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ts_su"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ts_sub"));
-
-  // ASSERT_EQ("M_SP_TB_1", getStrValue(getChild(*data_object, "do_type")));
-  // ASSERT_EQ((int64_t) 41025, getIntValue(getChild(*data_object, "do_ca")));
-  // ASSERT_EQ((int64_t) 1, getIntValue(getChild(*data_object, "do_cot")));
-  // ASSERT_EQ((int64_t) 4206948, getIntValue(getChild(*data_object,
-  // "do_ioa"))); ASSERT_EQ((int64_t) timestamp,
-  // getIntValue(getChild(*data_object, "do_ts")));
-
-  // delete storedReading;
-
-  // CS101_ASDU newAsdu2 = CS101_ASDU_create(alParams, false,
-  // CS101_COT_INTERROGATED_BY_STATION, 0, 41025, false, false);
-
-  // io = (InformationObject) SinglePointInformation_create(NULL, 4206948, true,
-  // IEC60870_QUALITY_GOOD);
-
-  // CS101_ASDU_addInformationObject(newAsdu2, io);
-
-  // InformationObject_destroy(io);
-
-  // /* Add ASDU to slave event queue */
-  // CS104_Slave_enqueueASDU(slave, newAsdu2);
-
-  // CS101_ASDU_destroy(newAsdu2);
-
-  // Thread_sleep(500);
-
-  // ASSERT_EQ(ingestCallbackCalled, 2);
-  // ASSERT_EQ("TS-1", storedReading->getAssetName());
-  // ASSERT_TRUE(hasObject(*storedReading, "data_object"));
-  // data_object = getObject(*storedReading, "data_object");
-  // ASSERT_NE(nullptr, data_object);
-  // ASSERT_TRUE(hasChild(*data_object, "do_type"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ca"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_oa"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_cot"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_test"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_negative"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_ioa"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_value"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_iv"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_bl"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_sb"));
-  // ASSERT_TRUE(hasChild(*data_object, "do_quality_nt"));
-  // ASSERT_FALSE(hasChild(*data_object, "do_ts"));
-  // ASSERT_FALSE(hasChild(*data_object, "do_ts_iv"));
-  // ASSERT_FALSE(hasChild(*data_object, "do_ts_su"));
-  // ASSERT_FALSE(hasChild(*data_object, "do_ts_sub"));
-
-  // ASSERT_EQ("M_SP_NA_1", getStrValue(getChild(*data_object, "do_type")));
-  // ASSERT_EQ((int64_t) 41025, getIntValue(getChild(*data_object, "do_ca")));
-  // ASSERT_EQ((int64_t) 20, getIntValue(getChild(*data_object, "do_cot")));
-  // ASSERT_EQ((int64_t) 4206948, getIntValue(getChild(*data_object,
-  // "do_ioa"))); ASSERT_EQ(0, getIntValue(getChild(*data_object,
-  // "do_quality_iv"))); ASSERT_EQ(0, getIntValue(getChild(*data_object,
-  // "do_quality_bl"))); ASSERT_EQ(0, getIntValue(getChild(*data_object,
-  // "do_quality_sb"))); ASSERT_EQ(0, getIntValue(getChild(*data_object,
-  // "do_quality_nt")));
-
-  // delete storedReading;
-
-  // CS101_ASDU newAsdu3 = CS101_ASDU_create(alParams, false,
-  // CS101_COT_INTERROGATED_BY_STATION, 0, 41025, false, false);
-
-  // io = (InformationObject) SinglePointInformation_create(NULL, 4206948, true,
-  // IEC60870_QUALITY_INVALID | IEC60870_QUALITY_NON_TOPICAL);
-
-  // CS101_ASDU_addInformationObject(newAsdu3, io);
-
-  // InformationObject_destroy(io);
-
-  // /* Add ASDU to slave event queue */
-  // CS104_Slave_enqueueASDU(slave, newAsdu3);
-
-  // CS101_ASDU_destroy(newAsdu3);
-
-  // Thread_sleep(500);
-
-  // ASSERT_EQ(ingestCallbackCalled, 3);
-  // data_object = getObject(*storedReading, "data_object");
-  // ASSERT_EQ(1, getIntValue(getChild(*data_object, "do_quality_iv")));
-  // ASSERT_EQ(0, getIntValue(getChild(*data_object, "do_quality_bl")));
-  // ASSERT_EQ(0, getIntValue(getChild(*data_object, "do_quality_sb")));
-  // ASSERT_EQ(1, getIntValue(getChild(*data_object, "do_quality_nt")));
-
-  // delete storedReading;
-
-  // CS104_Slave_stop(slave);
-
-  // CS104_Slave_destroy(slave);
+  delete server;
+  delete server2;
 }

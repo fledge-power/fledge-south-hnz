@@ -289,9 +289,12 @@ class HNZPath {
    */
   void m_send_time_setting();
 
-  HNZClient* m_hnz_client;  // HNZ Client that manage TCP connection
-                            // (receives/assembles and sends TCP frame)
-  HNZConnection* m_hnz_connection;
+  void m_go_to_connected();
+
+  HNZClient* m_hnz_client =
+      nullptr;  // HNZ Client that manage TCP connection
+                // (receives/assembles and sends TCP frame)
+  HNZConnection* m_hnz_connection = nullptr;
 };
 
 #endif

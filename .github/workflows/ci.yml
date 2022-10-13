@@ -73,18 +73,10 @@ jobs:
         run: |
           cd $HOME
           git clone ${{ env.LIBHNZ_REPO_URL }}
-          cd $HOME/libhnz
-          cd ..
-          mkdir build
-          cd build
-          cmake -DBUILD_TESTS=NO -DBUILD_EXAMPLES=NO ..
-          make
-          sudo make install
+          cd $HOME/libhnz/src/hnz
+          ./compilation.sh
           echo Set the environment variable LIB_HNZ to $HOME/libhnz
           export LIB_HNZ=$HOME/libhnz
-          sudo mkdir -p /usr/local/include/libhnz/
-          sudo cp $HOME/libhnz/src/inc/* /usr/local/include/libhnz/
-          sudo cp $HOME/libhnz/src/hal/inc* /usr/local/include/libhnz/
       - name: Download and install Google Unit Test framework
         run: |
           sudo apt-get install libgtest-dev

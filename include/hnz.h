@@ -68,13 +68,6 @@ class HNZ {
   void registerIngest(void* data, void (*cb)(void*, Reading));
 
   /**
-   * Sends the datapoints passed as Reading to Fledge
-   * @param readings Vector of one or more Reading depending on the received
-   * message
-   */
-  void sendToFledge(vector<Reading>& readings);
-
-  /**
    * Reset the GI queue. Delete previous TSCG received.
    */
   void resetGIQueue() { m_gi_readings_temp.clear(); };
@@ -92,13 +85,14 @@ class HNZ {
  private:
   string m_asset;  // Plugin name in fledge
   atomic<bool> m_is_running;
-  thread *m_receiving_thread_A, *m_receiving_thread_B;  // Receiving threads
+  thread *m_receiving_thread_A,
+      *m_receiving_thread_B = nullptr;  // Receiving threads
   vector<Reading> m_gi_readings_temp;  // Contains all Reading of GI waiting for
                                        // the completeness check
 
   // Others HNZ related class
-  HNZConf* m_hnz_conf;              // HNZ Configuration
-  HNZConnection* m_hnz_connection;  // HNZ Connection handling
+  HNZConf* m_hnz_conf = nullptr;              // HNZ Configuration
+  HNZConnection* m_hnz_connection = nullptr;  // HNZ Connection handling
 
   // Fledge related
   INGEST_CB m_ingest;  // Callback function used to send data to south service
@@ -168,6 +162,13 @@ class HNZ {
   static Reading m_prepare_reading(string label, string msg_code,
                                    unsigned char station_addr, int msg_address,
                                    int value, int value_coding, bool coding);
+
+  /**
+   * Sends the datapoints passed as Reading to Fledge
+   * @param readings Vector of one or more Reading depending on the received
+   * message
+   */
+  void m_sendToFledge(vector<Reading>& readings);
 
   /**
    * Create a datapoint.

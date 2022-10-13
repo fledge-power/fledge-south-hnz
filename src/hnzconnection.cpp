@@ -1,3 +1,13 @@
+/*
+ * Fledge HNZ south plugin.
+ *
+ * Copyright (c) 2022, RTE (https://www.rte-france.com)
+ *
+ * Released under the Apache 2.0 Licence
+ *
+ * Author: Justin Facquet
+ */
+
 #include "hnzconnection.h"
 
 HNZConnection::HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge) {
@@ -25,6 +35,8 @@ HNZConnection::~HNZConnection() {
   if (m_is_running) {
     stop();
   }
+  if (m_active_path != nullptr) delete m_active_path;
+  if (m_passive_path != nullptr) delete m_passive_path;
 }
 
 void HNZConnection::start() {
@@ -33,7 +45,7 @@ void HNZConnection::start() {
 }
 
 void HNZConnection::stop() {
-  Logger::getLogger()->info("HNZ Connection stopping...");
+  Logger::getLogger()->debug("HNZ Connection stopping...");
   // Stop the thread that manage the messages
   m_is_running = false;
 
@@ -44,12 +56,14 @@ void HNZConnection::stop() {
 
   // Wait for the end of the thread that manage the messages
   if (m_messages_thread != nullptr) {
-    Logger::getLogger()->debug("Waiting for the messages thread");
-    m_messages_thread->join();
+    thread* temp = m_messages_thread;
     m_messages_thread = nullptr;
+    Logger::getLogger()->debug("Waiting for the messages managing thread");
+    temp->join();
+    delete temp;
   }
 
-  Logger::getLogger()->info("HNZ Connection stoped !");
+  Logger::getLogger()->info("HNZ Connection stopped !");
 }
 
 void HNZConnection::GI_completed() { m_active_path->gi_repeat = 0; }

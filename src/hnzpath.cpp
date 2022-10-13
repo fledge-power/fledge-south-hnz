@@ -161,15 +161,6 @@ void HNZPath::m_manageHNZProtocolConnection() {
             // DF.GLOB.TS : nothing to do in HNZ
           }
         } else {
-          Logger::getLogger()->debug(m_name_log +
-                                     " HNZ Connection initialized !!");
-
-          if (m_is_active_path) {
-            m_send_date_setting();
-            m_send_time_setting();
-            sendGeneralInterrogation();
-          }
-
           m_protocol_state = CONNECTED;
           sleep = milliseconds(10);
         }
@@ -227,6 +218,17 @@ void HNZPath::go_to_connection() {
   }
 }
 
+void HNZPath::m_go_to_connected() {
+  m_protocol_state = CONNECTED;
+  Logger::getLogger()->debug(m_name_log + " HNZ Connection initialized !!");
+
+  if (m_is_active_path) {
+    m_send_date_setting();
+    m_send_time_setting();
+    sendGeneralInterrogation();
+  }
+}
+
 vector<vector<unsigned char>> HNZPath::getData() {
   vector<vector<unsigned char>> messages;
 
@@ -265,32 +267,35 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
         m_receivedSARM();
         break;
       default:
-        // Get NR, P/F ans NS field
-        int ns = (type >> 1) & 0x07;
-        int pf = (type >> 4) & 0x01;
-        int nr = (type >> 5) & 0x07;
-        if ((type & 0x01) == 0) {
-          // Information frame
-          Logger::getLogger()->info(
-              m_name_log +
-              " Received an information frame (ns = " + to_string(ns) +
-              ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
+        if (m_protocol_state != CONNECTION) {
+          // Get NR, P/F ans NS field
+          int ns = (type >> 1) & 0x07;
+          int pf = (type >> 4) & 0x01;
+          int nr = (type >> 5) & 0x07;
+          if ((type & 0x01) == 0) {
+            // Information frame
+            Logger::getLogger()->info(
+                m_name_log +
+                " Received an information frame (ns = " + to_string(ns) +
+                ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
 
-          if (m_is_active_path) {
-            // Only the messages on the active path are extracted. The
-            // passive path does not need them.
-            int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
-            messages = m_extract_messages(data + 2, payloadSize);
+            if (m_is_active_path) {
+              // Only the messages on the active path are extracted. The
+              // passive path does not need them.
+              int payloadSize =
+                  size - 4;  // Remove address, type, CRC (2 bytes)
+              messages = m_extract_messages(data + 2, payloadSize);
+            }
+
+            // Computing the frame number & sending RR
+            m_sendRR(pf == 1, ns, nr);
+          } else {
+            // Supervision frame
+            Logger::getLogger()->warn(m_name_log +
+                                      " RR received (f = " + to_string(pf) +
+                                      ", nr = " + to_string(nr) + ")");
+            m_receivedRR(nr, pf == 1);
           }
-
-          // Computing the frame number & sending RR
-          m_sendRR(pf == 1, ns, nr);
-        } else {
-          // Supervision frame
-          Logger::getLogger()->warn(m_name_log +
-                                    " RR received (f = " + to_string(pf) +
-                                    ", nr = " + to_string(nr) + ")");
-          m_receivedRR(nr, pf == 1);
         }
 
         break;
@@ -376,11 +381,17 @@ void HNZPath::m_receivedSARM() {
     go_to_connection();
   }
   sarm_PA_received = true;
+  sarm_ARP_UA = false;
   m_sendUA();
   module10M = 0;
 }
 
-void HNZPath::m_receivedUA() { sarm_ARP_UA = true; }
+void HNZPath::m_receivedUA() {
+  sarm_ARP_UA = true;
+  if (sarm_PA_received) {
+    m_go_to_connected();
+  }
+}
 
 void HNZPath::m_receivedBULLE() { m_last_msg_time = time(nullptr); }
 

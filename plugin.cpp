@@ -24,29 +24,33 @@ using namespace std;
 #define PLUGIN_NAME "hnz"
 
 // PLUGIN DEFAULT PROTOCOL STACK CONF
-#define PROTOCOL_STACK_DEF                                                  \
-  QUOTE({                                                                   \
-    "protocol_stack" : {                                                    \
-      "name" : "hnzclient",                                                 \
-      "version" : "1.0",                                                    \
-      "transport_layer" :                                                   \
-          {"connections" : [ {"srv_ip" : "192.168.0.10", "port" : 6001} ]}, \
-      "application_layer" : {                                               \
-        "remote_station_addr" : 12,                                         \
-        "inacc_timeout" : 180,                                              \
-        "max_sarm" : 30,                                                    \
-        "repeat_path_A" : 3,                                                \
-        "repeat_path_B" : 3,                                                \
-        "repeat_timeout" : 3000,                                            \
-        "anticipation" : 3,                                                 \
-        "test_msg_send" : "1304",                                           \
-        "test_msg_receive" : "1304",                                        \
-        "gi_schedule" : "99:99",                                            \
-        "gi_repeat_count" : 3,                                              \
-        "gi_time" : 255,                                                    \
-        "c_ack_time" : 10                                                   \
-      }                                                                     \
-    }                                                                       \
+#define PROTOCOL_STACK_DEF                            \
+  QUOTE({                                             \
+    "protocol_stack" : {                              \
+      "name" : "hnzclient",                           \
+      "version" : "1.0",                              \
+      "transport_layer" : {                           \
+        "connections" : [                             \
+          {"srv_ip" : "192.168.0.10", "port" : 6001}, \
+          {"srv_ip" : "192.168.0.10", "port" : 6002}  \
+        ]                                             \
+      },                                              \
+      "application_layer" : {                         \
+        "remote_station_addr" : 12,                   \
+        "inacc_timeout" : 180,                        \
+        "max_sarm" : 30,                              \
+        "repeat_path_A" : 3,                          \
+        "repeat_path_B" : 3,                          \
+        "repeat_timeout" : 3000,                      \
+        "anticipation_ratio" : 3,                     \
+        "test_msg_send" : "1304",                     \
+        "test_msg_receive" : "1304",                  \
+        "gi_schedule" : "99:99",                      \
+        "gi_repeat_count" : 3,                        \
+        "gi_time" : 255,                              \
+        "c_ack_time" : 10                             \
+      }                                               \
+    }                                                 \
   })
 
 // PLUGIN DEFAULT EXCHANGED DATA CONF
@@ -102,7 +106,7 @@ using namespace std;
  * Default configuration
  */
 
-const char *default_config = QUOTE({
+static const char *default_config = QUOTE({
   "plugin" : {
     "description" : "hnz south plugin",
     "type" : "string",
@@ -198,7 +202,7 @@ void plugin_start(PLUGIN_HANDLE *handle) {
  * Register ingest callback
  */
 void plugin_register_ingest(PLUGIN_HANDLE *handle, INGEST_CB cb, void *data) {
-  if (!handle) throw new exception();
+  if (!handle) throw exception();
 
   HNZ *hnz = (HNZ *)handle;
   hnz->registerIngest(data, cb);

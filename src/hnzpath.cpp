@@ -1,3 +1,13 @@
+/*
+ * Fledge HNZ south plugin.
+ *
+ * Copyright (c) 2022, RTE (https://www.rte-france.com)
+ *
+ * Released under the Apache 2.0 Licence
+ *
+ * Author: Justin Facquet
+ */
+
 #include "hnzpath.h"
 
 HNZPath::HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection,
@@ -36,6 +46,7 @@ HNZPath::~HNZPath() {
   if (m_is_running) {
     disconnect();
   }
+  if (m_hnz_client != nullptr) delete m_hnz_client;
 }
 
 /**
@@ -96,18 +107,21 @@ bool HNZPath::connect() {
 }
 
 void HNZPath::disconnect() {
-  Logger::getLogger()->info(m_name_log + " HNZ Connection stopping...");
+  Logger::getLogger()->debug(m_name_log + " HNZ Connection stopping...");
 
   m_is_running = false;
-  if (m_connected) {
-    m_hnz_client->stop();
-  }
+  m_connected = false;
+  m_hnz_client->stop();
 
   if (m_connection_thread != nullptr) {
+    // To avoid to be here at the same time, we put m_connection_thread =
+    // nullptr
+    thread* temp = m_connection_thread;
+    m_connection_thread = nullptr;
     Logger::getLogger()->debug(m_name_log +
                                " Waiting for the connection thread");
-    m_connection_thread->join();
-    m_connection_thread = nullptr;
+    temp->join();
+    delete temp;
   }
 
   Logger::getLogger()->info(m_name_log + " stopped !");
@@ -147,15 +161,6 @@ void HNZPath::m_manageHNZProtocolConnection() {
             // DF.GLOB.TS : nothing to do in HNZ
           }
         } else {
-          Logger::getLogger()->debug(m_name_log +
-                                     " HNZ Connection initialized !!");
-
-          if (m_is_active_path) {
-            m_send_date_setting();
-            m_send_time_setting();
-            sendGeneralInterrogation();
-          }
-
           m_protocol_state = CONNECTED;
           sleep = milliseconds(10);
         }
@@ -183,7 +188,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
     this_thread::sleep_for(sleep);
   } while (m_is_running);
 
-  Logger::getLogger()->info(
+  Logger::getLogger()->debug(
       m_name_log + " HNZ Connection Management thread is shutting down...");
 }
 
@@ -210,6 +215,17 @@ void HNZPath::go_to_connection() {
       msg_waiting.push_front(msg_sent.back());
       msg_sent.pop_back();
     }
+  }
+}
+
+void HNZPath::m_go_to_connected() {
+  m_protocol_state = CONNECTED;
+  Logger::getLogger()->debug(m_name_log + " HNZ Connection initialized !!");
+
+  if (m_is_active_path) {
+    m_send_date_setting();
+    m_send_time_setting();
+    sendGeneralInterrogation();
   }
 }
 
@@ -242,41 +258,44 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
 
   if (m_remote_address == address) {
     switch (type) {
-      case UA:
+      case UA_CODE:
         Logger::getLogger()->info(m_name_log + " Received UA");
         m_receivedUA();
         break;
-      case SARM:
+      case SARM_CODE:
         Logger::getLogger()->info(m_name_log + " Received SARM");
         m_receivedSARM();
         break;
       default:
-        // Get NR, P/F ans NS field
-        int ns = (type >> 1) & 0x07;
-        int pf = (type >> 4) & 0x01;
-        int nr = (type >> 5) & 0x07;
-        if ((type & 0x01) == 0) {
-          // Information frame
-          Logger::getLogger()->info(
-              m_name_log +
-              " Received an information frame (ns = " + to_string(ns) +
-              ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
+        if (m_protocol_state != CONNECTION) {
+          // Get NR, P/F ans NS field
+          int ns = (type >> 1) & 0x07;
+          int pf = (type >> 4) & 0x01;
+          int nr = (type >> 5) & 0x07;
+          if ((type & 0x01) == 0) {
+            // Information frame
+            Logger::getLogger()->info(
+                m_name_log +
+                " Received an information frame (ns = " + to_string(ns) +
+                ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
 
-          if (m_is_active_path) {
-            // Only the messages on the active path are extracted. The
-            // passive path does not need them.
-            int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
-            messages = m_extract_messages(data + 2, payloadSize);
+            if (m_is_active_path) {
+              // Only the messages on the active path are extracted. The
+              // passive path does not need them.
+              int payloadSize =
+                  size - 4;  // Remove address, type, CRC (2 bytes)
+              messages = m_extract_messages(data + 2, payloadSize);
+            }
+
+            // Computing the frame number & sending RR
+            m_sendRR(pf == 1, ns, nr);
+          } else {
+            // Supervision frame
+            Logger::getLogger()->warn(m_name_log +
+                                      " RR received (f = " + to_string(pf) +
+                                      ", nr = " + to_string(nr) + ")");
+            m_receivedRR(nr, pf == 1);
           }
-
-          // Computing the frame number & sending RR
-          m_sendRR(pf == 1, ns, nr);
-        } else {
-          // Supervision frame
-          Logger::getLogger()->warn(m_name_log +
-                                    " RR received (f = " + to_string(pf) +
-                                    ", nr = " + to_string(nr) + ")");
-          m_receivedRR(nr, pf == 1);
         }
 
         break;
@@ -295,32 +314,32 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data,
   unsigned char t = data[0];  // Payload type
 
   switch (t) {
-    case TM4:
+    case TM4_CODE:
       Logger::getLogger()->info(m_name_log + " Received TMA");
       len = 6;
       break;
-    case TSCE:
+    case TSCE_CODE:
       Logger::getLogger()->info(m_name_log + " Received TSCE");
       len = 5;
       break;
-    case TSCG:
+    case TSCG_CODE:
       Logger::getLogger()->info(m_name_log + " Received TSCG");
       len = 6;
       break;
-    case TMN:
+    case TMN_CODE:
       Logger::getLogger()->info(m_name_log + " Received TMN");
       len = 7;
       break;
-    case MODULO:
+    case MODULO_CODE:
       module10M = (int)data[1];
       Logger::getLogger()->info(m_name_log + " Received Modulo 10mn");
       len = 2;
       break;
-    case TCACK:
+    case TCACK_CODE:
       Logger::getLogger()->info(m_name_log + " Received TC ACK");
       len = 3;
       break;
-    case TVCACK:
+    case TVCACK_CODE:
       Logger::getLogger()->info(m_name_log + " Received TVC ACK");
       len = 3;
       break;
@@ -362,11 +381,17 @@ void HNZPath::m_receivedSARM() {
     go_to_connection();
   }
   sarm_PA_received = true;
+  sarm_ARP_UA = false;
   m_sendUA();
   module10M = 0;
 }
 
-void HNZPath::m_receivedUA() { sarm_ARP_UA = true; }
+void HNZPath::m_receivedUA() {
+  sarm_ARP_UA = true;
+  if (sarm_PA_received) {
+    m_go_to_connected();
+  }
+}
 
 void HNZPath::m_receivedBULLE() { m_last_msg_time = time(nullptr); }
 
@@ -410,7 +435,7 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
 }
 
 void HNZPath::m_sendSARM() {
-  unsigned char msg[1]{SARM};
+  unsigned char msg[1]{SARM_CODE};
   m_hnz_client->createAndSendFr(m_address_ARP, msg, sizeof(msg));
   Logger::getLogger()->info(m_name_log + " SARM sent [" +
                             to_string(m_nbr_sarm_sent + 1) + " / " +
@@ -419,7 +444,7 @@ void HNZPath::m_sendSARM() {
 }
 
 void HNZPath::m_sendUA() {
-  unsigned char msg[1]{UA};
+  unsigned char msg[1]{UA_CODE};
   m_hnz_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
   Logger::getLogger()->info(m_name_log + " UA sent");
 }
@@ -520,7 +545,7 @@ void HNZPath::m_send_date_setting() {
   unsigned char msg[4];
   time_t now = time(0);
   tm* time_struct = gmtime(&now);
-  msg[0] = SETDATE;
+  msg[0] = SETDATE_CODE;
   msg[1] = time_struct->tm_mday;
   msg[2] = time_struct->tm_mon + 1;
   msg[3] = time_struct->tm_year % 100;
@@ -539,7 +564,7 @@ void HNZPath::m_send_time_setting() {
   long int ms_today = ms_since_epoch % 86400000;
   mod10m = ms_today / 600000;
   frac = (ms_today - (mod10m * 600000)) / 10;
-  msg[0] = SETTIME;
+  msg[0] = SETTIME_CODE;
   msg[1] = mod10m & 0xFF;
   msg[2] = frac >> 8;
   msg[3] = frac & 0xff;
@@ -566,7 +591,7 @@ void HNZPath::sendGeneralInterrogation() {
 bool HNZPath::sendTVCCommand(unsigned char address, int value,
                              unsigned char val_coding) {
   unsigned char msg[4];
-  msg[0] = TVC;
+  msg[0] = TVC_CODE;
   msg[1] = (address & 0x1F) | ((val_coding & 0x1) << 5);
   if ((val_coding & 0x1) == 1) {
     msg[2] = value & 0xFF;
@@ -599,7 +624,7 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value,
 bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   string address_str = to_string(address);
   unsigned char msg[3];
-  msg[0] = TC;
+  msg[0] = TC_CODE;
   msg[1] = stoi(address_str.substr(0, address_str.length() - 2));
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 

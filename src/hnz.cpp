@@ -8,7 +8,7 @@
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
 
-#include "include/hnz.h"
+#include "hnz.h"
 
 HNZ::HNZ() : m_hnz_conf(new HNZConf), m_is_running(false) {}
 
@@ -16,6 +16,8 @@ HNZ::~HNZ() {
   if (m_is_running) {
     stop();
   }
+  if (m_hnz_connection != nullptr) delete m_hnz_connection;
+  if (m_hnz_conf != nullptr) delete m_hnz_conf;
 }
 
 void HNZ::start() {
@@ -46,21 +48,22 @@ void HNZ::start() {
 }
 
 void HNZ::stop() {
+  Logger::getLogger()->info("Starting shutdown of HNZ plugin");
   m_is_running = false;
 
-  m_hnz_connection->stop();
+  if (m_hnz_connection != nullptr) m_hnz_connection->stop();
 
   if (m_receiving_thread_A != nullptr) {
-    Logger::getLogger()->info("Waiting for the receiving thread (path A)");
+    Logger::getLogger()->debug("Waiting for the receiving thread (path A)");
     m_receiving_thread_A->join();
-    m_receiving_thread_A = nullptr;
+    delete m_receiving_thread_A;
   }
   if (m_receiving_thread_B != nullptr) {
-    Logger::getLogger()->info("Waiting for the receiving thread (path B)");
+    Logger::getLogger()->debug("Waiting for the receiving thread (path B)");
     m_receiving_thread_B->join();
-    m_receiving_thread_B = nullptr;
+    delete m_receiving_thread_B;
   }
-  Logger::getLogger()->info("Plugin stopped");
+  Logger::getLogger()->info("Plugin stopped !");
 }
 
 bool HNZ::setJsonConfig(const string &protocol_conf_json,
@@ -141,27 +144,27 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
   vector<Reading> readings;   // Contains data object to push to fledge
 
   switch (t) {
-    case TM4:
+    case TM4_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TMA");
       m_handleTM4(readings, data);
       break;
-    case TSCE:
+    case TSCE_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TSCE");
       m_handleTSCE(readings, data);
       break;
-    case TSCG:
+    case TSCG_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TSCG");
       m_handleTSCG(readings, data);
       break;
-    case TMN:
+    case TMN_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TMN");
       m_handleTMN(readings, data);
       break;
-    case 0x09:
+    case TC_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TC ACK");
       m_handleATC(readings, data);
       break;
-    case 0x0A:
+    case TVCACK_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TVC ACK");
       m_handleATVC(readings, data);
       break;
@@ -174,7 +177,7 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
   }
 
   if (!readings.empty()) {
-    sendToFledge(readings);
+    m_sendToFledge(readings);
   }
 }
 
@@ -248,7 +251,7 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, vector<unsigned char> data) {
       (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG())) {
     Logger::getLogger()->info("GI completed, push data to fledge.");
     m_hnz_connection->GI_completed();
-    sendToFledge(m_gi_readings_temp);
+    m_sendToFledge(m_gi_readings_temp);
     m_gi_readings_temp.clear();
   }
 }
@@ -400,7 +403,7 @@ Reading HNZ::m_prepare_reading(string label, string msg_code,
   return Reading(label, dp);
 }
 
-void HNZ::sendToFledge(vector<Reading> &readings) {
+void HNZ::m_sendToFledge(vector<Reading> &readings) {
   for (Reading &reading : readings) {
     ingest(reading);
   }

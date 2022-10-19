@@ -19,7 +19,7 @@ To build HNZ C/C++ South plugin, you need to have the HNZ library and then:
 
 .. code-block:: console
 
-  $ cd libhnz/src/hnz
+  $ cd libhnz/
   $ export LIB_HNZ=`pwd`
 
 As shown above, you need a $LIB_HNZ env var set to the source tree of the
@@ -60,7 +60,7 @@ this default behaviour:
 - **FLEDGE_SRC** sets the path of a Fledge source tree
 - **FLEDGE_INCLUDE** sets the path to Fledge header files
 - **FLEDGE_LIB sets** the path to Fledge libraries
-- **FLEDGE_INSTALL** sets the installation path of Random plugin
+- **FLEDGE_INSTALL** sets the installation path of the plugin
 
 NOTE:
  - The **FLEDGE_INCLUDE** option should point to a location where all the Fledge 

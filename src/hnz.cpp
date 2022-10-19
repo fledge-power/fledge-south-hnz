@@ -8,41 +8,62 @@
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
 
-#include "include/hnz.h"
+#include "hnz.h"
 
-HNZ::HNZ()
-    : m_hnz_conf(new HNZConf),
-      m_is_running(false),
-      m_connected(false),
-      m_client(new HNZClient) {}
+HNZ::HNZ() : m_hnz_conf(new HNZConf), m_is_running(false) {}
 
 HNZ::~HNZ() {
   if (m_is_running) {
     stop();
   }
+  if (m_hnz_connection != nullptr) delete m_hnz_connection;
+  if (m_hnz_conf != nullptr) delete m_hnz_conf;
 }
 
 void HNZ::start() {
   Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 
+  if (!m_hnz_conf->is_complete()) {
+    Logger::getLogger()->info(
+        "HNZ south plugin can't start because configuration is incorrect.");
+    return;
+  }
+
   Logger::getLogger()->info("Starting HNZ south plugin...");
 
-  m_receiving_thread = new thread(&HNZ::receive, this);
   m_is_running = true;
+
+  m_receiving_thread_A =
+      new thread(&HNZ::receive, this, m_hnz_connection->getActivePath());
+
+  this_thread::sleep_for(milliseconds(1000));
+
+  HNZPath *passive_path = m_hnz_connection->getPassivePath();
+  if (passive_path != nullptr) {
+    // Path B is defined in the configuration
+    m_receiving_thread_B = new thread(&HNZ::receive, this, passive_path);
+  }
+
+  m_hnz_connection->start();
 }
 
 void HNZ::stop() {
+  Logger::getLogger()->info("Starting shutdown of HNZ plugin");
   m_is_running = false;
 
-  if (m_receiving_thread != nullptr) {
-    if (m_connected) {
-      m_client->stop();
-    }
-    Logger::getLogger()->info("Waiting for the receiving thread");
-    m_receiving_thread->join();
-    m_receiving_thread = nullptr;
+  if (m_hnz_connection != nullptr) m_hnz_connection->stop();
+
+  if (m_receiving_thread_A != nullptr) {
+    Logger::getLogger()->debug("Waiting for the receiving thread (path A)");
+    m_receiving_thread_A->join();
+    delete m_receiving_thread_A;
   }
-  Logger::getLogger()->info("Plugin stopped");
+  if (m_receiving_thread_B != nullptr) {
+    Logger::getLogger()->debug("Waiting for the receiving thread (path B)");
+    m_receiving_thread_B->join();
+    delete m_receiving_thread_B;
+  }
+  Logger::getLogger()->info("Plugin stopped !");
 }
 
 bool HNZ::setJsonConfig(const string &protocol_conf_json,
@@ -68,7 +89,7 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
-  m_hnz_connection = new HNZConnection(m_hnz_conf, m_client, this);
+  m_hnz_connection = new HNZConnection(m_hnz_conf, this);
 
   if (was_running) {
     Logger::getLogger()->warn("Restarting the plugin...");
@@ -77,201 +98,90 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
   return true;
 }
 
-bool HNZ::connect() {
-  int i = 1;
-  while (((i <= RETRY_CONN_NUM) or (RETRY_CONN_NUM == -1)) and m_is_running) {
-    Logger::getLogger()->info("Connecting to server ... [" + to_string(i) +
-                              "/" + to_string(RETRY_CONN_NUM) + "]");
+void HNZ::receive(HNZPath *hnz_path_in_use) {
+  string path = hnz_path_in_use->getName();
 
-    m_connected = !(m_client->connect_Server(
-        m_hnz_conf->get_ip_address().c_str(), m_hnz_conf->get_port()));
-
-    if (m_connected) {
-      Logger::getLogger()->info("Connected.");
-      return true;
-    } else {
-      Logger::getLogger()->warn("Error in connection, retrying in " +
-                                to_string(RETRY_CONN_DELAY) + "s ...");
-      this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
-    }
-    i++;
-  }
-  return false;
-}
-
-void HNZ::receive() {
   if (!m_hnz_conf->is_complete()) {
     return;
   }
 
   // Connect to the server
-  if (!connect()) {
-    Logger::getLogger()->fatal("Unable to connect to server, stopping ...");
+  if (!hnz_path_in_use->connect()) {
+    Logger::getLogger()->fatal(path + " Unable to connect to PA, stopping ...");
     return;
   }
 
-  m_hnz_connection->start();
+  Logger::getLogger()->warn(path + " Listening for data...");
 
-  Logger::getLogger()->warn("Listening for data ...");
+  vector<vector<unsigned char>> messages;
 
   while (m_is_running) {
-    MSG_TRAME *frReceived;
-
     // Waiting for data
-    frReceived = (m_client->receiveFr());
-    if (frReceived != nullptr) {
-      // Checking the CRC
-      if (m_client->checkCRC(frReceived)) {
-        Logger::getLogger()->debug("CRC is good");
+    messages = hnz_path_in_use->getData();
 
-        m_analyze_frame(frReceived);
-      } else {
-        Logger::getLogger()->warn("The CRC does not match");
-      }
-    } else {
-      Logger::getLogger()->warn("No data available, checking connection ...");
+    if (messages.empty() && !hnz_path_in_use->isConnected()) {
+      Logger::getLogger()->warn(path +
+                                " No data available, checking connection ...");
       // Try to reconnect
-      if (!connect()) {
-        Logger::getLogger()->warn("Connection lost");
+      if (!hnz_path_in_use->connect()) {
+        Logger::getLogger()->warn(path + " Connection lost");
         // stop();
         m_is_running = false;
-        m_client->stop();
+        hnz_path_in_use->disconnect();
+      }
+    } else {
+      // Push each message to fledge
+      for (auto &msg : messages) {
+        m_handle_message(msg);
       }
     }
-  }
-
-  m_hnz_connection->stop();
-}
-
-void HNZ::m_analyze_frame(MSG_TRAME *frReceived) {
-  unsigned char *data = frReceived->aubTrame;
-  int size = frReceived->usLgBuffer;
-  unsigned char address = data[0] >> 2;  // remote address
-  unsigned char c = data[1];             // Message type
-
-  Logger::getLogger()->debug(convert_data_to_str(data, size));
-
-  if (m_remote_address == address) {
-    switch (c) {
-      case UA:
-        Logger::getLogger()->debug("Received UA");
-        m_hnz_connection->receivedUA();
-        break;
-      case SARM:
-        Logger::getLogger()->debug("Received SARM");
-        m_hnz_connection->receivedSARM();
-        module10M = 0;
-        break;
-      default:
-        // Get NR, P/F ans NS field
-        int ns = (c >> 1) & 0x07;
-        int pf = (c >> 4) & 0x01;
-        int nr = (c >> 5) & 0x07;
-        if ((c & 0x01) == 0) {
-          // Information frame
-          Logger::getLogger()->warn("Data received (ns = " + to_string(ns) +
-                                    ", p = " + to_string(pf) +
-                                    ", nr = " + to_string(nr) + ")");
-
-          int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
-          analyze_info_frame(data + 2, payloadSize);
-          // Computing the frame number & sending RR
-          m_hnz_connection->sendRR(pf == 1, ns, nr);
-        } else {
-          // Supervision frame
-          Logger::getLogger()->warn("RR received (f = " + to_string(pf) +
-                                    ", nr = " + to_string(nr) + ")");
-          m_hnz_connection->receivedRR(nr, pf == 1);
-        }
-
-        break;
-    }
-  } else {
-    Logger::getLogger()->warn("The address don't match the configuration!");
+    messages.clear();
   }
 }
 
-string HNZ::convert_data_to_str(unsigned char *data, int len) {
-  string s = "";
-  for (int i = 0; i < len; i++) {
-    s += to_string(data[i]);
-    if (i < len - 1) s += " ";
-  }
-  return s;
-}
-
-void HNZ::analyze_info_frame(unsigned char *data, int payloadSize) {
-  int len = 0;                // Length of message to push in Fledge
+void HNZ::m_handle_message(vector<unsigned char> data) {
   unsigned char t = data[0];  // Payload type
   vector<Reading> readings;   // Contains data object to push to fledge
 
   switch (t) {
-    case TM4:
-      Logger::getLogger()->info("Received TMA");
+    case TM4_CODE:
+      Logger::getLogger()->info("Pushing to Fledge a TMA");
       m_handleTM4(readings, data);
-      len = 6;
       break;
-    case TSCE:
-      Logger::getLogger()->info("Received TSCE");
+    case TSCE_CODE:
+      Logger::getLogger()->info("Pushing to Fledge a TSCE");
       m_handleTSCE(readings, data);
-      len = 5;
       break;
-    case TSCG:
-      Logger::getLogger()->info("Received TSCG");
+    case TSCG_CODE:
+      Logger::getLogger()->info("Pushing to Fledge a TSCG");
       m_handleTSCG(readings, data);
-      len = 6;
       break;
-    case TMN:
-      Logger::getLogger()->info("Received TMN");
+    case TMN_CODE:
+      Logger::getLogger()->info("Pushing to Fledge a TMN");
       m_handleTMN(readings, data);
-      len = 7;
       break;
-    case 0x0F:
-      module10M = (int)data[1];
-      Logger::getLogger()->info("Received Modulo 10mn");
-      len = 2;
-      break;
-    case 0x09:
-      Logger::getLogger()->info("Received TC ACK");
+    case TC_CODE:
+      Logger::getLogger()->info("Pushing to Fledge a TC ACK");
       m_handleATC(readings, data);
-      len = 3;
       break;
-    case 0x0A:
-      Logger::getLogger()->info("Received TVC ACK");
+    case TVCACK_CODE:
+      Logger::getLogger()->info("Pushing to Fledge a TVC ACK");
       m_handleATVC(readings, data);
-      len = 3;
       break;
     default:
-      if (t == m_test_msg_receive.first &&
-          data[1] == m_test_msg_receive.second) {
-        Logger::getLogger()->info("Received BULLE");
-        m_hnz_connection->receivedBULLE();
-        len = 2;
-      } else {
-        Logger::getLogger()->info("Received an unknown type");
+      if (!(t == m_test_msg_receive.first &&
+            data[1] == m_test_msg_receive.second)) {
+        Logger::getLogger()->error("Unknown message to push !");
       }
       break;
   }
 
-  if (len != 0) {
-    Logger::getLogger()->debug("[" + convert_data_to_str(data, len) + "]");
-
-    if (!readings.empty()) {
-      sendToFledge(readings);
-    }
-
-    // Check the length of the payload
-    // There can be several messages in the same frame
-    if (len != payloadSize) {
-      // Analyze the rest of the payload
-      analyze_info_frame(data + len, payloadSize - len);
-    }
-  } else {
-    Logger::getLogger()->info("Unknown message");
+  if (!readings.empty()) {
+    m_sendToFledge(readings);
   }
 }
 
-void HNZ::m_handleTM4(vector<Reading> &readings, unsigned char *data) {
+void HNZ::m_handleTM4(vector<Reading> &readings, vector<unsigned char> data) {
   string msg_code = "TMA";
   for (size_t i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
@@ -293,7 +203,7 @@ void HNZ::m_handleTM4(vector<Reading> &readings, unsigned char *data) {
   }
 }
 
-void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned char *data) {
+void HNZ::m_handleTSCE(vector<Reading> &readings, vector<unsigned char> data) {
   string msg_code = "TSCE";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
@@ -315,7 +225,7 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, unsigned char *data) {
   }
 }
 
-void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
+void HNZ::m_handleTSCG(vector<Reading> &readings, vector<unsigned char> data) {
   string msg_code = "TSCG";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
@@ -341,12 +251,12 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, unsigned char *data) {
       (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG())) {
     Logger::getLogger()->info("GI completed, push data to fledge.");
     m_hnz_connection->GI_completed();
-    sendToFledge(m_gi_readings_temp);
+    m_sendToFledge(m_gi_readings_temp);
     m_gi_readings_temp.clear();
   }
 }
 
-void HNZ::m_handleTMN(vector<Reading> &readings, unsigned char *data) {
+void HNZ::m_handleTMN(vector<Reading> &readings, vector<unsigned char> data) {
   string msg_code = "TMN";
   // 2 or 4 TM inside a TMn
   unsigned int nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
@@ -380,12 +290,12 @@ void HNZ::m_handleTMN(vector<Reading> &readings, unsigned char *data) {
   }
 }
 
-void HNZ::m_handleATVC(vector<Reading> &readings, unsigned char *data) {
+void HNZ::m_handleATVC(vector<Reading> &readings, vector<unsigned char> data) {
   string msg_code = "ACK_TVC";
 
   unsigned int msg_address = data[1] & 0x1F;  // AD0
 
-  m_hnz_connection->receivedCommandACK("TVC", msg_address);
+  m_hnz_connection->getActivePath()->receivedCommandACK("TVC", msg_address);
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
@@ -408,13 +318,13 @@ void HNZ::m_handleATVC(vector<Reading> &readings, unsigned char *data) {
   }
 }
 
-void HNZ::m_handleATC(vector<Reading> &readings, unsigned char *data) {
+void HNZ::m_handleATC(vector<Reading> &readings, vector<unsigned char> data) {
   string msg_code = "ACK_TC";
 
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
-  m_hnz_connection->receivedCommandACK("TC", msg_address);
+  m_hnz_connection->getActivePath()->receivedCommandACK("TC", msg_address);
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
@@ -493,7 +403,7 @@ Reading HNZ::m_prepare_reading(string label, string msg_code,
   return Reading(label, dp);
 }
 
-void HNZ::sendToFledge(vector<Reading> &readings) {
+void HNZ::m_sendToFledge(vector<Reading> &readings) {
   for (Reading &reading : readings) {
     ingest(reading);
   }
@@ -514,14 +424,15 @@ bool HNZ::operation(const std::string &operation, int count,
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
-    m_hnz_connection->sendTCCommand(address, value);
+    m_hnz_connection->getActivePath()->sendTCCommand(address, value);
     return true;
   } else if (operation.compare("TVC") == 0) {
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
     int val_coding = atoi(params[3]->value.c_str());
 
-    m_hnz_connection->sendTVCCommand(address, value, val_coding);
+    m_hnz_connection->getActivePath()->sendTVCCommand(address, value,
+                                                      val_coding);
     return true;
   }
 

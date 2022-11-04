@@ -75,8 +75,6 @@ jobs:
           git clone ${{ env.LIBHNZ_REPO_URL }}
           cd $HOME/libhnz/src/hnz
           ./compilation.sh
-          echo Set the environment variable LIB_HNZ to $HOME/libhnz
-          export LIB_HNZ=$HOME/libhnz
       - name: Download and install Google Unit Test framework
         run: |
           sudo apt-get install libgtest-dev
@@ -91,6 +89,7 @@ jobs:
         run: |
           chmod +x mkversion
           export LD_LIBRARY_PATH=/usr/lib:/usr/local/lib
+          export LIB_HNZ=$HOME/libhnz
           mkdir build
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Coverage
           build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} cmake --build build/ --config Release

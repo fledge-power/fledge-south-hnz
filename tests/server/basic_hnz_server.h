@@ -1,5 +1,6 @@
 #include <chrono>
 #include <thread>
+#include <mutex>
 
 #include "hnz_server.h"
 
@@ -32,6 +33,16 @@ class BasicHNZServer {
   void sendSARM();
 
   void sendFrame(vector<unsigned char> message, bool repeat);
+  void createAndSendFrame(unsigned char addr, unsigned char *msg, int msgSize);
+  // Note: return the strcutre by value becase a copy must be done by the caller to remain thread safe
+  std::vector<std::shared_ptr<MSG_TRAME>> popLastFramesReceived();
+  std::vector<std::shared_ptr<MSG_TRAME>> popLastFramesSent();
+
+  void onFrameReceived(MSG_TRAME* frame);
+  void onFrameSent(MSG_TRAME* frame);
+
+  std::string frameToStr(std::shared_ptr<MSG_TRAME> frame);
+  std::string framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames);
 
   HNZServer* server;
   int addr;
@@ -46,6 +57,12 @@ class BasicHNZServer {
   bool ua_ok = false;
   bool sarm_ok = false;
 
+  std::vector<std::shared_ptr<MSG_TRAME>> m_last_frames_received;
+  std::mutex m_received_mutex;
+
+  std::vector<std::shared_ptr<MSG_TRAME>> m_last_frames_sent;
+  std::mutex m_sent_mutex;
+  
   void receiving_loop();
 
   void sendSARMLoop();

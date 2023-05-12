@@ -28,7 +28,8 @@ string protocol_stack_def = QUOTE({
       "gi_schedule" : "18:05",
       "gi_repeat_count" : 5,
       "gi_time" : 300,
-      "c_ack_time" : 20
+      "c_ack_time" : 20,
+      "cmd_recv_timeout" : 200000
     }
   }
 });
@@ -155,6 +156,8 @@ TEST_F(HNZConfTest, GetGIRepeatCount) {
 TEST_F(HNZConfTest, GetGITime) { ASSERT_EQ(hnz_conf->get_gi_time(), 300); }
 
 TEST_F(HNZConfTest, GetCAckTime) { ASSERT_EQ(hnz_conf->get_c_ack_time(), 20); }
+
+TEST_F(HNZConfTest, GetCmdRecvTimeout) { ASSERT_EQ(hnz_conf->get_cmd_recv_timeout(), 200000); }
 
 TEST_F(HNZConfTest, GetLabelTS1) {
   ASSERT_STREQ(hnz_conf->getLabel("TSCE", 511).c_str(), "TS1");

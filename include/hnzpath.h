@@ -170,6 +170,7 @@ class HNZPath {
   string m_ip;  // IP of the PA
   int m_port;   // Port to connect to
   int m_remote_address;
+  long long int m_timeoutUs; // Timeout for socket recv in microseconds
   unsigned char m_address_PA;   // remote address + 1
   unsigned char m_address_ARP;  // remote address + 3
 

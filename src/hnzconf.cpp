@@ -108,6 +108,9 @@ void HNZConf::importConfigJson(const string &json) {
 
     is_complete &=
         m_retrieve(conf, C_ACK_TIME, &m_c_ack_time, DEFAULT_C_ACK_TIME);
+
+    is_complete &=
+        m_retrieve(conf, CMD_RECV_TIMEOUT, &m_cmd_recv_timeout, static_cast<long long int>(DEFAULT_CMD_RECV_TIMEOUT));
   } else {
     is_complete = false;
   }
@@ -366,5 +369,21 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
   }
 
   *target = time;
+  return true;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key,
+                         long long int *target, long long int def) {
+  if (!json.HasMember(key)) {
+    *target = def;
+  } else {
+    if (!json[key].IsInt64()) {
+      string s = key;
+      Logger::getLogger()->error("Error with the field " + s +
+                                 ", the value is not a long long integer.");
+      return false;
+    }
+    *target = json[key].GetInt64();
+  }
   return true;
 }

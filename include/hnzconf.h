@@ -39,6 +39,7 @@
 #define GI_REPEAT_COUNT "gi_repeat_count"
 #define GI_TIME "gi_time"
 #define C_ACK_TIME "c_ack_time"
+#define CMD_RECV_TIMEOUT "cmd_recv_timeout"
 
 #define JSON_EXCHANGED_DATA_NAME "exchanged_data"
 #define DATAPOINTS "datapoints"
@@ -63,6 +64,7 @@
 #define DEFAULT_GI_REPEAT_COUNT 3
 #define DEFAULT_GI_TIME 255
 #define DEFAULT_C_ACK_TIME 10
+#define DEFAULT_CMD_RECV_TIMEOUT 100000 // 100ms
 
 #define DEBUG_LEVEL "debug"
 
@@ -251,6 +253,13 @@ class HNZConf {
    */
   unsigned int get_c_ack_time() { return m_c_ack_time; }
 
+  /**
+   * Get the timeout for socket recv blocking calls
+   *
+   * @return  unsigned int
+   */
+  long long int get_cmd_recv_timeout() { return m_cmd_recv_timeout; }
+
  private:
   string m_ip_A, m_ip_B = "";
   unsigned int m_port_A, m_port_B;
@@ -267,6 +276,7 @@ class HNZConf {
   unsigned int m_gi_repeat_count;
   unsigned int m_gi_time;
   unsigned int m_c_ack_time;
+  long long int m_cmd_recv_timeout;
 
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 
@@ -288,6 +298,8 @@ class HNZConf {
                          BulleFormat *target);
   static bool m_retrieve(const Value &json, const char *key,
                          GIScheduleFormat *target);
+  static bool m_retrieve(const Value &json, const char *key,
+                         long long int *target, long long int def);
 };
 
 #endif

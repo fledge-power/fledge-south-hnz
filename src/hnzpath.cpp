@@ -18,6 +18,7 @@ HNZPath::HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection,
   this->m_ip =
       secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A();
   this->m_port = secondary ? hnz_conf->get_port_B() : hnz_conf->get_port_A();
+  this->m_timeoutUs = hnz_conf->get_cmd_recv_timeout();
   this->m_path_name = secondary ? "Path B" : "Path A";
   this->repeat_max = (secondary ? hnz_conf->get_repeat_path_B()
                                 : hnz_conf->get_repeat_path_A()) -
@@ -81,7 +82,7 @@ bool HNZPath::connect() {
         ")... [" + to_string(i) + "/" + to_string(RETRY_CONN_NUM) + "]");
 
     // Establish TCP connection with the PA
-    m_connected = !(m_hnz_client->connect_Server(m_ip.c_str(), m_port));
+    m_connected = !(m_hnz_client->connect_Server(m_ip.c_str(), m_port, m_timeoutUs));
 
     if (m_connected) {
       Logger::getLogger()->info(m_name_log + "Connected to " + m_ip + " (" +

@@ -19,7 +19,7 @@
 #include <queue>
 #include <thread>
 
-#include "../../libhnz/src/inc/hnz_client.h"
+#include "hnz_client.h"
 #include "hnzconnection.h"
 
 #define CONNECTION 0

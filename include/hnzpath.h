@@ -109,10 +109,8 @@ class HNZPath {
    * Send a TVC command.
    * @param address ADO
    * @param value value
-   * @param val_coding boolean that indicate the format of the value
    */
-  bool sendTVCCommand(unsigned char address, int value,
-                      unsigned char val_coding);
+  bool sendTVCCommand(unsigned char address, int value);
 
   /**
    * Send a TC command.

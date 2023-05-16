@@ -82,6 +82,14 @@ class HNZ {
   bool operation(const std::string& operation, int count,
                  PLUGIN_PARAMETER** params);
 
+  /**
+   * Utility function used to store the content of a frame as a human readable hex string
+   *
+   * @param frame The frame to format
+   * @return a string representing the bytes of that frame in hexadecimal
+   */
+  std::string frameToStr(std::vector<unsigned char> frame);
+
  private:
   string m_asset;  // Plugin name in fledge
   atomic<bool> m_is_running;
@@ -161,7 +169,7 @@ class HNZ {
    */
   static Reading m_prepare_reading(string label, string msg_code,
                                    unsigned char station_addr, int msg_address,
-                                   int value, int value_coding, bool coding);
+                                   int value);
 
   /**
    * Sends the datapoints passed as Reading to Fledge

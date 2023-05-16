@@ -300,21 +300,14 @@ void HNZ::m_handleATVC(vector<Reading> &readings, vector<unsigned char> data) {
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
   if (!label.empty()) {
-    unsigned int value_coding = (data[1] >> 5) & 0x1;  // X
-    unsigned int a = (data[1] >> 6) & 0x1;             // A
-    int value;
-
-    if (value_coding == 1) {
-      value = ((data[3] & 0xF) << 8) | data[2];
-    } else {
-      value = data[2] & 0x7F;
+    unsigned int a = (data[1] >> 6) & 0x1; // A
+    int value = data[2] & 0x7F;
+    if (((data[3] >> 7) & 0x1) == 1) {
+      value *= -1;  // S
     }
 
-    if (((data[3] >> 7) & 0x1) == 1) -1 * value;  // S
-
     readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                         msg_address, value, value_coding,
-                                         true));
+                                         msg_address, value));
   }
 }
 
@@ -332,7 +325,7 @@ void HNZ::m_handleATC(vector<Reading> &readings, vector<unsigned char> data) {
     int value = data[2] & 0x7;
 
     readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                         msg_address, value, 0, false));
+                                         msg_address, value));
   }
 }
 
@@ -374,13 +367,12 @@ Reading HNZ::m_prepare_reading(string label, string msg_code,
 
 Reading HNZ::m_prepare_reading(string label, string msg_code,
                                unsigned char station_addr, int msg_address,
-                               int value, int value_coding, bool coding) {
+                               int value) {
   Logger::getLogger()->debug(
       "Send to fledge " + msg_code +
       " with station address = " + to_string(station_addr) +
       ", message address = " + to_string(msg_address) +
-      ", value = " + to_string(value) +
-      (coding ? ("value coding = " + to_string(value_coding)) : ""));
+      ", value = " + to_string(value));
 
   auto *measure_features = new vector<Datapoint *>;
   measure_features->push_back(m_createDatapoint("do_type", msg_code));
@@ -389,12 +381,6 @@ Reading HNZ::m_prepare_reading(string label, string msg_code,
   measure_features->push_back(
       m_createDatapoint("do_addr", (long int)msg_address));
   measure_features->push_back(m_createDatapoint("do_value", (long int)value));
-
-  if (coding) {
-    // TODO : Review the name
-    measure_features->push_back(
-        m_createDatapoint("do_val_coding", (long int)value_coding));
-  }
 
   DatapointValue dpv(measure_features, true);
 
@@ -429,13 +415,24 @@ bool HNZ::operation(const std::string &operation, int count,
   } else if (operation.compare("TVC") == 0) {
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
-    int val_coding = atoi(params[3]->value.c_str());
 
-    m_hnz_connection->getActivePath()->sendTVCCommand(address, value,
-                                                      val_coding);
+    m_hnz_connection->getActivePath()->sendTVCCommand(address, value);
     return true;
   }
 
   Logger::getLogger()->error("Unrecognised operation %s", operation.c_str());
   return false;
+}
+
+std::string HNZ::frameToStr(std::vector<unsigned char> frame) {
+  std::stringstream stream;
+  stream << "\n[";
+  for(int i=0 ; i<frame.size() ; i++) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << "0x" << std::setfill('0') << std::setw(2) << std::hex << static_cast<unsigned int>(frame[i]);
+  }
+  stream << "]";
+  return stream.str();
 }

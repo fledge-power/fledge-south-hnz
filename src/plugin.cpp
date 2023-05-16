@@ -147,12 +147,12 @@ static const char *default_config = QUOTE({
  */
 extern "C" {
 static PLUGIN_INFORMATION info = {
-    PLUGIN_NAME,        // Name
-    VERSION,            // Version
-    SP_ASYNC,           // Flags
-    PLUGIN_TYPE_SOUTH,  // Type
-    "1.0.0",            // Interface version
-    default_config      // Default configuration
+    PLUGIN_NAME,           // Name
+    VERSION,               // Version
+    SP_ASYNC | SP_CONTROL, // Flags
+    PLUGIN_TYPE_SOUTH,     // Type
+    "1.0.0",               // Interface version
+    default_config         // Default configuration
 };
 
 /**

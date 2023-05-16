@@ -76,6 +76,18 @@ TEST(HNZ, PluginInit) {
   delete config;
 }
 
+TEST(HNZ, PluginStart) {
+  ConfigCategory *emptyConfig = new ConfigCategory();
+  PLUGIN_HANDLE handle = nullptr;
+
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NO_THROW(plugin_start((PLUGIN_HANDLE *)handle));
+
+  if (handle != nullptr) plugin_shutdown((PLUGIN_HANDLE *)handle);
+
+  delete emptyConfig;
+}
+
 TEST(HNZ, PluginInitEmptyConfig) {
   ConfigCategory *emptyConfig = new ConfigCategory();
   PLUGIN_HANDLE handle = nullptr;

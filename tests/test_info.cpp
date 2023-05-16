@@ -14,12 +14,15 @@ PLUGIN_INFORMATION *plugin_info();
 
 TEST(HNZ, PluginInfo) {
   PLUGIN_INFORMATION *info = plugin_info();
+  ASSERT_NE(info, nullptr);
   ASSERT_STREQ(info->name, "hnz");
+  ASSERT_EQ(info->options, SP_ASYNC | SP_CONTROL);
   ASSERT_EQ(info->type, PLUGIN_TYPE_SOUTH);
 }
 
 TEST(HNZ, PluginInfoConfigParse) {
   PLUGIN_INFORMATION *info = plugin_info();
+  ASSERT_NE(info, nullptr);
   Document doc;
   doc.Parse(info->config);
   ASSERT_EQ(doc.HasParseError(), false);

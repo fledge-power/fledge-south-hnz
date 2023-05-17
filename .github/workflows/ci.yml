@@ -8,6 +8,11 @@ on:
     
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+        libhnz_branch:
+          description: 'Branch to use for libhnz'
+          required: true
+          default: 'develop'
   
 jobs:
   build:
@@ -73,6 +78,7 @@ jobs:
         run: |
           cd $HOME
           git clone ${{ env.LIBHNZ_REPO_URL }}
+          git checkout ${{ github.event.inputs.libhnz_branch }}
           cd $HOME/libhnz/src/hnz
           ./compilation.sh
       - name: Download and install Google Unit Test framework

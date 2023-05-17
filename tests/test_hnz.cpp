@@ -78,6 +78,32 @@ static string exchanged_data_def = QUOTE({
           "message_address" : 23,
           "message_code" : "TMA"
         } ]
+      },
+      {
+        "label" : "TC1",
+        "pivot_id" : "ID222222",
+        "pivot_type" : "DPCTyp",
+        "protocols" : [
+          {
+            "name": "hnz",
+            "station_address": 1,
+            "message_address": 142,
+            "message_code": "ACK_TC"
+          }
+        ]
+      },
+      {
+        "label" : "TVC1",
+        "pivot_id" : "ID333333",
+        "pivot_type" : "DPCTyp",
+        "protocols" : [
+          {
+            "name": "hnz",
+            "station_address": 1,
+            "message_address": 143,
+            "message_code": "ACK_TVC"
+          }
+        ]
       }
     ]
   }
@@ -319,6 +345,81 @@ TEST_F(HNZTest, ReceivingMessages) {
   delete server;
 }
 
+TEST_F(HNZTest, SendingMessages) {
+  BasicHNZServer* server = new BasicHNZServer(6007, 0x05);
+
+  server->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6007, 0);
+
+  if (!server->HNZServerIsReady())
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+
+  // Send TC1
+  std::string operationTC("TC");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"address", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"value", "1"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  printf("[HNZ south plugin] TC sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server and validate it
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TCframe = nullptr;
+  for(auto frame: frames) {
+    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x19)) {
+      TCframe = frame;
+      break;
+    }
+  }
+  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << server->framesToStr(frames);
+  int expectedTCLength = 7;
+  unsigned char expectedFrameTC[expectedTCLength] = {0x07, 0x08, 0x19, 0x0e, 0x48, 0xa4, 0x57};
+  ASSERT_EQ(TCframe->usLgBuffer, expectedTCLength);
+  for(int i=0 ; i<expectedTCLength ; i++){
+    ASSERT_EQ(TCframe->aubTrame[i], expectedFrameTC[i]) << "mismatch at byte: " << i << server->frameToStr(TCframe);
+  }
+
+  // Send TVC1
+  std::string operationTVC("TVC");
+  int nbParamsTVC = 4;
+  PLUGIN_PARAMETER paramTVC1 = {"type", "TVC"};
+  PLUGIN_PARAMETER paramTVC2 = {"address", "143"};
+  PLUGIN_PARAMETER paramTVC3 = {"value", "42"};
+  PLUGIN_PARAMETER paramTVC4 = {"val_coding", "0"};
+  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3, &paramTVC4};
+  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  printf("[HNZ south plugin] TVC sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TVC frame in the list of frames received by server and validate it
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TVCframe = nullptr;
+  for(auto frame: frames) {
+    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
+      TVCframe = frame;
+      break;
+    }
+  }
+  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << server->framesToStr(frames);
+  int expectedTVCLength = 8;
+  unsigned char expectedFrameTVC[expectedTVCLength] = {0x07, 0x0a, 0x1a, 0x0f, 0x2a, 0x00, 0x7d, 0x2c};
+  ASSERT_EQ(TVCframe->usLgBuffer, expectedTVCLength);
+  for(int i=0 ; i<expectedTVCLength ; i++){
+    ASSERT_EQ(TVCframe->aubTrame[i], expectedFrameTVC[i]) << "mismatch at byte: " << i << server->frameToStr(TVCframe);
+  }
+  
+  delete server;
+}
+
 TEST_F(HNZTest, TCPConnectionTwoPathOK) {
   BasicHNZServer* server = new BasicHNZServer(6003, 0x05);
   BasicHNZServer* server2 = new BasicHNZServer(6004, 0x05);
@@ -391,6 +492,88 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(ingestCallbackCalled, 1);
 
+  delete server;
+  delete server2;
+}
+
+TEST_F(HNZTest, SendingMessagesTwoPath) {
+  BasicHNZServer* server = new BasicHNZServer(6008, 0x05);
+  BasicHNZServer* server2 = new BasicHNZServer(6009, 0x05);
+
+  server->startHNZServer();
+  server2->startHNZServer();
+
+  // Start HNZ Plugin
+  startHNZ(6008, 6009);
+
+  if (!server->HNZServerIsReady())
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+  if (!server2->HNZServerIsReady())
+    FAIL() << "Something went wrong. Connection is not established in 10s...";
+
+  // Send TC1
+  std::string operationTC("TC");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"address", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"value", "1"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  printf("[HNZ south plugin] TC sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TCframe = nullptr;
+  for(auto frame: frames) {
+    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x19)) {
+      TCframe = frame;
+      break;
+    }
+  }
+  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << server->framesToStr(frames);
+  // Check that TC is only received on active path (server) and not on passive path (server2)
+  frames = server2->popLastFramesReceived();
+  for(auto frame: frames) {
+    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x19)) {
+      FAIL() << "No TC frame should be received by server2, found: " << server2->frameToStr(frame);
+    }
+  }
+
+  // Send TVC1
+  std::string operationTVC("TVC");
+  int nbParamsTVC = 4;
+  PLUGIN_PARAMETER paramTVC1 = {"type", "TVC"};
+  PLUGIN_PARAMETER paramTVC2 = {"address", "143"};
+  PLUGIN_PARAMETER paramTVC3 = {"value", "42"};
+  PLUGIN_PARAMETER paramTVC4 = {"val_coding", "0"};
+  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3, &paramTVC4};
+  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  printf("[HNZ south plugin] TVC sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TVC frame in the list of frames received by server
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TVCframe = nullptr;
+  for(auto frame: frames) {
+    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
+      TVCframe = frame;
+      break;
+    }
+  }
+  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << server->framesToStr(frames);
+  // Check that TVC is only received on active path (server) and not on passive path (server2)
+  frames = server2->popLastFramesReceived();
+  for(auto frame: frames) {
+    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
+      FAIL() << "No TVC frame should be received by server2, found: " << server2->frameToStr(frame);
+    }
+  }
+  
   delete server;
   delete server2;
 }

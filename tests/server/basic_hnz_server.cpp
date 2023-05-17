@@ -1,3 +1,7 @@
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+
 #include "basic_hnz_server.h"
 
 void BasicHNZServer::startHNZServer() {
@@ -42,12 +46,14 @@ void BasicHNZServer::receiving_loop() {
                 static_cast<unsigned char>((m_nr << 5) + 1 + 0x10 * f);
 
             unsigned char message[1]{num};
-            server->createAndSendFr(data[0], message, sizeof(message));
+            createAndSendFrame(data[0], message, sizeof(message));
           }
         }
       } else {
         printf("The CRC does not match");
       }
+      // Store the frame that was received for testing purposes
+      onFrameReceived(frReceived);
     }
   }
   // printf("Stopping loop...\n ");
@@ -82,7 +88,11 @@ bool BasicHNZServer::HNZServerIsReady() {
   // Wait for UA and send UA in response of SARM
   int cpt = 1;
   while (1) {
-    unsigned char *data = server->receiveData();
+    MSG_TRAME *frReceived = (server->receiveFr());
+    if (frReceived == nullptr) {
+      continue;
+    }
+    unsigned char *data = frReceived->aubTrame;
     unsigned char c = data[1];
     switch (c) {
       case UA_CODE:
@@ -93,7 +103,7 @@ bool BasicHNZServer::HNZServerIsReady() {
         // printf("[HNZ Server] SARM received, sending UA\n");
         unsigned char message[1];
         message[0] = 0x63;
-        server->createAndSendFr(0x07, message, sizeof(message));
+        createAndSendFrame(0x07, message, sizeof(message));
         sarm_ok = true;
         break;
       default:
@@ -101,6 +111,8 @@ bool BasicHNZServer::HNZServerIsReady() {
         break;
     }
     cpt++;
+    // Store the frame that was received for testing purposes
+    onFrameReceived(frReceived);
     if (ua_ok && sarm_ok) break;
   }
   m_t2->join();
@@ -116,13 +128,77 @@ bool BasicHNZServer::HNZServerIsReady() {
 void BasicHNZServer::sendSARM() {
   unsigned char message[1];
   message[0] = 0x0F;
-  server->createAndSendFr(0x05, message, sizeof(message));
+  createAndSendFrame(0x05, message, sizeof(message));
 }
 
 void BasicHNZServer::sendFrame(vector<unsigned char> message, bool repeat) {
   int num = (((repeat) ? (m_ns - 1) : m_ns) % 8) << 1 + ((m_nr + 1 << 5) % 8);
   message.insert(message.begin(), num);
   int len = message.size();
-  server->createAndSendFr(addr, message.data(), len);
+  createAndSendFrame(addr, message.data(), len);
   if (!repeat) m_ns++;
+}
+
+void BasicHNZServer::createAndSendFrame(unsigned char addr, unsigned char *msg, int msgSize) {
+  // Code extracted from HNZClient::createAndSendFr of libhnz
+  MSG_TRAME* pTrame = new MSG_TRAME;
+  unsigned char msgWithAddr[msgSize + 1];
+  // Add address
+  msgWithAddr[0] = addr;
+  // Add message
+  memcpy(msgWithAddr + 1, msg, msgSize);
+  server->addMsgToFr(pTrame, msgWithAddr, sizeof(msgWithAddr));
+  server->setCRC(pTrame);
+  // Store the frame about to be sent for testing purposes
+  onFrameSent(pTrame);
+  server->sendFr(pTrame);
+}
+
+std::vector<std::shared_ptr<MSG_TRAME>> BasicHNZServer::popLastFramesReceived() {
+  std::lock_guard<std::mutex> guard(m_received_mutex);
+  std::vector<std::shared_ptr<MSG_TRAME>> tmp = m_last_frames_received;
+  m_last_frames_received.clear();
+  return tmp;
+}
+
+std::vector<std::shared_ptr<MSG_TRAME>> BasicHNZServer::popLastFramesSent() {
+  std::lock_guard<std::mutex> guard(m_sent_mutex);
+  std::vector<std::shared_ptr<MSG_TRAME>> tmp = m_last_frames_sent;
+  m_last_frames_sent.clear();
+  return tmp;
+}
+
+void BasicHNZServer::onFrameReceived(MSG_TRAME* frame) {
+  std::lock_guard<std::mutex> guard(m_received_mutex);
+  std::shared_ptr<MSG_TRAME> newFrame = std::make_shared<MSG_TRAME>();
+  memcpy(newFrame.get(), frame, sizeof(MSG_TRAME));
+  m_last_frames_received.push_back(newFrame);
+}
+
+void BasicHNZServer::onFrameSent(MSG_TRAME* frame) {
+  std::lock_guard<std::mutex> guard(m_sent_mutex);
+  std::shared_ptr<MSG_TRAME> newFrame = std::make_shared<MSG_TRAME>();
+  memcpy(newFrame.get(), frame, sizeof(MSG_TRAME));
+  m_last_frames_sent.push_back(newFrame);
+}
+
+std::string BasicHNZServer::frameToStr(std::shared_ptr<MSG_TRAME> frame) {
+  std::stringstream stream;
+  stream << "\n[";
+  for(int i=0 ; i<frame->usLgBuffer ; i++) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << "0x" << std::setfill('0') << std::setw(2) << std::hex << static_cast<unsigned int>(frame->aubTrame[i]);
+  }
+  stream << "]";
+  return stream.str();
+}
+
+std::string BasicHNZServer::framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames) {
+  std::stringstream stream;
+  for(auto frame: frames) {
+    stream << frameToStr(frame);
+  }
+  return stream.str();
 }

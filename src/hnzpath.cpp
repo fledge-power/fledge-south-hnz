@@ -625,7 +625,7 @@ bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   string address_str = to_string(address);
   unsigned char msg[3];
   msg[0] = TC_CODE;
-  msg[1] = stoi(address_str.substr(0, address_str.length() - 2));
+  msg[1] = stoi(address_str.substr(0, address_str.length() - 1));
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 
   m_sendInfo(msg, sizeof(msg));

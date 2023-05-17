@@ -75,11 +75,12 @@ jobs:
       - name: Download and install libhnz
         env:
           LIBHNZ_REPO_URL: "https://github.com/fledge-power/libhnz.git" 
+          LIBHNZ_BRANCH: ${{ github.event.inputs.libhnz_branch || 'develop' }}
         run: |
           cd $HOME
           git clone ${{ env.LIBHNZ_REPO_URL }}
           cd $HOME/libhnz
-          git checkout ${{ github.event.inputs.libhnz_branch }}
+          git checkout ${{ env.LIBHNZ_BRANCH }}
           cd $HOME/libhnz/src/hnz
           ./compilation.sh
       - name: Download and install Google Unit Test framework

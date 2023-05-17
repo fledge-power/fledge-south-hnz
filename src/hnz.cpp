@@ -160,7 +160,7 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
       Logger::getLogger()->info("Pushing to Fledge a TMN");
       m_handleTMN(readings, data);
       break;
-    case TC_CODE:
+    case TCACK_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TC ACK");
       m_handleATC(readings, data);
       break;

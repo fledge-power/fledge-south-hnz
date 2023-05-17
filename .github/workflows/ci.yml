@@ -78,6 +78,7 @@ jobs:
         run: |
           cd $HOME
           git clone ${{ env.LIBHNZ_REPO_URL }}
+          cd $HOME/libhnz
           git checkout ${{ github.event.inputs.libhnz_branch }}
           cd $HOME/libhnz/src/hnz
           ./compilation.sh

@@ -33,7 +33,6 @@ HNZPath::HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool se
                   c_ack_time_max(hnz_conf->get_c_ack_time() * 1000)
 {
   setActivePath(!secondary);
-  m_is_running = true;
   go_to_connection();
 }
 

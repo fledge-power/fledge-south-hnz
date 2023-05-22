@@ -107,7 +107,7 @@ class HNZ {
   void* m_data;        // Ingest function data
 
   // Configuration defined variables
-  int m_remote_address;
+  unsigned int m_remote_address;
   BulleFormat m_test_msg_receive;
 
   /**
@@ -156,20 +156,26 @@ class HNZ {
    */
   void m_handleATC(vector<Reading>& reading, vector<unsigned char> data);
 
+  // Dedicated structure used to store parameters passed to m_prepare_reading.
+  // This allows for only the required optional parameters to be specified, skipping the unused ones inbetween.
+  struct ReadingParameters {
+    // Those are mandatory parameters
+    std::string label;
+    std::string msg_code;
+    unsigned int station_addr;
+    unsigned int msg_address;
+    long int value;
+    unsigned int valid;
+    // Those are optional parameters
+    unsigned int ts = 0;
+    unsigned int ts_iv = 0;
+    unsigned int ts_c = 0;
+    unsigned int ts_s = 0;
+  };
   /**
    * Create a reading from the values given in argument.
    */
-  static Reading m_prepare_reading(string label, string msg_code,
-                                   unsigned char station_addr, int msg_address,
-                                   int value, int valid, int ts, int ts_iv,
-                                   int ts_c, int ts_s, bool time);
-
-  /**
-   * Create a reading from the values given in argument.
-   */
-  static Reading m_prepare_reading(string label, string msg_code,
-                                   unsigned char station_addr, int msg_address,
-                                   int value);
+  static Reading m_prepare_reading(ReadingParameters params);
 
   /**
    * Sends the datapoints passed as Reading to Fledge

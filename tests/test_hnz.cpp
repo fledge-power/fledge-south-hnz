@@ -333,6 +333,10 @@ TEST_F(HNZTest, ReceivingMessages) {
     ASSERT_TRUE(hasChild(*data_object, "do_addr"));
     ASSERT_TRUE(hasChild(*data_object, "do_value"));
     ASSERT_TRUE(hasChild(*data_object, "do_valid"));
+    ASSERT_FALSE(hasChild(*data_object, "do_ts"));
+    ASSERT_FALSE(hasChild(*data_object, "do_ts_iv"));
+    ASSERT_FALSE(hasChild(*data_object, "do_ts_c"));
+    ASSERT_FALSE(hasChild(*data_object, "do_ts_s"));
 
     ASSERT_EQ("TMA", getStrValue(getChild(*data_object, "do_type")));
     ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
@@ -460,11 +464,17 @@ TEST_F(HNZTest, SendingMessages) {
   ASSERT_TRUE(hasChild(*data_object, "do_station"));
   ASSERT_TRUE(hasChild(*data_object, "do_addr"));
   ASSERT_TRUE(hasChild(*data_object, "do_value"));
+  ASSERT_TRUE(hasChild(*data_object, "do_valid"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts_iv"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts_c"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts_s"));
 
   ASSERT_EQ("ACK_TVC", getStrValue(getChild(*data_object, "do_type")));
   ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
   ASSERT_EQ((int64_t)31, getIntValue(getChild(*data_object, "do_addr")));
   ASSERT_EQ((int64_t)42, getIntValue(getChild(*data_object, "do_value")));
+  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
 
   // Send TVC1 with negative value
   paramTVC3.value = "-42";
@@ -507,11 +517,17 @@ TEST_F(HNZTest, SendingMessages) {
   ASSERT_TRUE(hasChild(*data_object, "do_station"));
   ASSERT_TRUE(hasChild(*data_object, "do_addr"));
   ASSERT_TRUE(hasChild(*data_object, "do_value"));
+  ASSERT_TRUE(hasChild(*data_object, "do_valid"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts_iv"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts_c"));
+  ASSERT_FALSE(hasChild(*data_object, "do_ts_s"));
 
   ASSERT_EQ("ACK_TVC", getStrValue(getChild(*data_object, "do_type")));
   ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
   ASSERT_EQ((int64_t)31, getIntValue(getChild(*data_object, "do_addr")));
   ASSERT_EQ((int64_t)-42, getIntValue(getChild(*data_object, "do_value")));
+  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
 
   delete currentReading;
   

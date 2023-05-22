@@ -110,7 +110,7 @@ void HNZConf::importConfigJson(const string &json) {
         m_retrieve(conf, C_ACK_TIME, &m_c_ack_time, DEFAULT_C_ACK_TIME);
 
     is_complete &=
-        m_retrieve(conf, CMD_RECV_TIMEOUT, &m_cmd_recv_timeout, static_cast<long long int>(DEFAULT_CMD_RECV_TIMEOUT));
+        m_retrieve(conf, CMD_RECV_TIMEOUT, &m_cmd_recv_timeout, DEFAULT_CMD_RECV_TIMEOUT);
   } else {
     is_complete = false;
   }
@@ -177,7 +177,7 @@ void HNZConf::importExchangedDataJson(const string &json) {
   m_exchange_data_is_complete = is_complete;
 }
 
-string HNZConf::getLabel(const string &msg_code, const int msg_address) {
+string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
   string label;
   try {
     label = m_msg_list.at(msg_code).at(m_remote_station_addr).at(msg_address);
@@ -195,7 +195,7 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) {
   return label;
 }
 
-int HNZConf::getNumberCG() {
+int HNZConf::getNumberCG() const {
   int nb;
   try {
     nb = m_msg_list.at("TSCG").at(m_remote_station_addr).size();

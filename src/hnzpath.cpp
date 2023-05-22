@@ -10,36 +10,30 @@
 
 #include "hnzpath.h"
 
-HNZPath::HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection,
-                 bool secondary) {
-  // Path settings
-  this->m_hnz_client = new HNZClient;
-  this->m_hnz_connection = hnz_connection;
-  this->m_ip =
-      secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A();
-  this->m_port = secondary ? hnz_conf->get_port_B() : hnz_conf->get_port_A();
-  this->m_timeoutUs = hnz_conf->get_cmd_recv_timeout();
-  this->m_path_name = secondary ? "Path B" : "Path A";
-  this->repeat_max = (secondary ? hnz_conf->get_repeat_path_B()
-                                : hnz_conf->get_repeat_path_A()) -
-                     1;
+HNZPath::HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
+                  // Path settings
+                  m_hnz_client(new HNZClient()),
+                  m_hnz_connection(hnz_connection),
+                  m_ip(secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A()),
+                  m_port(secondary ? hnz_conf->get_port_B() : hnz_conf->get_port_A()),
+                  m_timeoutUs(hnz_conf->get_cmd_recv_timeout()),
+                  m_path_name(secondary ? "Path B" : "Path A"),
+                  repeat_max((secondary ? hnz_conf->get_repeat_path_B() : hnz_conf->get_repeat_path_A())-1),
+                  m_is_running(true),
+                  // Global connection settings
+                  m_remote_address(hnz_conf->get_remote_station_addr()),
+                  m_address_ARP((m_remote_address << 2) + 3),
+                  m_address_PA((m_remote_address << 2) + 1),
+                  m_max_sarm(hnz_conf->get_max_sarm()),
+                  m_inacc_timeout(hnz_conf->get_inacc_timeout()),
+                  m_repeat_timeout(hnz_conf->get_repeat_timeout()),
+                  m_anticipation_ratio(hnz_conf->get_anticipation_ratio()),
+                  m_test_msg_receive(hnz_conf->get_test_msg_receive()),
+                  m_test_msg_send(hnz_conf->get_test_msg_send()),
+                  // Command settings
+                  c_ack_time_max(hnz_conf->get_c_ack_time() * 1000)
+{
   setActivePath(!secondary);
-  this->m_is_running = true;
-
-  // Global connection settings
-  this->m_remote_address = hnz_conf->get_remote_station_addr();
-  this->m_address_ARP = (m_remote_address << 2) + 3;
-  this->m_address_PA = (m_remote_address << 2) + 1;
-  this->m_max_sarm = hnz_conf->get_max_sarm();
-  this->m_inacc_timeout = hnz_conf->get_inacc_timeout();
-  this->m_repeat_timeout = hnz_conf->get_repeat_timeout();
-  this->m_anticipation_ratio = hnz_conf->get_anticipation_ratio();
-  this->m_test_msg_receive = hnz_conf->get_test_msg_receive();
-  this->m_test_msg_send = hnz_conf->get_test_msg_send();
-
-  // Command settings
-  this->c_ack_time_max = hnz_conf->get_c_ack_time() * 1000;
-
   go_to_connection();
 }
 

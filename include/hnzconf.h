@@ -18,58 +18,58 @@
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
 
-#define JSON_CONF_NAME "protocol_stack"
-#define NAME "name"
-#define JSON_VERSION "version"
-#define TRANSPORT_LAYER "transport_layer"
-#define CONNECTIONS "connections"
-#define IP_ADDR "srv_ip"
-#define IP_PORT "port"
-#define APP_LAYER "application_layer"
-#define REMOTE_ADDR "remote_station_addr"
-#define INACC_TIMEOUT "inacc_timeout"
-#define MAX_SARM "max_sarm"
-#define REPEAT_PATH_A "repeat_path_A"
-#define REPEAT_PATH_B "repeat_path_B"
-#define REPEAT_TIMEOUT "repeat_timeout"
-#define ANTICIPATION_RATIO "anticipation_ratio"
-#define TST_MSG_SEND "test_msg_send"
-#define TST_MSG_RECEIVE "test_msg_receive"
-#define GI_SCHEDULE "gi_schedule"
-#define GI_REPEAT_COUNT "gi_repeat_count"
-#define GI_TIME "gi_time"
-#define C_ACK_TIME "c_ack_time"
-#define CMD_RECV_TIMEOUT "cmd_recv_timeout"
+constexpr char JSON_CONF_NAME[] = "protocol_stack";
+constexpr char NAME[] = "name";
+constexpr char JSON_VERSION[] = "version";
+constexpr char TRANSPORT_LAYER[] = "transport_layer";
+constexpr char CONNECTIONS[] = "connections";
+constexpr char IP_ADDR[] = "srv_ip";
+constexpr char IP_PORT[] = "port";
+constexpr char APP_LAYER[] = "application_layer";
+constexpr char REMOTE_ADDR[] = "remote_station_addr";
+constexpr char INACC_TIMEOUT[] = "inacc_timeout";
+constexpr char MAX_SARM[] = "max_sarm";
+constexpr char REPEAT_PATH_A[] = "repeat_path_A";
+constexpr char REPEAT_PATH_B[] = "repeat_path_B";
+constexpr char REPEAT_TIMEOUT[] = "repeat_timeout";
+constexpr char ANTICIPATION_RATIO[] = "anticipation_ratio";
+constexpr char TST_MSG_SEND[] = "test_msg_send";
+constexpr char TST_MSG_RECEIVE[] = "test_msg_receive";
+constexpr char GI_SCHEDULE[] = "gi_schedule";
+constexpr char GI_REPEAT_COUNT[] = "gi_repeat_count";
+constexpr char GI_TIME[] = "gi_time";
+constexpr char C_ACK_TIME[] = "c_ack_time";
+constexpr char CMD_RECV_TIMEOUT[] = "cmd_recv_timeout";
 
-#define JSON_EXCHANGED_DATA_NAME "exchanged_data"
-#define DATAPOINTS "datapoints"
-#define LABEL "label"
-#define PIVOT_ID "pivot_id"
-#define PIVOT_TYPE "pivot_type"
-#define PROTOCOLS "protocols"
-#define HNZ_NAME "hnz"
-#define MESSAGE_CODE "message_code"
-#define STATION_ADDRESS "station_address"
-#define MESSAGE_ADDRESS "message_address"
+constexpr char JSON_EXCHANGED_DATA_NAME[] = "exchanged_data";
+constexpr char DATAPOINTS[] = "datapoints";
+constexpr char LABEL[] = "label";
+constexpr char PIVOT_ID[] = "pivot_id";
+constexpr char PIVOT_TYPE[] = "pivot_type";
+constexpr char PROTOCOLS[] = "protocols";
+constexpr char HNZ_NAME[] = "hnz";
+constexpr char MESSAGE_CODE[] = "message_code";
+constexpr char STATION_ADDRESS[] = "station_address";
+constexpr char MESSAGE_ADDRESS[] = "message_address";
 
 // Default value
-#define DEFAULT_PORT 6001
-#define DEFAULT_INACC_TIMEOUT 180
-#define DEFAULT_MAX_SARM 30
-#define DEFAULT_REPEAT_PATH 3
-#define DEFAULT_REPEAT_TIMEOUT 3000
-#define DEFAULT_ANTICIPATION_RATIO 3
-#define DEFAULT_TST_MSG "1304"
-#define DEFAULT_GI_SCHEDULE "99:99"
-#define DEFAULT_GI_REPEAT_COUNT 3
-#define DEFAULT_GI_TIME 255
-#define DEFAULT_C_ACK_TIME 10
-#define DEFAULT_CMD_RECV_TIMEOUT 100000 // 100ms
+constexpr unsigned int DEFAULT_PORT = 6001;
+constexpr unsigned int DEFAULT_INACC_TIMEOUT = 180;
+constexpr unsigned int DEFAULT_MAX_SARM = 30;
+constexpr unsigned int DEFAULT_REPEAT_PATH = 3;
+constexpr unsigned int DEFAULT_REPEAT_TIMEOUT = 3000;
+constexpr unsigned int DEFAULT_ANTICIPATION_RATIO = 3;
+constexpr char DEFAULT_TST_MSG[] = "1304";
+constexpr char DEFAULT_GI_SCHEDULE[] = "99:99";
+constexpr unsigned int DEFAULT_GI_REPEAT_COUNT = 3;
+constexpr unsigned int DEFAULT_GI_TIME = 255;
+constexpr unsigned int DEFAULT_C_ACK_TIME = 10;
+constexpr long long int DEFAULT_CMD_RECV_TIMEOUT = 100000; // 100ms
 
-#define DEBUG_LEVEL "debug"
+constexpr char DEBUG_LEVEL[] = "debug";
 
-#define RETRY_CONN_DELAY 5
-#define RETRY_CONN_NUM 5
+constexpr int RETRY_CONN_DELAY = 5;
+constexpr int RETRY_CONN_NUM = 5;
 
 using namespace rapidjson;
 using namespace std;
@@ -116,7 +116,7 @@ class HNZConf {
   /**
    * Allows you to know if the configuration was successful.
    */
-  bool is_complete() {
+  bool is_complete() const {
     return m_config_is_complete && m_exchange_data_is_complete;
   }
 
@@ -124,54 +124,54 @@ class HNZConf {
    * Get the label related to a message. If this message is not defined in the
    * configuration, then the returned label is empty.
    */
-  string getLabel(const string &msg_code, const int msg_address);
+  string getLabel(const string &msg_code, const int msg_address) const;
 
   /**
    * Get the number of CG. Used for the consistency check when GI.
    */
-  int getNumberCG();
+  int getNumberCG() const;
 
   /**
    * Get the IP address to remote IEC 104 server (A path)
    *
    * @return string
    */
-  string get_ip_address_A() { return m_ip_A; }
+  string get_ip_address_A() const { return m_ip_A; }
 
   /**
    * Get the port number to remote IEC 104 server (A path)
    *
    * @return unsigned int
    */
-  unsigned int get_port_A() { return m_port_A; }
+  unsigned int get_port_A() const { return m_port_A; }
 
   /**
    * Get the IP address to remote IEC 104 server (B path)
    *
    * @return string
    */
-  string get_ip_address_B() { return m_ip_B; }
+  string get_ip_address_B() const { return m_ip_B; }
 
   /**
    * Get the port number to remote IEC 104 server (B path)
    *
    * @return unsigned int
    */
-  unsigned int get_port_B() { return m_port_B; }
+  unsigned int get_port_B() const { return m_port_B; }
 
   /**
    * Get the remote server station address
    *
    * @return unsigned int
    */
-  unsigned int get_remote_station_addr() { return m_remote_station_addr; }
+  unsigned int get_remote_station_addr() const { return m_remote_station_addr; }
 
   /**
    * Get the timeout before declaring the remote server unreachable
    *
    * @return unsigned int
    */
-  unsigned int get_inacc_timeout() { return m_inacc_timeout; }
+  unsigned int get_inacc_timeout() const { return m_inacc_timeout; }
 
   /**
    * Get the max number of SARM messages before handing over to the passive path
@@ -179,21 +179,21 @@ class HNZConf {
    *
    * @return unsigned int
    */
-  unsigned int get_max_sarm() { return m_max_sarm; }
+  unsigned int get_max_sarm() const { return m_max_sarm; }
 
   /**
    * Get the max number of authorized repeats for path A
    *
    * @return unsigned int
    */
-  unsigned int get_repeat_path_A() { return m_repeat_path_A; }
+  unsigned int get_repeat_path_A() const { return m_repeat_path_A; }
 
   /**
    * Get the max number of authorized repeats for path B
    *
    * @return unsigned int
    */
-  unsigned int get_repeat_path_B() { return m_repeat_path_B; }
+  unsigned int get_repeat_path_B() const { return m_repeat_path_B; }
 
   /**
    * Get the time allowed for the receiver to acknowledge a frame, after this
@@ -201,49 +201,49 @@ class HNZConf {
    *
    * @return unsigned int
    */
-  unsigned int get_repeat_timeout() { return m_repeat_timeout; }
+  unsigned int get_repeat_timeout() const { return m_repeat_timeout; }
 
   /**
    * Get the number of frames allowed to be received without acknowledgement.
    *
    * @return unsigned int
    */
-  unsigned int get_anticipation_ratio() { return m_anticipation_ratio; }
+  unsigned int get_anticipation_ratio() const { return m_anticipation_ratio; }
 
   /**
    * Get the test message code in sending direction.
    *
    * @return unsigned int
    */
-  BulleFormat get_test_msg_send() { return m_test_msg_send; }
+  BulleFormat get_test_msg_send() const { return m_test_msg_send; }
 
   /**
    * Get the test message code in receiving direction.
    *
    * @return unsigned int
    */
-  BulleFormat get_test_msg_receive() { return m_test_msg_receive; }
+  BulleFormat get_test_msg_receive() const { return m_test_msg_receive; }
 
   /**
    * Get the scheduled time for General Interrogation sending.
    *
    * @return unsigned int
    */
-  GIScheduleFormat get_gi_schedule() { return m_gi_schedule; }
+  GIScheduleFormat get_gi_schedule() const { return m_gi_schedule; }
 
   /**
    * Get the repeat GI for this number of times in case it is incomplete.
    *
    * @return unsigned int
    */
-  unsigned int get_gi_repeat_count() { return m_gi_repeat_count; }
+  unsigned int get_gi_repeat_count() const { return m_gi_repeat_count; }
 
   /**
    * Get the time to wait for General Interrogation (GI) completion.
    *
    * @return unsigned int
    */
-  unsigned int get_gi_time() { return m_gi_time; }
+  unsigned int get_gi_time() const { return m_gi_time; }
 
   /**
    * Get the time to wait before receving a acknowledgement for a control
@@ -251,14 +251,14 @@ class HNZConf {
    *
    * @return unsigned int
    */
-  unsigned int get_c_ack_time() { return m_c_ack_time; }
+  unsigned int get_c_ack_time() const { return m_c_ack_time; }
 
   /**
    * Get the timeout for socket recv blocking calls
    *
    * @return  unsigned int
    */
-  long long int get_cmd_recv_timeout() { return m_cmd_recv_timeout; }
+  long long int get_cmd_recv_timeout() const { return m_cmd_recv_timeout; }
 
  private:
   string m_ip_A, m_ip_B = "";
@@ -287,19 +287,13 @@ class HNZConf {
   static bool m_check_array(const Value &json, const char *key);
   static bool m_check_object(const Value &json, const char *key);
 
-  static bool m_retrieve(const Value &json, const char *key,
-                         unsigned int *target);
-  static bool m_retrieve(const Value &json, const char *key,
-                         unsigned int *target, unsigned int def);
+  static bool m_retrieve(const Value &json, const char *key, unsigned int *target);
+  static bool m_retrieve(const Value &json, const char *key, unsigned int *target, unsigned int def);
   static bool m_retrieve(const Value &json, const char *key, string *target);
-  static bool m_retrieve(const Value &json, const char *key, string *target,
-                         string def);
-  static bool m_retrieve(const Value &json, const char *key,
-                         BulleFormat *target);
-  static bool m_retrieve(const Value &json, const char *key,
-                         GIScheduleFormat *target);
-  static bool m_retrieve(const Value &json, const char *key,
-                         long long int *target, long long int def);
+  static bool m_retrieve(const Value &json, const char *key, string *target, string def);
+  static bool m_retrieve(const Value &json, const char *key, BulleFormat *target);
+  static bool m_retrieve(const Value &json, const char *key, GIScheduleFormat *target);
+  static bool m_retrieve(const Value &json, const char *key, long long int *target, long long int def);
 };
 
 #endif

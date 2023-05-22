@@ -61,6 +61,8 @@ class HNZConnection;
  * send message, received message, manage message numbering, ...
  */
 class HNZPath {
+  // Give access to HNZPath private members for HNZConnection
+  friend class HNZConnection;
  public:
   HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary);
   ~HNZPath();
@@ -146,6 +148,7 @@ class HNZPath {
         "[" + m_path_name + " - " + (active ? "active" : "passive") + "]";
   };
 
+ private:
   deque<Message> msg_waiting;  // Queue of information messages not yet sent
   deque<Message> msg_sent;     // Queue of information messages already sent
   list<Command_message>
@@ -156,7 +159,6 @@ class HNZPath {
   int gi_repeat = 0;       // number of time a GI is repeated
   long gi_start_time = 0;  // GI start time
 
- private:
   string m_name_log;   // Path name used in log
   string m_path_name;  // Path name
   thread* m_connection_thread =

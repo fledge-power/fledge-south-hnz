@@ -10,20 +10,19 @@
 
 #include "hnzpath.h"
 
-HNZPath::HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
+HNZPath::HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
                   // Path settings
-                  m_hnz_client(new HNZClient()),
+                  m_hnz_client(make_unique<HNZClient>()),
                   m_hnz_connection(hnz_connection),
+                  repeat_max((secondary ? hnz_conf->get_repeat_path_B() : hnz_conf->get_repeat_path_A())-1),
                   m_ip(secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A()),
                   m_port(secondary ? hnz_conf->get_port_B() : hnz_conf->get_port_A()),
                   m_timeoutUs(hnz_conf->get_cmd_recv_timeout()),
                   m_path_name(secondary ? "Path B" : "Path A"),
-                  repeat_max((secondary ? hnz_conf->get_repeat_path_B() : hnz_conf->get_repeat_path_A())-1),
-                  m_is_running(true),
                   // Global connection settings
                   m_remote_address(hnz_conf->get_remote_station_addr()),
-                  m_address_ARP((m_remote_address << 2) + 3),
-                  m_address_PA((m_remote_address << 2) + 1),
+                  m_address_PA(static_cast<unsigned char>((m_remote_address << 2) + 1)),
+                  m_address_ARP(static_cast<unsigned char>((m_remote_address << 2) + 3)),
                   m_max_sarm(hnz_conf->get_max_sarm()),
                   m_inacc_timeout(hnz_conf->get_inacc_timeout()),
                   m_repeat_timeout(hnz_conf->get_repeat_timeout()),
@@ -34,6 +33,7 @@ HNZPath::HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondar
                   c_ack_time_max(hnz_conf->get_c_ack_time() * 1000)
 {
   setActivePath(!secondary);
+  m_is_running = true;
   go_to_connection();
 }
 
@@ -41,7 +41,6 @@ HNZPath::~HNZPath() {
   if (m_is_running) {
     disconnect();
   }
-  if (m_hnz_client != nullptr) delete m_hnz_client;
 }
 
 /**

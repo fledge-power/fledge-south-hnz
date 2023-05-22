@@ -64,7 +64,7 @@ class HNZPath {
   // Give access to HNZPath private members for HNZConnection
   friend class HNZConnection;
  public:
-  HNZPath(HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary);
+  HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary);
   ~HNZPath();
 
   string getName() { return m_name_log; };
@@ -149,6 +149,10 @@ class HNZPath {
   };
 
  private:
+  std::unique_ptr<HNZClient> m_hnz_client;  // HNZ Client that manage TCP connection
+                                            // (receives/assembles and sends TCP frame)
+  HNZConnection* m_hnz_connection = nullptr;
+
   deque<Message> msg_waiting;  // Queue of information messages not yet sent
   deque<Message> msg_sent;     // Queue of information messages already sent
   list<Command_message>
@@ -159,11 +163,8 @@ class HNZPath {
   int gi_repeat = 0;       // number of time a GI is repeated
   long gi_start_time = 0;  // GI start time
 
-  string m_name_log;   // Path name used in log
-  string m_path_name;  // Path name
-  thread* m_connection_thread =
-      nullptr;                // Main thread that maintains the connection
-  atomic<bool> m_is_running;  // If false, the connection thread will stop
+  thread* m_connection_thread = nullptr; // Main thread that maintains the connection
+  atomic<bool> m_is_running{false};  // If false, the connection thread will stop
   bool m_connected = false;   // TCP Connection state with the PA
   int m_protocol_state;       // HNZ Protocol connection state
   bool m_is_active_path = false;
@@ -171,8 +172,12 @@ class HNZPath {
   // Plugin configuration
   string m_ip;  // IP of the PA
   int m_port;   // Port to connect to
-  int m_remote_address;
   long long int m_timeoutUs; // Timeout for socket recv in microseconds
+
+  string m_name_log;   // Path name used in log
+  string m_path_name;  // Path name
+
+  unsigned int m_remote_address;
   unsigned char m_address_PA;   // remote address + 1
   unsigned char m_address_ARP;  // remote address + 3
 
@@ -183,10 +188,10 @@ class HNZPath {
   int m_repeat_timeout;  // time allowed for the receiver to acknowledge a frame
   int m_anticipation_ratio;  // number of frames allowed to be received without
                              // acknowledgement
-  int c_ack_time_max;  // Max time to wait before receving a acknowledgement for
-                       // a control command (in ms)
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
+  int c_ack_time_max;  // Max time to wait before receving a acknowledgement for
+                      // a control command (in ms)
 
   // HNZ protocol related variable
   int m_nr;   // Number in reception
@@ -294,10 +299,11 @@ class HNZPath {
 
   void m_go_to_connected();
 
-  HNZClient* m_hnz_client =
-      nullptr;  // HNZ Client that manage TCP connection
-                // (receives/assembles and sends TCP frame)
-  HNZConnection* m_hnz_connection = nullptr;
+  // Local definition of make_unique as it is only available since C++14 and right now this is built with C++11
+  template<typename T, typename... Args>
+  std::unique_ptr<T> make_unique(Args&&... args) {
+      return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+  }
 };
 
 #endif

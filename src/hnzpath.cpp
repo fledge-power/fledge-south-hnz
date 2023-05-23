@@ -12,7 +12,7 @@
 
 HNZPath::HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
                   // Path settings
-                  m_hnz_client(std::make_unique<HNZClient>()),
+                  m_hnz_client(make_unique<HNZClient>()),
                   m_hnz_connection(hnz_connection),
                   repeat_max((secondary ? hnz_conf->get_repeat_path_B() : hnz_conf->get_repeat_path_A())-1),
                   m_ip(secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A()),

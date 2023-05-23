@@ -156,26 +156,12 @@ class HNZ {
    */
   void m_handleATC(vector<Reading>& reading, vector<unsigned char> data);
 
-  // Dedicated structure used to store parameters passed to m_prepare_reading.
-  // This allows for only the required optional parameters to be specified, skipping the unused ones inbetween.
-  struct ReadingParameters {
-    // Those are mandatory parameters
-    std::string label;
-    std::string msg_code;
-    unsigned int station_addr;
-    unsigned int msg_address;
-    long int value;
-    unsigned int valid;
-    // Those are optional parameters
-    unsigned int ts = 0;
-    unsigned int ts_iv = 0;
-    unsigned int ts_c = 0;
-    unsigned int ts_s = 0;
-  };
   /**
    * Create a reading from the values given in argument.
    */
-  static Reading m_prepare_reading(ReadingParameters params);
+  static Reading m_prepare_reading(std::string label, std::string msg_code, unsigned int station_addr, unsigned int msg_address,
+                                    long int value, unsigned int valid, unsigned int ts = 0, unsigned int ts_iv = 0,
+                                    unsigned int ts_c = 0, unsigned int ts_s = 0);
 
   /**
    * Sends the datapoints passed as Reading to Fledge

@@ -405,7 +405,6 @@ TEST_F(HNZTest, SendingMessages) {
   ASSERT_TRUE(hasChild(*data_object, "do_station"));
   ASSERT_TRUE(hasChild(*data_object, "do_addr"));
   ASSERT_TRUE(hasChild(*data_object, "do_value"));
-  ASSERT_FALSE(hasChild(*data_object, "do_val_coding"));
 
   ASSERT_EQ("ACK_TC", getStrValue(getChild(*data_object, "do_type")));
   ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
@@ -416,12 +415,11 @@ TEST_F(HNZTest, SendingMessages) {
 
   // Send TVC1
   std::string operationTVC("TVC");
-  int nbParamsTVC = 4;
+  int nbParamsTVC = 3;
   PLUGIN_PARAMETER paramTVC1 = {"type", "TVC"};
   PLUGIN_PARAMETER paramTVC2 = {"address", "31"};
   PLUGIN_PARAMETER paramTVC3 = {"value", "42"};
-  PLUGIN_PARAMETER paramTVC4 = {"val_coding", "0"};
-  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3, &paramTVC4};
+  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
   ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
   printf("[HNZ south plugin] TVC sent\n");
   this_thread::sleep_for(chrono::milliseconds(1000));
@@ -462,13 +460,58 @@ TEST_F(HNZTest, SendingMessages) {
   ASSERT_TRUE(hasChild(*data_object, "do_station"));
   ASSERT_TRUE(hasChild(*data_object, "do_addr"));
   ASSERT_TRUE(hasChild(*data_object, "do_value"));
-  ASSERT_TRUE(hasChild(*data_object, "do_val_coding"));
 
   ASSERT_EQ("ACK_TVC", getStrValue(getChild(*data_object, "do_type")));
   ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
   ASSERT_EQ((int64_t)31, getIntValue(getChild(*data_object, "do_addr")));
   ASSERT_EQ((int64_t)42, getIntValue(getChild(*data_object, "do_value")));
-  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_val_coding")));
+
+  // Send TVC1 with negative value
+  paramTVC3.value = "-42";
+  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  printf("[HNZ south plugin] TVC 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TVC frame in the list of frames received by server and validate it
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TVC2frame = nullptr;
+  for(auto frame: frames) {
+    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
+      TVC2frame = frame;
+      break;
+    }
+  }
+  ASSERT_NE(TVC2frame.get(), nullptr) << "Could not find TVC in frames received: " << server->framesToStr(frames);
+  unsigned char expectedFrameTVC2[expectedTVCLength] = {0x07, 0x4c, 0x1a, 0x1f, 0x2a, 0x80, 0x5a, 0xd7};
+  ASSERT_EQ(TVC2frame->usLgBuffer, expectedTVCLength);
+  for(int i=0 ; i<expectedTVCLength ; i++){
+    ASSERT_EQ(TVC2frame->aubTrame[i], expectedFrameTVC2[i]) << "mismatch at byte: " << i << server->frameToStr(TVC2frame);
+  }
+
+  // Send TVC ACK from server
+  server->sendFrame({0x0a, 0x9f, 0x2a, 0x80}, false);
+  printf("[HNZ Server] TVC 2 ACK sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  storedReadings.pop();
+  ASSERT_NE(nullptr, currentReading);
+  ASSERT_EQ("TVC1", currentReading->getAssetName());
+  // Validate TVC structure received
+  ASSERT_TRUE(hasObject(*currentReading, "data_object"));
+  data_object = getObject(*currentReading, "data_object");
+  ASSERT_NE(nullptr, data_object);
+  ASSERT_TRUE(hasChild(*data_object, "do_type"));
+  ASSERT_TRUE(hasChild(*data_object, "do_station"));
+  ASSERT_TRUE(hasChild(*data_object, "do_addr"));
+  ASSERT_TRUE(hasChild(*data_object, "do_value"));
+
+  ASSERT_EQ("ACK_TVC", getStrValue(getChild(*data_object, "do_type")));
+  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
+  ASSERT_EQ((int64_t)31, getIntValue(getChild(*data_object, "do_addr")));
+  ASSERT_EQ((int64_t)-42, getIntValue(getChild(*data_object, "do_value")));
 
   delete currentReading;
   
@@ -606,12 +649,11 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Send TVC1
   std::string operationTVC("TVC");
-  int nbParamsTVC = 4;
+  int nbParamsTVC = 3;
   PLUGIN_PARAMETER paramTVC1 = {"type", "TVC"};
   PLUGIN_PARAMETER paramTVC2 = {"address", "31"};
   PLUGIN_PARAMETER paramTVC3 = {"value", "42"};
-  PLUGIN_PARAMETER paramTVC4 = {"val_coding", "0"};
-  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3, &paramTVC4};
+  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
   ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
   printf("[HNZ south plugin] TVC sent\n");
   this_thread::sleep_for(chrono::milliseconds(1000));

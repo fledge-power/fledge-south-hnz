@@ -334,7 +334,7 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data,
       break;
     case TVCACK_CODE:
       Logger::getLogger()->info(m_name_log + " Received TVC ACK");
-      len = 3;
+      len = 4;
       break;
     default:
       if (t == m_test_msg_receive.first &&
@@ -581,24 +581,17 @@ void HNZPath::sendGeneralInterrogation() {
                       .count();
 }
 
-bool HNZPath::sendTVCCommand(unsigned char address, int value,
-                             unsigned char val_coding) {
+bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   unsigned char msg[4];
   msg[0] = TVC_CODE;
-  msg[1] = (address & 0x1F) | ((val_coding & 0x1) << 5);
-  if ((val_coding & 0x1) == 1) {
-    msg[2] = value & 0xFF;
-    msg[3] = ((value >= 0) ? 0 : 0x80) | value & 0xF00;
-  } else {
-    msg[2] = value & 0x7F;
-    msg[3] = (value >= 0) ? 0 : 0x80;
-  }
+  msg[1] = (address & 0x1F);
+  msg[2] = ((value >= 0) ? value : -value) & 0x7F;
+  msg[3] = (value >= 0) ? 0 : 0x80;
 
   m_sendInfo(msg, sizeof(msg));
   Logger::getLogger()->warn(m_name_log +
                             " TVC sent (address = " + to_string(address) +
-                            ", value = " + to_string(value) +
-                            " and value coding = " + to_string(val_coding));
+                            ", value = " + to_string(value));
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;

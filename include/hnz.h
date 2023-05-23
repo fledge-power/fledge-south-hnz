@@ -88,7 +88,7 @@ class HNZ {
    * @param frame The frame to format
    * @return a string representing the bytes of that frame in hexadecimal
    */
-  std::string frameToStr(std::vector<unsigned char> frame);
+  std::string frameToStr(std::vector<unsigned char> frame) const;
 
  private:
   string m_asset;  // Plugin name in fledge

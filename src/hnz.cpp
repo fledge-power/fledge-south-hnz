@@ -171,7 +171,7 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
     default:
       if (!(t == m_test_msg_receive.first &&
             data[1] == m_test_msg_receive.second)) {
-        Logger::getLogger()->error("Unknown message to push !");
+        Logger::getLogger()->error("Unknown message to push: " + frameToStr(data));
       }
       break;
   }
@@ -410,13 +410,13 @@ bool HNZ::operation(const std::string &operation, int count,
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
-    m_hnz_connection->getActivePath()->sendTCCommand(address, value);
+    m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), value);
     return true;
   } else if (operation.compare("TVC") == 0) {
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
-    m_hnz_connection->getActivePath()->sendTVCCommand(address, value);
+    m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
     return true;
   }
 
@@ -424,7 +424,7 @@ bool HNZ::operation(const std::string &operation, int count,
   return false;
 }
 
-std::string HNZ::frameToStr(std::vector<unsigned char> frame) {
+std::string HNZ::frameToStr(std::vector<unsigned char> frame) const {
   std::stringstream stream;
   stream << "\n[";
   for(int i=0 ; i<frame.size() ; i++) {

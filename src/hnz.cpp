@@ -410,7 +410,7 @@ bool HNZ::operation(const std::string &operation, int count,
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
-    m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), value);
+    m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
     return true;
   } else if (operation.compare("TVC") == 0) {
     int address = atoi(params[1]->value.c_str());

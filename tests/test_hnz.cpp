@@ -237,14 +237,102 @@ class HNZTest : public testing::Test {
     ingestCallbackCalled++;
   }
 
+  struct ReadingInfo {
+    std::string type;
+    std::string value;
+  };
+  static void validateReading(Reading* currentReading, std::string assetName, std::map<std::string, ReadingInfo> attributes) {
+    ASSERT_NE(nullptr, currentReading);
+    ASSERT_EQ(assetName, currentReading->getAssetName());
+    // Validate data_object structure received
+    ASSERT_TRUE(hasObject(*currentReading, "data_object"));
+    Datapoint* data_object = getObject(*currentReading, "data_object");
+    ASSERT_NE(nullptr, data_object);
+    // Validate existance of the required keys and non-existance of the others
+    for(const std::string& name: allAttributeNames) {
+      ASSERT_EQ(hasChild(*data_object, name), static_cast<bool>(attributes.count(name))) << "Attribute not found: " << name;;
+    }
+    // Validate value and type of each key
+    for(auto const& kvp: attributes) {
+      const std::string& name = kvp.first;
+      const std::string& type = kvp.second.type;
+      const std::string& expectedValue = kvp.second.value;
+      if(type == std::string("string")) {
+        ASSERT_EQ(expectedValue, getStrValue(getChild(*data_object, name))) << "Unexpected value for attribute " << name;
+      }
+      else if(type == std::string("int64_t")) {
+        ASSERT_EQ(std::stoull(expectedValue), getIntValue(getChild(*data_object, name))) << "Unexpected value for attribute " << name;
+      }
+      else {
+        FAIL() << "Unknown type: " << type;
+      }
+    }
+
+    delete currentReading;
+  }
+
+  static std::shared_ptr<MSG_TRAME> findFrameWithId(const std::vector<std::shared_ptr<MSG_TRAME>>& frames, unsigned char frameId) {
+    std::shared_ptr<MSG_TRAME> frameFound = nullptr;
+    for(auto frame: frames) {
+      if((frame->usLgBuffer > 2) && (frame->aubTrame[2] == frameId)) {
+        frameFound = frame;
+        break;
+      }
+    }
+    return frameFound;
+  }
+
+  static void validateFrame(const std::vector<std::shared_ptr<MSG_TRAME>>& frames,
+                            const std::vector<unsigned char>& expectedFrame, bool fullFrame = false) {
+    // When fullFrame is true, expectedFrame shall contain the complete frame:
+    // | NPC   | A/B | 1 |
+    // | NR | P | NS | 0 |
+    // | Function code   |
+    // | Data            |
+    // | FCS             |
+    // | FCS             |
+    // When fullFrame is false, expectedFrame shall contain only the function code and data bytes:
+    // | Function code   |
+    // | Data            |
+    int minSize = fullFrame ? 2 : 0;
+    ASSERT_GT(expectedFrame.size(), minSize) << "Cannot search for empty frame";
+    unsigned char frameId = fullFrame ? expectedFrame[2] : expectedFrame[0];
+    std::shared_ptr<MSG_TRAME> frameFound = findFrameWithId(frames, frameId);
+    ASSERT_NE(frameFound.get(), nullptr) << "Could not find frame with id " << BasicHNZServer::toHexStr(frameId) <<
+                                            " in frames received: " << BasicHNZServer::framesToStr(frames);
+
+    int expectedLength = expectedFrame.size();
+    if(!fullFrame) {
+      expectedLength += 4;
+    }
+    ASSERT_EQ(frameFound->usLgBuffer, expectedLength);
+    for(int i=0 ; i<expectedLength ; i++){
+      if(!fullFrame){
+        // Ignore the first two bytes (NPC + A/B, NR + P + NS) and the last two bytes (FCS x2)
+        if(i < 2){
+          continue;
+        }
+        if(i >= expectedLength - 2){
+          break;
+        }
+      }
+      int expIndex = fullFrame ? i : i-2;
+      ASSERT_EQ(frameFound->aubTrame[i], expectedFrame[expIndex]) << "mismatch at byte: " << i << BasicHNZServer::frameToStr(frameFound);
+    }
+  }
+
   static HNZTestComp* hnz;
   static int ingestCallbackCalled;
   static queue<Reading*> storedReadings;
+  static const std::vector<std::string> allAttributeNames;
 };
 
 HNZTestComp* HNZTest::hnz;
 int HNZTest::ingestCallbackCalled;
 queue<Reading*> HNZTest::storedReadings;
+const std::vector<std::string> HNZTest::allAttributeNames = {
+  "do_type", "do_station", "do_addr", "do_value", "do_valid", "do_ts", "do_ts_iv", "do_ts_c", "do_ts_s"
+};
 
 TEST_F(HNZTest, TCPConnectionOnePathOK) {
   BasicHNZServer* server = new BasicHNZServer(6001, 0x05);
@@ -273,6 +361,9 @@ TEST_F(HNZTest, ReceivingMessages) {
   if (!server->HNZServerIsReady())
     FAIL() << "Something went wrong. Connection is not established in 10s...";
 
+  ///////////////////////////////////////
+  // Send TS1
+  ///////////////////////////////////////
   server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   printf("[HNZ Server] TSCE sent\n");
 
@@ -281,36 +372,50 @@ TEST_F(HNZTest, ReceivingMessages) {
 
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
   Reading* currentReading = storedReadings.front();
-  ASSERT_NE(nullptr, currentReading);
-  ASSERT_EQ("TS1", currentReading->getAssetName());
-
-  ASSERT_TRUE(hasObject(*currentReading, "data_object"));
-  Datapoint* data_object = getObject(*currentReading, "data_object");
-  ASSERT_NE(nullptr, data_object);
-  ASSERT_TRUE(hasChild(*data_object, "do_type"));
-  ASSERT_TRUE(hasChild(*data_object, "do_station"));
-  ASSERT_TRUE(hasChild(*data_object, "do_addr"));
-  ASSERT_TRUE(hasChild(*data_object, "do_value"));
-  ASSERT_TRUE(hasChild(*data_object, "do_valid"));
-  ASSERT_TRUE(hasChild(*data_object, "do_ts"));
-  ASSERT_TRUE(hasChild(*data_object, "do_ts_iv"));
-  ASSERT_TRUE(hasChild(*data_object, "do_ts_c"));
-  ASSERT_TRUE(hasChild(*data_object, "do_ts_s"));
-
-  ASSERT_EQ("TSCE", getStrValue(getChild(*data_object, "do_type")));
-  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
-  ASSERT_EQ((int64_t)511, getIntValue(getChild(*data_object, "do_addr")));
-  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_value")));
-  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
-  ASSERT_EQ((int64_t)14066, getIntValue(getChild(*data_object, "do_ts")));
-  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_iv")));
-  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_c")));
-  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_ts_s")));
-
-  delete currentReading;
+  validateReading(currentReading, "TS1", {
+    {"do_type", {"string", "TSCE"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "511"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_ts", {"int64_t", "14066"}},
+    {"do_ts_iv", {"int64_t", "0"}},
+    {"do_ts_c", {"int64_t", "0"}},
+    {"do_ts_s", {"int64_t", "0"}},
+  });
   storedReadings.pop();
 
+  ///////////////////////////////////////
+  // Send TS1 with invalid flag
+  ///////////////////////////////////////
+  server->sendFrame({0x0B, 0x33, 0x38, 0x36, 0xF2}, false);
+  printf("[HNZ Server] TSCE 2 sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS1", {
+    {"do_type", {"string", "TSCE"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "511"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "1"}},
+    {"do_ts", {"int64_t", "14066"}},
+    {"do_ts_iv", {"int64_t", "0"}},
+    {"do_ts_c", {"int64_t", "0"}},
+    {"do_ts_s", {"int64_t", "0"}},
+  });
+  storedReadings.pop();
+
+  ///////////////////////////////////////
+  // Send TMA
+  ///////////////////////////////////////
   server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0x00}, false);
   printf("[HNZ Server] TM4 sent\n");
 
@@ -318,33 +423,53 @@ TEST_F(HNZTest, ReceivingMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called 4x time more
-  ASSERT_EQ(ingestCallbackCalled, 5);
+  ASSERT_EQ(ingestCallbackCalled, 4);
+  ingestCallbackCalled = 0;
 
   for (int i = 0; i < 4; i++) {
     currentReading = storedReadings.front();
+    validateReading(currentReading, "TM" + to_string(i + 1), {
+      {"do_type", {"string", "TMA"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", std::to_string(20 + i)}},
+      {"do_value", {"int64_t", "0"}},
+      {"do_valid", {"int64_t", "0"}},
+    });
+    storedReadings.pop();
+  }
 
-    ASSERT_NE(nullptr, currentReading);
-    ASSERT_EQ("TM" + to_string(i + 1), currentReading->getAssetName());
-    ASSERT_TRUE(hasObject(*currentReading, "data_object"));
-    data_object = getObject(*currentReading, "data_object");
-    ASSERT_NE(nullptr, data_object);
-    ASSERT_TRUE(hasChild(*data_object, "do_type"));
-    ASSERT_TRUE(hasChild(*data_object, "do_station"));
-    ASSERT_TRUE(hasChild(*data_object, "do_addr"));
-    ASSERT_TRUE(hasChild(*data_object, "do_value"));
-    ASSERT_TRUE(hasChild(*data_object, "do_valid"));
-    ASSERT_FALSE(hasChild(*data_object, "do_ts"));
-    ASSERT_FALSE(hasChild(*data_object, "do_ts_iv"));
-    ASSERT_FALSE(hasChild(*data_object, "do_ts_c"));
-    ASSERT_FALSE(hasChild(*data_object, "do_ts_s"));
+  ///////////////////////////////////////
+  // Send TMA with invalid flag for the last one
+  ///////////////////////////////////////
+  server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0xFF}, false);
+  printf("[HNZ Server] TM4 2 sent\n");
 
-    ASSERT_EQ("TMA", getStrValue(getChild(*data_object, "do_type")));
-    ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
-    ASSERT_EQ((int64_t)20 + i, getIntValue(getChild(*data_object, "do_addr")));
-    ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_value")));
-    ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
 
-    delete currentReading;
+  // Check that ingestCallback had been called 4x time more
+  ASSERT_EQ(ingestCallbackCalled, 4);
+  ingestCallbackCalled = 0;
+
+  for (int i = 0; i < 4; i++) {
+    currentReading = storedReadings.front();
+    if (i < 3) {
+      validateReading(currentReading, "TM" + to_string(i + 1), {
+        {"do_type", {"string", "TMA"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", std::to_string(20 + i)}},
+        {"do_value", {"int64_t", "0"}},
+        {"do_valid", {"int64_t", "0"}},
+      });
+    } else {
+      validateReading(currentReading, "TM" + to_string(i + 1), {
+        {"do_type", {"string", "TMA"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", std::to_string(20 + i)}},
+        {"do_value", {"int64_t", "-1"}},
+        {"do_valid", {"int64_t", "1"}},
+      });
+    }
     storedReadings.pop();
   }
 
@@ -362,7 +487,9 @@ TEST_F(HNZTest, SendingMessages) {
   if (!server->HNZServerIsReady())
     FAIL() << "Something went wrong. Connection is not established in 10s...";
 
+  ///////////////////////////////////////
   // Send TC1
+  ///////////////////////////////////////
   std::string operationTC("TC");
   int nbParamsTC = 3;
   PLUGIN_PARAMETER paramTC1 = {"type", "TC"};
@@ -374,21 +501,7 @@ TEST_F(HNZTest, SendingMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
-  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TCframe = nullptr;
-  for(auto frame: frames) {
-    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x19)) {
-      TCframe = frame;
-      break;
-    }
-  }
-  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << server->framesToStr(frames);
-  int expectedTCLength = 7;
-  unsigned char expectedFrameTC[expectedTCLength] = {0x07, 0x08, 0x19, 0x0e, 0x48, 0xa4, 0x57};
-  ASSERT_EQ(TCframe->usLgBuffer, expectedTCLength);
-  for(int i=0 ; i<expectedTCLength ; i++){
-    ASSERT_EQ(TCframe->aubTrame[i], expectedFrameTC[i]) << "mismatch at byte: " << i << server->frameToStr(TCframe);
-  }
+  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
 
   // Send TC ACK from server
   server->sendFrame({0x09, 0x0e, 0x49}, false);
@@ -399,25 +512,125 @@ TEST_F(HNZTest, SendingMessages) {
   ingestCallbackCalled = 0;
   Reading* currentReading = storedReadings.front();
   storedReadings.pop();
-  ASSERT_NE(nullptr, currentReading);
-  ASSERT_EQ("TC1", currentReading->getAssetName());
-  // Validate TC structure received
-  ASSERT_TRUE(hasObject(*currentReading, "data_object"));
-  Datapoint* data_object = getObject(*currentReading, "data_object");
-  ASSERT_NE(nullptr, data_object);
-  ASSERT_TRUE(hasChild(*data_object, "do_type"));
-  ASSERT_TRUE(hasChild(*data_object, "do_station"));
-  ASSERT_TRUE(hasChild(*data_object, "do_addr"));
-  ASSERT_TRUE(hasChild(*data_object, "do_value"));
+  validateReading(currentReading, "TC1", {
+    {"do_type", {"string", "ACK_TC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "142"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+  });
 
-  ASSERT_EQ("ACK_TC", getStrValue(getChild(*data_object, "do_type")));
-  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
-  ASSERT_EQ((int64_t)142, getIntValue(getChild(*data_object, "do_addr")));
-  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_value")));
+  ///////////////////////////////////////
+  // Send TC1 with negative ack (Critical fault)
+  ///////////////////////////////////////
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  printf("[HNZ south plugin] TC 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
 
-  delete currentReading;
+  // Find the TC frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
 
+  // Send TC ACK from server with CR bit = 011b
+  server->sendFrame({0x09, 0x0e, 0x4b}, false);
+  printf("[HNZ Server] TC ACK 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  storedReadings.pop();
+  validateReading(currentReading, "TC1", {
+    {"do_type", {"string", "ACK_TC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "142"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "1"}},
+  });
+
+  ///////////////////////////////////////
+  // Send TC1 with negative ack (Non critical fault)
+  ///////////////////////////////////////
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  printf("[HNZ south plugin] TC 3 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+
+  // Send TC ACK from server with CR bit = 101b
+  server->sendFrame({0x09, 0x0e, 0x4d}, false);
+  printf("[HNZ Server] TC ACK 3 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  storedReadings.pop();
+  validateReading(currentReading, "TC1", {
+    {"do_type", {"string", "ACK_TC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "142"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "1"}},
+  });
+
+  ///////////////////////////////////////
+  // Send TC1 with negative ack (Exterior fault)
+  ///////////////////////////////////////
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  printf("[HNZ south plugin] TC 4 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+
+  // Send TC ACK from server with CR bit = 111b
+  server->sendFrame({0x09, 0x0e, 0x4f}, false);
+  printf("[HNZ Server] TC ACK 4 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  storedReadings.pop();
+  validateReading(currentReading, "TC1", {
+    {"do_type", {"string", "ACK_TC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "142"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "1"}},
+  });
+
+  ///////////////////////////////////////
+  // Send TC1 with negative ack (Order not allowed)
+  ///////////////////////////////////////
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  printf("[HNZ south plugin] TC 5 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+
+  // Send TC ACK from server with CR bit = 010b
+  server->sendFrame({0x09, 0x0e, 0x4a}, false);
+  printf("[HNZ Server] TC ACK 5 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  storedReadings.pop();
+  validateReading(currentReading, "TC1", {
+    {"do_type", {"string", "ACK_TC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "142"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "1"}},
+  });
+
+  ///////////////////////////////////////
   // Send TVC1
+  ///////////////////////////////////////
   std::string operationTVC("TVC");
   int nbParamsTVC = 3;
   PLUGIN_PARAMETER paramTVC1 = {"type", "TVC"};
@@ -429,21 +642,7 @@ TEST_F(HNZTest, SendingMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
-  frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TVCframe = nullptr;
-  for(auto frame: frames) {
-    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
-      TVCframe = frame;
-      break;
-    }
-  }
-  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << server->framesToStr(frames);
-  int expectedTVCLength = 8;
-  unsigned char expectedFrameTVC[expectedTVCLength] = {0x07, 0x2a, 0x1a, 0x1f, 0x2a, 0x00, 0x79, 0xc9};
-  ASSERT_EQ(TVCframe->usLgBuffer, expectedTVCLength);
-  for(int i=0 ; i<expectedTVCLength ; i++){
-    ASSERT_EQ(TVCframe->aubTrame[i], expectedFrameTVC[i]) << "mismatch at byte: " << i << server->frameToStr(TVCframe);
-  }
+  validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x00});
 
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
@@ -454,49 +653,24 @@ TEST_F(HNZTest, SendingMessages) {
   ingestCallbackCalled = 0;
   currentReading = storedReadings.front();
   storedReadings.pop();
-  ASSERT_NE(nullptr, currentReading);
-  ASSERT_EQ("TVC1", currentReading->getAssetName());
-  // Validate TVC structure received
-  ASSERT_TRUE(hasObject(*currentReading, "data_object"));
-  data_object = getObject(*currentReading, "data_object");
-  ASSERT_NE(nullptr, data_object);
-  ASSERT_TRUE(hasChild(*data_object, "do_type"));
-  ASSERT_TRUE(hasChild(*data_object, "do_station"));
-  ASSERT_TRUE(hasChild(*data_object, "do_addr"));
-  ASSERT_TRUE(hasChild(*data_object, "do_value"));
-  ASSERT_TRUE(hasChild(*data_object, "do_valid"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts_iv"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts_c"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts_s"));
+  validateReading(currentReading, "TVC1", {
+    {"do_type", {"string", "ACK_TVC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "31"}},
+    {"do_value", {"int64_t", "42"}},
+    {"do_valid", {"int64_t", "0"}},
+  });
 
-  ASSERT_EQ("ACK_TVC", getStrValue(getChild(*data_object, "do_type")));
-  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
-  ASSERT_EQ((int64_t)31, getIntValue(getChild(*data_object, "do_addr")));
-  ASSERT_EQ((int64_t)42, getIntValue(getChild(*data_object, "do_value")));
-  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
-
+  ///////////////////////////////////////
   // Send TVC1 with negative value
+  ///////////////////////////////////////
   paramTVC3.value = "-42";
   ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
   printf("[HNZ south plugin] TVC 2 sent\n");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
-  frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TVC2frame = nullptr;
-  for(auto frame: frames) {
-    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
-      TVC2frame = frame;
-      break;
-    }
-  }
-  ASSERT_NE(TVC2frame.get(), nullptr) << "Could not find TVC in frames received: " << server->framesToStr(frames);
-  unsigned char expectedFrameTVC2[expectedTVCLength] = {0x07, 0x4c, 0x1a, 0x1f, 0x2a, 0x80, 0x5a, 0xd7};
-  ASSERT_EQ(TVC2frame->usLgBuffer, expectedTVCLength);
-  for(int i=0 ; i<expectedTVCLength ; i++){
-    ASSERT_EQ(TVC2frame->aubTrame[i], expectedFrameTVC2[i]) << "mismatch at byte: " << i << server->frameToStr(TVC2frame);
-  }
+  validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x80});
 
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x80}, false);
@@ -507,29 +681,40 @@ TEST_F(HNZTest, SendingMessages) {
   ingestCallbackCalled = 0;
   currentReading = storedReadings.front();
   storedReadings.pop();
-  ASSERT_NE(nullptr, currentReading);
-  ASSERT_EQ("TVC1", currentReading->getAssetName());
-  // Validate TVC structure received
-  ASSERT_TRUE(hasObject(*currentReading, "data_object"));
-  data_object = getObject(*currentReading, "data_object");
-  ASSERT_NE(nullptr, data_object);
-  ASSERT_TRUE(hasChild(*data_object, "do_type"));
-  ASSERT_TRUE(hasChild(*data_object, "do_station"));
-  ASSERT_TRUE(hasChild(*data_object, "do_addr"));
-  ASSERT_TRUE(hasChild(*data_object, "do_value"));
-  ASSERT_TRUE(hasChild(*data_object, "do_valid"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts_iv"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts_c"));
-  ASSERT_FALSE(hasChild(*data_object, "do_ts_s"));
+  validateReading(currentReading, "TVC1", {
+    {"do_type", {"string", "ACK_TVC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "31"}},
+    {"do_value", {"int64_t", "-42"}},
+    {"do_valid", {"int64_t", "0"}},
+  });
 
-  ASSERT_EQ("ACK_TVC", getStrValue(getChild(*data_object, "do_type")));
-  ASSERT_EQ((int64_t)1, getIntValue(getChild(*data_object, "do_station")));
-  ASSERT_EQ((int64_t)31, getIntValue(getChild(*data_object, "do_addr")));
-  ASSERT_EQ((int64_t)-42, getIntValue(getChild(*data_object, "do_value")));
-  ASSERT_EQ((int64_t)0, getIntValue(getChild(*data_object, "do_valid")));
+  ///////////////////////////////////////
+  // Send TVC1 with negative ack
+  ///////////////////////////////////////
+  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  printf("[HNZ south plugin] TVC 3 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
 
-  delete currentReading;
+  // Find the TVC frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x80});
+
+  // Send TVC ACK from server with A bit = 1
+  server->sendFrame({0x0a, 0xdf, 0x2a, 0x80}, false);
+  printf("[HNZ Server] TVC 3 ACK sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  storedReadings.pop();
+  validateReading(currentReading, "TVC1", {
+    {"do_type", {"string", "ACK_TVC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "31"}},
+    {"do_value", {"int64_t", "-42"}},
+    {"do_valid", {"int64_t", "1"}},
+  });
   
   delete server;
 }
@@ -638,21 +823,12 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Find the TC frame in the list of frames received by server
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TCframe = nullptr;
-  for(auto frame: frames) {
-    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x19)) {
-      TCframe = frame;
-      break;
-    }
-  }
+  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
   ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << server->framesToStr(frames);
   // Check that TC is only received on active path (server) and not on passive path (server2)
   frames = server2->popLastFramesReceived();
-  for(auto frame: frames) {
-    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x19)) {
-      FAIL() << "No TC frame should be received by server2, found: " << server2->frameToStr(frame);
-    }
-  }
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "No TC frame should be received by server2, found: " << server2->frameToStr(TCframe);
 
   // Send TC ACK from servers
   server->sendFrame({0x09, 0x0e, 0x49}, false);
@@ -676,21 +852,12 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Find the TVC frame in the list of frames received by server
   frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TVCframe = nullptr;
-  for(auto frame: frames) {
-    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
-      TVCframe = frame;
-      break;
-    }
-  }
+  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
   ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << server->framesToStr(frames);
   // Check that TVC is only received on active path (server) and not on passive path (server2)
   frames = server2->popLastFramesReceived();
-  for(auto frame: frames) {
-    if((frame->usLgBuffer > 3) && (frame->aubTrame[2] == 0x1a)) {
-      FAIL() << "No TVC frame should be received by server2, found: " << server2->frameToStr(frame);
-    }
-  }
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TCframe.get(), nullptr) << "No TVC frame should be received by server2, found: " << server2->frameToStr(TVCframe);
 
   // Send TVC ACK from servers
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);

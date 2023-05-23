@@ -156,12 +156,26 @@ class HNZ {
    */
   void m_handleATC(vector<Reading>& reading, vector<unsigned char> data);
 
+  // Dedicated structure used to store parameters passed to m_prepare_reading.
+  // This prevents "too many parameters" warning from Sonarqube (cpp:S107).
+  struct ReadingParameters {
+    // Those are mandatory parameters
+    std::string label;
+    std::string msg_code;
+    unsigned int station_addr = 0;
+    unsigned int msg_address = 0;
+    long int value = 0;
+    unsigned int valid = 0;
+    // Those are optional parameters
+    unsigned int ts = 0;
+    unsigned int ts_iv = 0;
+    unsigned int ts_c = 0;
+    unsigned int ts_s = 0;
+  };
   /**
    * Create a reading from the values given in argument.
    */
-  static Reading m_prepare_reading(std::string label, std::string msg_code, unsigned int station_addr, unsigned int msg_address,
-                                    long int value, unsigned int valid, unsigned int ts = 0, unsigned int ts_iv = 0,
-                                    unsigned int ts_c = 0, unsigned int ts_s = 0);
+  static Reading m_prepare_reading(const ReadingParameters& params);
 
   /**
    * Sends the datapoints passed as Reading to Fledge

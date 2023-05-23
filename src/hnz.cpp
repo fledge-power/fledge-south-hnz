@@ -196,8 +196,14 @@ void HNZ::m_handleTM4(vector<Reading> &readings, vector<unsigned char> data) {
                                         : data[noctet]);  // VALTMi
       unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
 
-      readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                           msg_address, value, valid));
+      ReadingParameters params;
+      params.label = label;
+      params.msg_code = msg_code;
+      params.station_addr = m_remote_address;
+      params.msg_address = msg_address;
+      params.value = value;
+      params.valid = valid;
+      readings.push_back(m_prepare_reading(params));
     }
   }
 }
@@ -210,17 +216,26 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, vector<unsigned char> data) {
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
   if (!label.empty()) {
-    long int value = (int)(data[2] >> 3) & 0x1;  // E bit
-    unsigned int valid = (int)(data[2] >> 4) & 0x1;  // V bit
+    long int value = (data[2] >> 3) & 0x1;  // E bit
+    unsigned int valid = (data[2] >> 4) & 0x1;  // V bit
 
-    unsigned int ts = (int)((data[3] << 8) | data[4]);
-    unsigned int ts_iv = (int)(data[2] >> 2) & 0x1;  // HNV bit
-    unsigned int ts_s = (int)data[2] & 0x1;          // S bit
-    unsigned int ts_c = (int)(data[2] >> 1) & 0x1;   // C bit
+    unsigned int ts = ((data[3] << 8) | data[4]);
+    unsigned int ts_iv = (data[2] >> 2) & 0x1;  // HNV bit
+    unsigned int ts_s = data[2] & 0x1;          // S bit
+    unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
 
-    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                         msg_address, value, valid, ts, ts_iv,
-                                         ts_c, ts_s));
+    ReadingParameters params;
+    params.label = label;
+    params.msg_code = msg_code;
+    params.station_addr = m_remote_address;
+    params.msg_address = msg_address;
+    params.value = value;
+    params.valid = valid;
+    params.ts = ts;
+    params.ts_iv = ts_iv;
+    params.ts_c = ts_c;
+    params.ts_s = ts_s;
+    readings.push_back(m_prepare_reading(params));
   }
 }
 
@@ -236,11 +251,17 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, vector<unsigned char> data) {
     if (!label.empty()) {
       int noctet = 2 + (i / 4);
       int dep = (3 - (i % 4)) * 2;
-      long int value = (int)(data[noctet] >> dep) & 0x1;  // E
-      unsigned int valid = (int)(data[noctet] >> dep) & 0x2;  // V
+      long int value = (data[noctet] >> dep) & 0x1;  // E
+      unsigned int valid = (data[noctet] >> dep) & 0x2;  // V
 
-      m_gi_readings_temp.push_back(
-          m_prepare_reading(label, msg_code, m_remote_address, msg_address, value, valid));
+      ReadingParameters params;
+      params.label = label;
+      params.msg_code = msg_code;
+      params.station_addr = m_remote_address;
+      params.msg_address = msg_address;
+      params.value = value;
+      params.valid = valid;
+      m_gi_readings_temp.push_back(m_prepare_reading(params));
     }
   }
 
@@ -271,18 +292,24 @@ void HNZ::m_handleTMN(vector<Reading> &readings, vector<unsigned char> data) {
       if (nbrTM == 4) {
         int noctet = 2 + i;
 
-        value = (int)(data[noctet]);        // Vi
-        valid = (int)(data[6] >> i) & 0x1;  // Ii
+        value = (data[noctet]);        // Vi
+        valid = (data[6] >> i) & 0x1;  // Ii
       } else {
         int noctet = 2 + (i * 2);
 
-        value = (int)(data[noctet + 1] << 8 |
+        value = (data[noctet + 1] << 8 |
                       data[noctet]);            // Concat V1/V2 and V3/V4
-        valid = (int)(data[6] >> i * 2) & 0x1;  // I1 or I3
+        valid = (data[6] >> i * 2) & 0x1;  // I1 or I3
       }
 
-      readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                           msg_address, value, valid));
+      ReadingParameters params;
+      params.label = label;
+      params.msg_code = msg_code;
+      params.station_addr = m_remote_address;
+      params.msg_address = msg_address;
+      params.value = value;
+      params.valid = valid;
+      readings.push_back(m_prepare_reading(params));
     }
   }
 }
@@ -303,8 +330,14 @@ void HNZ::m_handleATVC(vector<Reading> &readings, vector<unsigned char> data) {
       value *= -1;  // S
     }
 
-    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                         msg_address, value, a));
+    ReadingParameters params;
+    params.label = label;
+    params.msg_code = msg_code;
+    params.station_addr = m_remote_address;
+    params.msg_address = msg_address;
+    params.value = value;
+    params.valid = a;
+    readings.push_back(m_prepare_reading(params));
   }
 }
 
@@ -323,44 +356,48 @@ void HNZ::m_handleATC(vector<Reading> &readings, vector<unsigned char> data) {
     unsigned int CR = data[2] & 0x7;
     unsigned int valid = (CR == 0x1) ? 0 : 1;
 
-    readings.push_back(m_prepare_reading(label, msg_code, m_remote_address,
-                                         msg_address, value, valid));
+    ReadingParameters params;
+    params.label = label;
+    params.msg_code = msg_code;
+    params.station_addr = m_remote_address;
+    params.msg_address = msg_address;
+    params.value = value;
+    params.valid = valid;
+    readings.push_back(m_prepare_reading(params));
   }
 }
 
-Reading HNZ::m_prepare_reading(std::string label, std::string msg_code, unsigned int station_addr, unsigned int msg_address,
-                                long int value, unsigned int valid, unsigned int ts /*= 0*/, unsigned int ts_iv /*= 0*/,
-                                unsigned int ts_c /*= 0*/, unsigned int ts_s /*= 0*/) {
-  bool isTS = (msg_code == "TSCE");
-  std::string debugStr = "Send to fledge " + msg_code +
-      " with station address = " + to_string(station_addr) +
-      ", message address = " + to_string(msg_address) +
-      ", value = " + to_string(value) + ", valid = " + to_string(valid);
+Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
+  bool isTS = (params.msg_code == "TSCE");
+  std::string debugStr = "Send to fledge " + params.msg_code +
+      " with station address = " + to_string(params.station_addr) +
+      ", message address = " + to_string(params.msg_address) +
+      ", value = " + to_string(params.value) + ", valid = " + to_string(params.valid);
   if(isTS) {
-    debugStr += ", ts = " + to_string(ts) + ", iv = " + to_string(ts_iv) +
-                ", c = " + to_string(ts_c) + ", s" + to_string(ts_s);
+    debugStr += ", ts = " + to_string(params.ts) + ", iv = " + to_string(params.ts_iv) +
+                ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
   }
   Logger::getLogger()->debug(debugStr);
 
   auto *measure_features = new vector<Datapoint *>;
-  measure_features->push_back(m_createDatapoint("do_type", msg_code));
-  measure_features->push_back(m_createDatapoint("do_station", static_cast<long int>(station_addr)));
-  measure_features->push_back(m_createDatapoint("do_addr", static_cast<long int>(msg_address)));
-  measure_features->push_back(m_createDatapoint("do_value", value));
-  measure_features->push_back(m_createDatapoint("do_valid", static_cast<long int>(valid)));
+  measure_features->push_back(m_createDatapoint("do_type", params.msg_code));
+  measure_features->push_back(m_createDatapoint("do_station", static_cast<long int>(params.station_addr)));
+  measure_features->push_back(m_createDatapoint("do_addr", static_cast<long int>(params.msg_address)));
+  measure_features->push_back(m_createDatapoint("do_value", params.value));
+  measure_features->push_back(m_createDatapoint("do_valid", static_cast<long int>(params.valid)));
 
   if (isTS) {
-    measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(ts)));
-    measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(ts_iv)));
-    measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(ts_c)));
-    measure_features->push_back(m_createDatapoint("do_ts_s", static_cast<long int>(ts_s)));
+    measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
+    measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));
+    measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(params.ts_c)));
+    measure_features->push_back(m_createDatapoint("do_ts_s", static_cast<long int>(params.ts_s)));
   }
 
   DatapointValue dpv(measure_features, true);
 
   Datapoint *dp = new Datapoint("data_object", dpv);
 
-  return Reading(label, dp);
+  return Reading(params.label, dp);
 }
 
 void HNZ::m_sendToFledge(vector<Reading> &readings) {

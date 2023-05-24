@@ -182,6 +182,12 @@ void BasicHNZServer::onFrameSent(MSG_TRAME* frame) {
   m_last_frames_sent.push_back(newFrame);
 }
 
+std::string BasicHNZServer::toHexStr(unsigned char num) {
+  std::stringstream stream;
+  stream << "0x" << std::setfill('0') << std::setw(2) << std::hex << static_cast<unsigned int>(num);
+  return stream.str();
+}
+
 std::string BasicHNZServer::frameToStr(std::shared_ptr<MSG_TRAME> frame) {
   std::stringstream stream;
   stream << "\n[";
@@ -189,7 +195,7 @@ std::string BasicHNZServer::frameToStr(std::shared_ptr<MSG_TRAME> frame) {
     if (i > 0) {
       stream << ", ";
     }
-    stream << "0x" << std::setfill('0') << std::setw(2) << std::hex << static_cast<unsigned int>(frame->aubTrame[i]);
+    stream << toHexStr(frame->aubTrame[i]);
   }
   stream << "]";
   return stream.str();

@@ -41,8 +41,9 @@ class BasicHNZServer {
   void onFrameReceived(MSG_TRAME* frame);
   void onFrameSent(MSG_TRAME* frame);
 
-  std::string frameToStr(std::shared_ptr<MSG_TRAME> frame);
-  std::string framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames);
+  static std::string toHexStr(unsigned char num);
+  static std::string frameToStr(std::shared_ptr<MSG_TRAME> frame);
+  static std::string framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames);
 
   HNZServer* server;
   int addr;

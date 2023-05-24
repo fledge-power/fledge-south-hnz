@@ -88,7 +88,18 @@ class HNZ {
    * @param frame The frame to format
    * @return a string representing the bytes of that frame in hexadecimal
    */
-  std::string frameToStr(std::vector<unsigned char> frame) const;
+  static std::string frameToStr(std::vector<unsigned char> frame);
+
+  /**
+   * Utility function used to build a timestamp from the date of day
+   *
+   * @param dateTime Date of day (time information will be reset to 00:00:00 if any)
+   * @param daySection Section of the day in groups of 10 minutes in current day [0..143]
+   * @param ts Time in group of 10 milliseconds in current section of day
+   * @return an epoch timestamp in milliseconds
+   */
+  static unsigned long getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
+                                            unsigned char daySection, unsigned int ts);
 
  private:
   string m_asset;  // Plugin name in fledge
@@ -109,6 +120,8 @@ class HNZ {
   // Configuration defined variables
   unsigned int m_remote_address;
   BulleFormat m_test_msg_receive;
+  // Section of day (modulo 10 minutes)
+  unsigned char m_daySection = 0;
 
   /**
    * Waits for new messages and processes them
@@ -120,6 +133,11 @@ class HNZ {
    */
   void m_handle_message(vector<unsigned char> data);
 
+  /**
+   * Handle Modulo code messages: store the latest modulo for timestamp computation
+   */
+  void m_handleModuloCode(vector<Reading>& reading, vector<unsigned char> data);
+  
   /**
    * Handle TM4 messages: analyse them and returns readings for export to
    * fledge.
@@ -167,7 +185,7 @@ class HNZ {
     long int value = 0;
     unsigned int valid = 0;
     // Those are optional parameters
-    unsigned int ts = 0;
+    unsigned long ts = 0;
     unsigned int ts_iv = 0;
     unsigned int ts_c = 0;
     unsigned int ts_s = 0;

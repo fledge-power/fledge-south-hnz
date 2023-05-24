@@ -144,6 +144,10 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
   vector<Reading> readings;   // Contains data object to push to fledge
 
   switch (t) {
+    case MODULO_CODE:
+      Logger::getLogger()->info("Received modulo time update");
+      m_handleModuloCode(readings, data);
+      break;
     case TM4_CODE:
       Logger::getLogger()->info("Pushing to Fledge a TMA");
       m_handleTM4(readings, data);
@@ -179,6 +183,10 @@ void HNZ::m_handle_message(vector<unsigned char> data) {
   if (!readings.empty()) {
     m_sendToFledge(readings);
   }
+}
+
+void HNZ::m_handleModuloCode(vector<Reading>& reading, vector<unsigned char> data) {
+  m_daySection = data[1];
 }
 
 void HNZ::m_handleTM4(vector<Reading> &readings, vector<unsigned char> data) {
@@ -219,10 +227,11 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, vector<unsigned char> data) {
     long int value = (data[2] >> 3) & 0x1;  // E bit
     unsigned int valid = (data[2] >> 4) & 0x1;  // V bit
 
-    unsigned int ts = ((data[3] << 8) | data[4]);
+    unsigned int ts = ((data[3] << 8) | data[4]); // Timestamp in 10 milliseconds in modulo of 10 minutes of current day
     unsigned int ts_iv = (data[2] >> 2) & 0x1;  // HNV bit
     unsigned int ts_s = data[2] & 0x1;          // S bit
     unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
+    unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::now(), m_daySection, ts);
 
     ReadingParameters params;
     params.label = label;
@@ -231,7 +240,7 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, vector<unsigned char> data) {
     params.msg_address = msg_address;
     params.value = value;
     params.valid = valid;
-    params.ts = ts;
+    params.ts = epochMs;
     params.ts_iv = ts_iv;
     params.ts_c = ts_c;
     params.ts_s = ts_s;
@@ -387,6 +396,7 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   measure_features->push_back(m_createDatapoint("do_valid", static_cast<long int>(params.valid)));
 
   if (isTS) {
+    // Casting "unsigned long" into "long" for do_ts in order to match implementation of iec104 plugin
     measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
     measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));
     measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(params.ts_c)));
@@ -435,7 +445,7 @@ bool HNZ::operation(const std::string &operation, int count,
   return false;
 }
 
-std::string HNZ::frameToStr(std::vector<unsigned char> frame) const {
+std::string HNZ::frameToStr(std::vector<unsigned char> frame) {
   std::stringstream stream;
   stream << "\n[";
   for(int i=0 ; i<frame.size() ; i++) {
@@ -446,4 +456,33 @@ std::string HNZ::frameToStr(std::vector<unsigned char> frame) const {
   }
   stream << "]";
   return stream.str();
+}
+
+unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
+                                            unsigned char daySection, unsigned int ts)
+{
+  // Convert timestamp to epoch milliseconds
+  static const unsigned long oneHourMs = 3600000; // 60 * 60 * 1000
+  static const unsigned long oneDayMs = 86400000; // 24 * 60 * 60 * 1000
+  static const unsigned long tenMinMs = 600000;   // 10 * 60 * 1000
+  static const auto oneDay = std::chrono::hours{24};
+  // Get the date of the start of the day in epoch milliseconds
+  auto days = dateTime - (dateTime.time_since_epoch() % oneDay);
+  unsigned long epochMs = duration_cast<std::chrono::milliseconds>(days.time_since_epoch()).count();
+  // Add or remove one day if we are at edge of day and day section is on the other day
+  long int ms_today = duration_cast<std::chrono::milliseconds>(dateTime.time_since_epoch()).count() % oneDayMs;
+  long int hours = (ms_today / oneHourMs) % 24;
+  // Remote section of day is after midnight but local clock is before midnight: add one day
+  if ((daySection == 0) && (hours == 23)) {
+    epochMs += oneDayMs;
+  }
+  // Remote section of day is before midnight but local clock is after midnight: remove one day
+  if ((daySection == 143) && (hours == 0)) {
+    epochMs -= oneDayMs;
+  }
+  // Add the time since day start (blocks of 10 min)
+  epochMs += daySection * tenMinMs;
+  // Add the time since section of day start (blocks of 10 ms)
+  epochMs += ts * 10;
+  return epochMs;
 }

@@ -131,48 +131,48 @@ class HNZ {
   /**
    * Handle a message: translate the message and send it to Fledge.
    */
-  void m_handle_message(vector<unsigned char> data);
+  void m_handle_message(const vector<unsigned char>& data);
 
   /**
    * Handle Modulo code messages: store the latest modulo for timestamp computation
    */
-  void m_handleModuloCode(vector<Reading>& reading, vector<unsigned char> data);
+  void m_handleModuloCode(vector<Reading>& readings, const vector<unsigned char>& data);
   
   /**
    * Handle TM4 messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTM4(vector<Reading>& reading, vector<unsigned char> data);
+  void m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& data);
 
   /**
    * Handle TSCE messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCE(vector<Reading>& reading, vector<unsigned char> data);
+  void m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data);
 
   /**
    * Handle TSCG messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCG(vector<Reading>& reading, vector<unsigned char> data);
+  void m_handleTSCG(vector<Reading>& readings, const vector<unsigned char>& data);
 
   /**
    * Handle TMN messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTMN(vector<Reading>& reading, vector<unsigned char> data);
+  void m_handleTMN(vector<Reading>& readings, const vector<unsigned char>& data);
 
   /**
    * Handle TVC ACK messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleATVC(vector<Reading>& reading, vector<unsigned char> data);
+  void m_handleATVC(vector<Reading>& readings, const vector<unsigned char>& data);
 
   /**
    * Handle TC ACK messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleATC(vector<Reading>& reading, vector<unsigned char> data);
+  void m_handleATC(vector<Reading>& readings, const vector<unsigned char>& data);
 
   // Dedicated structure used to store parameters passed to m_prepare_reading.
   // This prevents "too many parameters" warning from Sonarqube (cpp:S107).

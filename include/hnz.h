@@ -142,13 +142,13 @@ class HNZ {
    * Handle TM4 messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& data);
+  void m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& data) const;
 
   /**
    * Handle TSCE messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data);
+  void m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const;
 
   /**
    * Handle TSCG messages: analyse them and returns one reading for export to
@@ -160,19 +160,19 @@ class HNZ {
    * Handle TMN messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleTMN(vector<Reading>& readings, const vector<unsigned char>& data);
+  void m_handleTMN(vector<Reading>& readings, const vector<unsigned char>& data) const;
 
   /**
    * Handle TVC ACK messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleATVC(vector<Reading>& readings, const vector<unsigned char>& data);
+  void m_handleATVC(vector<Reading>& readings, const vector<unsigned char>& data) const;
 
   /**
    * Handle TC ACK messages: analyse them and returns readings for export to
    * fledge.
    */
-  void m_handleATC(vector<Reading>& readings, const vector<unsigned char>& data);
+  void m_handleATC(vector<Reading>& readings, const vector<unsigned char>& data) const;
 
   // Dedicated structure used to store parameters passed to m_prepare_reading.
   // This prevents "too many parameters" warning from Sonarqube (cpp:S107).

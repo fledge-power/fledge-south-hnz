@@ -7,7 +7,6 @@
  *
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
-#define UNUSED(x) [&x]{}()
 
 #include "hnz.h"
 
@@ -189,11 +188,11 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
 void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned char>& data) {
   // No reading to send when reciving modulo code, but keep the parameter
   // to get a homogenous signature for all m_handle*() methods
-  UNUSED(readings); 
+  readings.clear();
   m_daySection = data[1];
 }
 
-void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& data) {
+void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& data) const {
   string msg_code = "TMA";
   for (size_t i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
@@ -220,7 +219,7 @@ void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& da
   }
 }
 
-void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& data) {
+void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& data) const {
   string msg_code = "TSCE";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
@@ -253,7 +252,7 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& d
 }
 
 void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& data) {
-  UNUSED(readings);
+  readings.clear();
   string msg_code = "TSCG";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
@@ -289,7 +288,7 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
   }
 }
 
-void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& data) {
+void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& data) const {
   string msg_code = "TMN";
   // 2 or 4 TM inside a TMn
   unsigned int nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
@@ -328,7 +327,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
   }
 }
 
-void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& data) {
+void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& data) const {
   string msg_code = "ACK_TVC";
 
   unsigned int msg_address = data[1] & 0x1F;  // AD0
@@ -355,7 +354,7 @@ void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& d
   }
 }
 
-void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& data) {
+void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& data) const {
   string msg_code = "ACK_TC";
 
   unsigned int msg_address = stoi(to_string((int)data[1]) +

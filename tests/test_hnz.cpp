@@ -325,6 +325,9 @@ class HNZTest : public testing::Test {
   static int ingestCallbackCalled;
   static queue<Reading*> storedReadings;
   static const std::vector<std::string> allAttributeNames;
+  static constexpr unsigned long oneHourMs = 3600000; // 60 * 60 * 1000
+  static constexpr unsigned long oneDayMs = 86400000; // 24 * 60 * 60 * 1000
+  static constexpr unsigned long tenMinMs = 600000;   // 10 * 60 * 1000
 };
 
 HNZTestComp* HNZTest::hnz;
@@ -333,6 +336,9 @@ queue<Reading*> HNZTest::storedReadings;
 const std::vector<std::string> HNZTest::allAttributeNames = {
   "do_type", "do_station", "do_addr", "do_value", "do_valid", "do_ts", "do_ts_iv", "do_ts_c", "do_ts_s"
 };
+constexpr unsigned long HNZTest::oneHourMs;
+constexpr unsigned long HNZTest::oneDayMs;
+constexpr unsigned long HNZTest::tenMinMs;
 
 TEST_F(HNZTest, TCPConnectionOnePathOK) {
   BasicHNZServer* server = new BasicHNZServer(6001, 0x05);
@@ -362,9 +368,65 @@ TEST_F(HNZTest, ReceivingMessages) {
     FAIL() << "Something went wrong. Connection is not established in 10s...";
 
   ///////////////////////////////////////
+  // Validate epoch timestamp encoding
+  ///////////////////////////////////////
+  // Default is 0
+  std::chrono::time_point<std::chrono::system_clock> dateTime = {};
+  unsigned char daySection = 0;
+  unsigned int ts = 0;
+  unsigned long epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  unsigned long expectedEpochMs = 0;
+  ASSERT_EQ(epochMs, expectedEpochMs) << "Invalid default value";
+
+  // Any time from dateTime is erazed
+  dateTime += std::chrono::hours{1};
+  epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  ASSERT_EQ(epochMs, expectedEpochMs) << "Invalid use of time from dateTime";
+
+  // One day added to datetime is visible in epoch time
+  dateTime += std::chrono::hours{24};
+  expectedEpochMs += oneDayMs;
+  epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  ASSERT_EQ(epochMs, expectedEpochMs) << "Invalid scale of dateTime";
+
+  // One day section represents 10 mins
+  daySection += 1;
+  expectedEpochMs += tenMinMs;
+  epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  ASSERT_EQ(epochMs, expectedEpochMs) << "Invalid scale of daySection";
+
+  // One ts represents 10 miliseconds
+  ts += 1;
+  expectedEpochMs += 10;
+  epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  ASSERT_EQ(epochMs, expectedEpochMs) << "Invalid scale of ts";
+
+  // End of day section received at beginning of local day result in local day -1 being used in timestamp
+  dateTime = {};
+  dateTime += std::chrono::hours{48}; // 2 days
+  daySection = 143;
+  ts = 0;
+  expectedEpochMs = oneDayMs + (tenMinMs * 143);
+  epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  ASSERT_EQ(epochMs, expectedEpochMs) << "Invalid end of day management";
+
+  // Start of day section received at end of local day result in local day +1 being used in timestamp
+  dateTime += std::chrono::hours{-1}; // 1 day 23 h
+  daySection = 0;
+  expectedEpochMs = oneDayMs * 2;
+  epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  ASSERT_EQ(epochMs, expectedEpochMs) << "Invalid start of day management";
+
+  ///////////////////////////////////////
   // Send TS1
   ///////////////////////////////////////
-  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  dateTime = std::chrono::system_clock::now();
+  daySection = 0;
+  ts = 14066;
+  expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  unsigned char msb = static_cast<unsigned char>(ts >> 8);
+  unsigned char lsb = static_cast<unsigned char>(ts & 0xFF);
+  server->sendFrame({0x0B, 0x33, 0x28, msb, lsb}, false);
   printf("[HNZ Server] TSCE sent\n");
 
   // Wait a lit bit to received the frame
@@ -380,7 +442,7 @@ TEST_F(HNZTest, ReceivingMessages) {
     {"do_addr", {"int64_t", "511"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "0"}},
-    {"do_ts", {"int64_t", "14066"}},
+    {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
     {"do_ts_s", {"int64_t", "0"}},
@@ -390,7 +452,7 @@ TEST_F(HNZTest, ReceivingMessages) {
   ///////////////////////////////////////
   // Send TS1 with invalid flag
   ///////////////////////////////////////
-  server->sendFrame({0x0B, 0x33, 0x38, 0x36, 0xF2}, false);
+  server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
   printf("[HNZ Server] TSCE 2 sent\n");
 
   // Wait a lit bit to received the frame
@@ -406,7 +468,66 @@ TEST_F(HNZTest, ReceivingMessages) {
     {"do_addr", {"int64_t", "511"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
-    {"do_ts", {"int64_t", "14066"}},
+    {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
+    {"do_ts_iv", {"int64_t", "0"}},
+    {"do_ts_c", {"int64_t", "0"}},
+    {"do_ts_s", {"int64_t", "0"}},
+  });
+  storedReadings.pop();
+
+  ///////////////////////////////////////
+  // Send TS1 with modified day section
+  ///////////////////////////////////////
+  daySection = 12;
+  expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  server->sendFrame({0x0F, daySection}, false);
+  server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
+  printf("[HNZ Server] TSCE 3 sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS1", {
+    {"do_type", {"string", "TSCE"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "511"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "1"}},
+    {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
+    {"do_ts_iv", {"int64_t", "0"}},
+    {"do_ts_c", {"int64_t", "0"}},
+    {"do_ts_s", {"int64_t", "0"}},
+  });
+  storedReadings.pop();
+
+  ///////////////////////////////////////
+  // Send TS1 with modified timestamp
+  ///////////////////////////////////////
+  ts = ts + 6000;
+  expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
+  msb = static_cast<unsigned char>(ts >> 8);
+  lsb = static_cast<unsigned char>(ts & 0xFF);
+  server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
+  printf("[HNZ Server] TSCE 4 sent\n");
+
+  // Wait a lit bit to received the frame
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 1);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS1", {
+    {"do_type", {"string", "TSCE"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "511"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "1"}},
+    {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
     {"do_ts_s", {"int64_t", "0"}},

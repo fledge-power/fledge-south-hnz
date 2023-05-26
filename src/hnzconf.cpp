@@ -195,8 +195,8 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
   return label;
 }
 
-int HNZConf::getNumberCG() const {
-  int nb;
+unsigned long HNZConf::getNumberCG() const {
+  unsigned long nb;
   try {
     nb = m_msg_list.at("TS").at(m_remote_station_addr).size();
     Logger::getLogger()->debug(to_string(nb) + " TSCG in the configuration.");

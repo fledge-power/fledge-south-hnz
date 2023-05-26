@@ -362,8 +362,8 @@ class HNZTest : public testing::Test {
 
   // When a test using a BasicHNZServer completes, the server is not destroyed immediately
   // so the next test can start before the server is deleted.
-  // Because of that the port of the previous is still in use, so we need a new port to make sure
-  // we do not run into server initialization error because of port already in use.
+  // Because of that the port of the server from the previous test is still in use, so when starting a new test
+  // we need a new port to make sure we do not run into server initialization error because of port already in use.
   static int getNextPort() {
     static int port = 6000;
     port++;
@@ -405,13 +405,13 @@ class ServersWrapper {
     }
     std::shared_ptr<BasicHNZServer> server1() {
       if (!m_server1->HNZServerIsReady()) {
-        return nullptr;
+        m_server1 = nullptr;
       }
       return m_server1;
     }
     std::shared_ptr<BasicHNZServer> server2() {
       if (!m_server2->HNZServerIsReady()) {
-        return nullptr;
+        m_server2 = nullptr;
       }
       return m_server2;
     }

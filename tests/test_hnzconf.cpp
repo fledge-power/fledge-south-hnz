@@ -53,7 +53,7 @@ string exchanged_data_def = QUOTE({
             "name" : "hnz",
             "station_address" : 12,
             "message_address" : 511,
-            "message_code" : "TSCE"
+            "message_code" : "TS"
           }
         ]
       },
@@ -160,11 +160,11 @@ TEST_F(HNZConfTest, GetCAckTime) { ASSERT_EQ(hnz_conf->get_c_ack_time(), 20); }
 TEST_F(HNZConfTest, GetCmdRecvTimeout) { ASSERT_EQ(hnz_conf->get_cmd_recv_timeout(), 200000); }
 
 TEST_F(HNZConfTest, GetLabelTS1) {
-  ASSERT_STREQ(hnz_conf->getLabel("TSCE", 511).c_str(), "TS1");
+  ASSERT_STREQ(hnz_conf->getLabel("TS", 511).c_str(), "TS1");
 }
 
 TEST_F(HNZConfTest, GetLabelUnknown) {
-  ASSERT_STREQ(hnz_conf->getLabel("TSCE", 999).c_str(), "");
+  ASSERT_STREQ(hnz_conf->getLabel("TS", 999).c_str(), "");
 }
 
 string min_protocol_stack_def = QUOTE({

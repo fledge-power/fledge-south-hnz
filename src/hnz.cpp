@@ -220,7 +220,7 @@ void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& da
 }
 
 void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& data) const {
-  string msg_code = "TSCE";
+  string msg_code = "TS";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
@@ -247,13 +247,14 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& d
     params.ts_iv = ts_iv;
     params.ts_c = ts_c;
     params.ts_s = ts_s;
+    params.cg = false;
     readings.push_back(m_prepare_reading(params));
   }
 }
 
 void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& data) {
   readings.clear();
-  string msg_code = "TSCG";
+  string msg_code = "TS";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
     unsigned int msg_address = stoi(
@@ -265,7 +266,7 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
       int noctet = 2 + (i / 4);
       int dep = (3 - (i % 4)) * 2;
       long int value = (data[noctet] >> dep) & 0x1;  // E
-      unsigned int valid = (data[noctet] >> dep) & 0x2;  // V
+      unsigned int valid = ((data[noctet] >> dep) & 0x2) >> 1;  // V
 
       ReadingParameters params;
       params.label = label;
@@ -274,6 +275,7 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
       params.msg_address = msg_address;
       params.value = value;
       params.valid = valid;
+      params.cg = true;
       m_gi_readings_temp.push_back(m_prepare_reading(params));
     }
   }
@@ -381,12 +383,16 @@ void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& da
 }
 
 Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
-  bool isTS = (params.msg_code == "TSCE");
+  bool isTS = (params.msg_code == "TS");
+  bool isTSCE = isTS && !params.cg;
   std::string debugStr = "Send to fledge " + params.msg_code +
       " with station address = " + to_string(params.station_addr) +
       ", message address = " + to_string(params.msg_address) +
       ", value = " + to_string(params.value) + ", valid = " + to_string(params.valid);
   if(isTS) {
+    debugStr += ", cg= " + to_string(params.cg);
+  }
+  if(isTSCE) {
     debugStr += ", ts = " + to_string(params.ts) + ", iv = " + to_string(params.ts_iv) +
                 ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
   }
@@ -399,7 +405,11 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   measure_features->push_back(m_createDatapoint("do_value", params.value));
   measure_features->push_back(m_createDatapoint("do_valid", static_cast<long int>(params.valid)));
 
-  if (isTS) {
+  if(isTS) {
+    // Casting "bool" to "long int" result in true => 1 / false => 0
+    measure_features->push_back(m_createDatapoint("do_cg", static_cast<long int>(params.cg)));
+  }
+  if (isTSCE) {
     // Casting "unsigned long" into "long" for do_ts in order to match implementation of iec104 plugin
     measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
     measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));

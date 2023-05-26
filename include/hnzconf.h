@@ -129,7 +129,7 @@ class HNZConf {
   /**
    * Get the number of CG. Used for the consistency check when GI.
    */
-  int getNumberCG() const;
+  unsigned long getNumberCG() const;
 
   /**
    * Get the IP address to remote IEC 104 server (A path)

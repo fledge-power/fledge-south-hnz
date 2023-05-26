@@ -66,6 +66,11 @@ class HNZConnection {
    */
   void switchPath();
 
+  /**
+   * Send the initial GI message (reset retry counter if it was in progress)
+   */
+  void sendInitialGI();
+
  private:
   HNZPath* m_active_path = nullptr;
   HNZPath* m_passive_path = nullptr;

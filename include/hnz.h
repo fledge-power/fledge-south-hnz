@@ -101,7 +101,7 @@ class HNZ {
   static unsigned long getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
                                             unsigned char daySection, unsigned int ts);
 
- private:
+ protected:
   string m_asset;  // Plugin name in fledge
   atomic<bool> m_is_running;
   thread *m_receiving_thread_A,
@@ -189,6 +189,7 @@ class HNZ {
     unsigned int ts_iv = 0;
     unsigned int ts_c = 0;
     unsigned int ts_s = 0;
+    bool cg = false;
   };
   /**
    * Create a reading from the values given in argument.

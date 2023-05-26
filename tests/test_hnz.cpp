@@ -19,10 +19,28 @@ static string exchanged_data_def = QUOTE({
     "datapoints" : [
       {
         "label" : "TS1",
-        "pivot_id" : "ID114562",
+        "pivot_id" : "ID114561",
         "pivot_type" : "SpsTyp",
         "protocols" : [
           {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_1"}, {
+            "name" : "tase2",
+            "address" : "S_114561",
+            "typeid" : "Data_StateQTimeTagExtended"
+          },
+          {
+            "name" : "hnz",
+            "station_address" : 1,
+            "message_address" : 511,
+            "message_code" : "TS"
+          }
+        ]
+      },
+      {
+        "label" : "TS2",
+        "pivot_id" : "ID114562",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [
+          {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_2"}, {
             "name" : "tase2",
             "address" : "S_114562",
             "typeid" : "Data_StateQTimeTagExtended"
@@ -30,8 +48,26 @@ static string exchanged_data_def = QUOTE({
           {
             "name" : "hnz",
             "station_address" : 1,
-            "message_address" : 511,
-            "message_code" : "TSCE"
+            "message_address" : 522,
+            "message_code" : "TS"
+          }
+        ]
+      },
+      {
+        "label" : "TS3",
+        "pivot_id" : "ID114567",
+        "pivot_type" : "SpsTyp",
+        "protocols" : [
+          {"name" : "iec104", "address" : "45-672", "typeid" : "M_SP_TB_7"}, {
+            "name" : "tase2",
+            "address" : "S_114567",
+            "typeid" : "Data_StateQTimeTagExtended"
+          },
+          {
+            "name" : "hnz",
+            "station_address" : 1,
+            "message_address" : 577,
+            "message_code" : "TS"
           }
         ]
       },
@@ -121,16 +157,19 @@ string protocol_stack_generator(int port, int port2) {
                        : "") +
          " ] } , \"application_layer\" : { "
          "\"remote_station_addr\" : "
-         "1, \"max_sarm\" : 5 } } }";
+         "1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2 } } }";
 }
 
 class HNZTestComp : public HNZ {
  public:
   HNZTestComp() : HNZ() {}
+  void sendCG() {
+    m_hnz_connection->sendInitialGI();
+  }
 };
 
 class HNZTest : public testing::Test {
- protected:
+ public:
   void SetUp() {
     // Create HNZ Plugin object
     hnz = new HNZTestComp();
@@ -250,7 +289,7 @@ class HNZTest : public testing::Test {
     ASSERT_NE(nullptr, data_object);
     // Validate existance of the required keys and non-existance of the others
     for(const std::string& name: allAttributeNames) {
-      ASSERT_EQ(hasChild(*data_object, name), static_cast<bool>(attributes.count(name))) << "Attribute not found: " << name;;
+      ASSERT_EQ(hasChild(*data_object, name), static_cast<bool>(attributes.count(name))) << assetName << ": Attribute not found: " << name;;
     }
     // Validate value and type of each key
     for(auto const& kvp: attributes) {
@@ -258,13 +297,13 @@ class HNZTest : public testing::Test {
       const std::string& type = kvp.second.type;
       const std::string& expectedValue = kvp.second.value;
       if(type == std::string("string")) {
-        ASSERT_EQ(expectedValue, getStrValue(getChild(*data_object, name))) << "Unexpected value for attribute " << name;
+        ASSERT_EQ(expectedValue, getStrValue(getChild(*data_object, name))) << assetName << ": Unexpected value for attribute " << name;
       }
       else if(type == std::string("int64_t")) {
-        ASSERT_EQ(std::stoull(expectedValue), getIntValue(getChild(*data_object, name))) << "Unexpected value for attribute " << name;
+        ASSERT_EQ(std::stoull(expectedValue), getIntValue(getChild(*data_object, name))) << assetName << ": Unexpected value for attribute " << name;
       }
       else {
-        FAIL() << "Unknown type: " << type;
+        FAIL() << assetName << ": Unknown type: " << type;
       }
     }
 
@@ -321,6 +360,16 @@ class HNZTest : public testing::Test {
     }
   }
 
+  // When a test using a BasicHNZServer completes, the server is not destroyed immediately
+  // so the next test can start before the server is deleted.
+  // Because of that the port of the previous is still in use, so we need a new port to make sure
+  // we do not run into server initialization error because of port already in use.
+  static int getNextPort() {
+    static int port = 6000;
+    port++;
+    return port;
+  }
+
   static HNZTestComp* hnz;
   static int ingestCallbackCalled;
   static queue<Reading*> storedReadings;
@@ -334,38 +383,53 @@ HNZTestComp* HNZTest::hnz;
 int HNZTest::ingestCallbackCalled;
 queue<Reading*> HNZTest::storedReadings;
 const std::vector<std::string> HNZTest::allAttributeNames = {
-  "do_type", "do_station", "do_addr", "do_value", "do_valid", "do_ts", "do_ts_iv", "do_ts_c", "do_ts_s"
+  "do_type", "do_station", "do_addr", "do_value", "do_valid", "do_ts", "do_ts_iv", "do_ts_c", "do_ts_s", "do_cg"
 };
 constexpr unsigned long HNZTest::oneHourMs;
 constexpr unsigned long HNZTest::oneDayMs;
 constexpr unsigned long HNZTest::tenMinMs;
 
+class ServersWrapper {
+  public:
+    ServersWrapper(int addr, int port1, int port2=0) {
+      m_server1 = std::make_shared<BasicHNZServer>(port1, addr);
+      m_server1->startHNZServer();
+
+      if(port2 > 0) {
+        m_server2 = std::make_shared<BasicHNZServer>(port2, addr);
+        m_server2->startHNZServer();
+      }
+
+      // Start HNZ Plugin
+      HNZTest::startHNZ(port1, port2); 
+    }
+    std::shared_ptr<BasicHNZServer> server1() {
+      if (!m_server1->HNZServerIsReady()) {
+        return nullptr;
+      }
+      return m_server1;
+    }
+    std::shared_ptr<BasicHNZServer> server2() {
+      if (!m_server2->HNZServerIsReady()) {
+        return nullptr;
+      }
+      return m_server2;
+    }
+  private:
+    std::shared_ptr<BasicHNZServer> m_server1;
+    std::shared_ptr<BasicHNZServer> m_server2;
+};
+
 TEST_F(HNZTest, TCPConnectionOnePathOK) {
-  BasicHNZServer* server = new BasicHNZServer(6001, 0x05);
-
-  server->startHNZServer();
-
-  // Start HNZ Plugin
-  startHNZ(6001, 0);
-
-  if (!server->HNZServerIsReady())
-    FAIL() << "Something went wrong. Connection is not established in 10s...";
-
-  SUCCEED();
-
-  delete server;
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
 }
 
-TEST_F(HNZTest, ReceivingMessages) {
-  BasicHNZServer* server = new BasicHNZServer(6002, 0x05);
-
-  server->startHNZServer();
-
-  // Start HNZ Plugin
-  startHNZ(6002, 0);
-
-  if (!server->HNZServerIsReady())
-    FAIL() << "Something went wrong. Connection is not established in 10s...";
+TEST_F(HNZTest, ReceivingTSCEMessages) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
 
   ///////////////////////////////////////
   // Validate epoch timestamp encoding
@@ -428,8 +492,6 @@ TEST_F(HNZTest, ReceivingMessages) {
   unsigned char lsb = static_cast<unsigned char>(ts & 0xFF);
   server->sendFrame({0x0B, 0x33, 0x28, msb, lsb}, false);
   printf("[HNZ Server] TSCE sent\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called
@@ -437,11 +499,12 @@ TEST_F(HNZTest, ReceivingMessages) {
   ingestCallbackCalled = 0;
   Reading* currentReading = storedReadings.front();
   validateReading(currentReading, "TS1", {
-    {"do_type", {"string", "TSCE"}},
+    {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "511"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
@@ -454,8 +517,6 @@ TEST_F(HNZTest, ReceivingMessages) {
   ///////////////////////////////////////
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
   printf("[HNZ Server] TSCE 2 sent\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called
@@ -463,11 +524,12 @@ TEST_F(HNZTest, ReceivingMessages) {
   ingestCallbackCalled = 0;
   currentReading = storedReadings.front();
   validateReading(currentReading, "TS1", {
-    {"do_type", {"string", "TSCE"}},
+    {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "511"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
+    {"do_cg", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
@@ -483,8 +545,6 @@ TEST_F(HNZTest, ReceivingMessages) {
   server->sendFrame({0x0F, daySection}, false);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
   printf("[HNZ Server] TSCE 3 sent\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called
@@ -492,11 +552,12 @@ TEST_F(HNZTest, ReceivingMessages) {
   ingestCallbackCalled = 0;
   currentReading = storedReadings.front();
   validateReading(currentReading, "TS1", {
-    {"do_type", {"string", "TSCE"}},
+    {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "511"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
+    {"do_cg", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
@@ -513,8 +574,6 @@ TEST_F(HNZTest, ReceivingMessages) {
   lsb = static_cast<unsigned char>(ts & 0xFF);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
   printf("[HNZ Server] TSCE 4 sent\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called
@@ -522,31 +581,178 @@ TEST_F(HNZTest, ReceivingMessages) {
   ingestCallbackCalled = 0;
   currentReading = storedReadings.front();
   validateReading(currentReading, "TS1", {
-    {"do_type", {"string", "TSCE"}},
+    {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "511"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
+    {"do_cg", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
     {"do_ts_s", {"int64_t", "0"}},
   });
   storedReadings.pop();
+}
+
+TEST_F(HNZTest, ReceivingTSCGMessages) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+
+  ///////////////////////////////////////
+  // CG abandonned after gi_repeat_count retries
+  ///////////////////////////////////////
+
+  hnz->sendCG();
+  printf("[HNZ south plugin] CG request sent\n");
+  this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
+  int totalCG = 3; // initial CG (1) + gi_repeat_count (2)
+  for(int i=0 ; i<totalCG ; i++) {
+    // Find the CG frame in the list of frames received by server and validate it
+    printf("Validating CG frame %d\n", i);
+    validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+    this_thread::sleep_for(chrono::milliseconds(1000)); // gi_time
+  }
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(frames, 0x13);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after gi_repeat_count was reached, but found: " << BasicHNZServer::frameToStr(CGframe);
+  
+
+  ///////////////////////////////////////
+  // Send TS1 + TS2 + TS3 as CG answer
+  ///////////////////////////////////////
+  hnz->sendCG();
+  printf("[HNZ south plugin] CG request 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
+
+  // Find the CG frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+
+  // Send only one of the two expected TS
+  server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  printf("[HNZ Server] TSCG 1 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
+
+  // Only one of the 2 TS CG messages were sent, check that the TS have not yet been transmitted
+  ASSERT_EQ(ingestCallbackCalled, 0);
+  // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
+  frames = server->popLastFramesReceived();
+  CGframe = findFrameWithId(frames, 0x13);
+  ASSERT_NE(CGframe.get(), nullptr) << "Cound not find CG in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send both TS this time (new CG was sent so the TS received earlier is ignored)
+  server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
+  printf("[HNZ Server] TSCG 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
+
+  // All TS were received so no more CG should be sent automatically any more
+  frames = server->popLastFramesReceived();
+  CGframe = findFrameWithId(frames, 0x13);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after all TS were received, but found: " << BasicHNZServer::frameToStr(CGframe);
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 3);
+  ingestCallbackCalled = 0;
+  Reading* currentReading = storedReadings.front();
+  validateReading(currentReading, "TS1", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "511"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  storedReadings.pop();
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS2", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "522"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  storedReadings.pop();
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS3", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "577"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  storedReadings.pop();
+
+  ///////////////////////////////////////
+  // Send TS1 + TS2 + TS3 as CG answer with invalid flag for TS3
+  ///////////////////////////////////////
+  hnz->sendCG();
+  printf("[HNZ south plugin] CG request 3 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
+
+  // Find the CG frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+
+  server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
+  printf("[HNZ Server] TSCG 3 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(ingestCallbackCalled, 3);
+  ingestCallbackCalled = 0;
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS1", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "511"}},
+    {"do_value", {"int64_t", "0"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  storedReadings.pop();
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS2", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "522"}},
+    {"do_value", {"int64_t", "0"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  storedReadings.pop();
+  currentReading = storedReadings.front();
+  validateReading(currentReading, "TS3", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "577"}},
+    {"do_value", {"int64_t", "0"}},
+    {"do_valid", {"int64_t", "1"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  storedReadings.pop();
+}
+
+TEST_F(HNZTest, ReceivingTMAMessages) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
 
   ///////////////////////////////////////
   // Send TMA
   ///////////////////////////////////////
   server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0x00}, false);
   printf("[HNZ Server] TM4 sent\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called 4x time more
   ASSERT_EQ(ingestCallbackCalled, 4);
   ingestCallbackCalled = 0;
 
+  Reading* currentReading = nullptr;
   for (int i = 0; i < 4; i++) {
     currentReading = storedReadings.front();
     validateReading(currentReading, "TM" + to_string(i + 1), {
@@ -564,8 +770,6 @@ TEST_F(HNZTest, ReceivingMessages) {
   ///////////////////////////////////////
   server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0xFF}, false);
   printf("[HNZ Server] TM4 2 sent\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called 4x time more
@@ -593,20 +797,12 @@ TEST_F(HNZTest, ReceivingMessages) {
     }
     storedReadings.pop();
   }
-
-  delete server;
 }
 
-TEST_F(HNZTest, SendingMessages) {
-  BasicHNZServer* server = new BasicHNZServer(6007, 0x05);
-
-  server->startHNZServer();
-
-  // Start HNZ Plugin
-  startHNZ(6007, 0);
-
-  if (!server->HNZServerIsReady())
-    FAIL() << "Something went wrong. Connection is not established in 10s...";
+TEST_F(HNZTest, SendingTCMessages) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
 
   ///////////////////////////////////////
   // Send TC1
@@ -748,6 +944,12 @@ TEST_F(HNZTest, SendingMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
   });
+}
+
+TEST_F(HNZTest, SendingTVCMessages) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
 
   ///////////////////////////////////////
   // Send TVC1
@@ -772,7 +974,7 @@ TEST_F(HNZTest, SendingMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
+  Reading* currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TVC1", {
     {"do_type", {"string", "ACK_TVC"}},
@@ -836,59 +1038,26 @@ TEST_F(HNZTest, SendingMessages) {
     {"do_value", {"int64_t", "-42"}},
     {"do_valid", {"int64_t", "1"}},
   });
-  
-  delete server;
 }
 
 TEST_F(HNZTest, TCPConnectionTwoPathOK) {
-  BasicHNZServer* server = new BasicHNZServer(6003, 0x05);
-  BasicHNZServer* server2 = new BasicHNZServer(6004, 0x05);
-
-  server->startHNZServer();
-  server2->startHNZServer();
-
-  // Start HNZ Plugin
-  startHNZ(6003, 6004);
-
-  if (!server->HNZServerIsReady()) {
-    delete server2;
-    FAIL() << "Something went wrong. Connection is not established in 10s...";
-  }
-  if (!server2->HNZServerIsReady()) {
-    delete server;
-    FAIL() << "Something went wrong. Connection is not established in 10s... ";
-  }
-
-  SUCCEED();
-
-  delete server;
-  delete server2;
+  ServersWrapper wrapper(0x05, getNextPort(), getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  BasicHNZServer* server2 = wrapper.server2().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
 }
 
 TEST_F(HNZTest, ReceivingMessagesTwoPath) {
-  BasicHNZServer* server = new BasicHNZServer(6005, 0x05);
-  BasicHNZServer* server2 = new BasicHNZServer(6006, 0x05);
-
-  server->startHNZServer();
-  server2->startHNZServer();
-
-  // Start HNZ Plugin
-  startHNZ(6005, 6006);
-
-  if (!server->HNZServerIsReady()) {
-    delete server2;
-    FAIL() << "Something went wrong. Connection is not established in 10s...";
-  }
-  if (!server2->HNZServerIsReady()) {
-    delete server;
-    FAIL() << "Something went wrong. Connection is not established in 10s... ";
-  }
+  ServersWrapper wrapper(0x05, getNextPort(), getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  BasicHNZServer* server2 = wrapper.server2().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
 
   server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   printf("[HNZ Server] TSCE sent on both path\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(3000));
 
   // Check that ingestCallback had been called only one time
@@ -905,31 +1074,18 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
 
   server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   printf("[HNZ Server] TSCE sent on path B\n");
-
-  // Wait a lit bit to received the frame
   this_thread::sleep_for(chrono::milliseconds(3000));
 
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(ingestCallbackCalled, 1);
-
-  delete server;
-  delete server2;
 }
 
 TEST_F(HNZTest, SendingMessagesTwoPath) {
-  BasicHNZServer* server = new BasicHNZServer(6008, 0x05);
-  BasicHNZServer* server2 = new BasicHNZServer(6009, 0x05);
-
-  server->startHNZServer();
-  server2->startHNZServer();
-
-  // Start HNZ Plugin
-  startHNZ(6008, 6009);
-
-  if (!server->HNZServerIsReady())
-    FAIL() << "Something went wrong. Connection is not established in 10s...";
-  if (!server2->HNZServerIsReady())
-    FAIL() << "Something went wrong. Connection is not established in 10s...";
+  ServersWrapper wrapper(0x05, getNextPort(), getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  BasicHNZServer* server2 = wrapper.server2().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
 
   // Send TC1
   std::string operationTC("TC");
@@ -945,11 +1101,11 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   // Find the TC frame in the list of frames received by server
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
   std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
-  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << server->framesToStr(frames);
+  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
   // Check that TC is only received on active path (server) and not on passive path (server2)
   frames = server2->popLastFramesReceived();
   TCframe = findFrameWithId(frames, 0x19);
-  ASSERT_EQ(TCframe.get(), nullptr) << "No TC frame should be received by server2, found: " << server2->frameToStr(TCframe);
+  ASSERT_EQ(TCframe.get(), nullptr) << "No TC frame should be received by server2, found: " << BasicHNZServer::frameToStr(TCframe);
 
   // Send TC ACK from servers
   server->sendFrame({0x09, 0x0e, 0x49}, false);
@@ -974,11 +1130,11 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   // Find the TVC frame in the list of frames received by server
   frames = server->popLastFramesReceived();
   std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
-  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << server->framesToStr(frames);
+  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << BasicHNZServer::framesToStr(frames);
   // Check that TVC is only received on active path (server) and not on passive path (server2)
   frames = server2->popLastFramesReceived();
   TVCframe = findFrameWithId(frames, 0x1a);
-  ASSERT_EQ(TCframe.get(), nullptr) << "No TVC frame should be received by server2, found: " << server2->frameToStr(TVCframe);
+  ASSERT_EQ(TCframe.get(), nullptr) << "No TVC frame should be received by server2, found: " << BasicHNZServer::frameToStr(TVCframe);
 
   // Send TVC ACK from servers
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
@@ -988,7 +1144,4 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  
-  delete server;
-  delete server2;
 }

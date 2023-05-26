@@ -225,3 +225,8 @@ void HNZConnection::switchPath() {
         "Redundancy isn't enable, can't switch to the other path");
   }
 }
+
+void HNZConnection::sendInitialGI() {
+  m_active_path->gi_repeat = 0;
+  m_active_path->sendGeneralInterrogation();
+}

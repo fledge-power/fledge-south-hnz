@@ -124,7 +124,7 @@ static string exchanged_data_def = QUOTE({
             "name": "hnz",
             "station_address": 1,
             "message_address": 142,
-            "message_code": "ACK_TC"
+            "message_code": "TC"
           }
         ]
       },
@@ -137,7 +137,7 @@ static string exchanged_data_def = QUOTE({
             "name": "hnz",
             "station_address": 1,
             "message_address": 31,
-            "message_code": "ACK_TVC"
+            "message_code": "TVC"
           }
         ]
       }
@@ -830,7 +830,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   Reading* currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TC1", {
-    {"do_type", {"string", "ACK_TC"}},
+    {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "142"}},
     {"do_value", {"int64_t", "1"}},
@@ -857,7 +857,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TC1", {
-    {"do_type", {"string", "ACK_TC"}},
+    {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "142"}},
     {"do_value", {"int64_t", "1"}},
@@ -884,7 +884,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TC1", {
-    {"do_type", {"string", "ACK_TC"}},
+    {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "142"}},
     {"do_value", {"int64_t", "1"}},
@@ -911,7 +911,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TC1", {
-    {"do_type", {"string", "ACK_TC"}},
+    {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "142"}},
     {"do_value", {"int64_t", "1"}},
@@ -938,7 +938,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TC1", {
-    {"do_type", {"string", "ACK_TC"}},
+    {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "142"}},
     {"do_value", {"int64_t", "1"}},
@@ -977,7 +977,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   Reading* currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TVC1", {
-    {"do_type", {"string", "ACK_TVC"}},
+    {"do_type", {"string", "TVC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "31"}},
     {"do_value", {"int64_t", "42"}},
@@ -1005,7 +1005,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TVC1", {
-    {"do_type", {"string", "ACK_TVC"}},
+    {"do_type", {"string", "TVC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "31"}},
     {"do_value", {"int64_t", "-42"}},
@@ -1032,7 +1032,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   currentReading = storedReadings.front();
   storedReadings.pop();
   validateReading(currentReading, "TVC1", {
-    {"do_type", {"string", "ACK_TVC"}},
+    {"do_type", {"string", "TVC"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "31"}},
     {"do_value", {"int64_t", "-42"}},

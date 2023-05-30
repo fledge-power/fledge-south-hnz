@@ -330,7 +330,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
 }
 
 void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& data) const {
-  string msg_code = "ACK_TVC";
+  string msg_code = "TVC";
 
   unsigned int msg_address = data[1] & 0x1F;  // AD0
 
@@ -357,7 +357,7 @@ void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& d
 }
 
 void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& data) const {
-  string msg_code = "ACK_TC";
+  string msg_code = "TC";
 
   unsigned int msg_address = stoi(to_string((int)data[1]) +
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB

@@ -194,29 +194,30 @@ void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned ch
 
 void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& data) const {
   string msg_code = "TM";
-  for (size_t i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
-    unsigned int msg_address = data[1] + i; // ADR + i
+    unsigned int msg_address = static_cast<unsigned int>(data[1] + i); // ADR + i
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
-
-    if (!label.empty()) {
-      int noctet = 2 + i;
-      long int value = data[noctet]; // VALTMi
-      if((data[noctet] & 0x80) > 0) { // Ones' complement
-        value = -(value ^ 0xFF);
-      }
-      unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
-
-      ReadingParameters params;
-      params.label = label;
-      params.msg_code = msg_code;
-      params.station_addr = m_remote_address;
-      params.msg_address = msg_address;
-      params.value = value;
-      params.valid = valid;
-      params.an = "TMA";
-      readings.push_back(m_prepare_reading(params));
+    if (label.empty()) {
+      continue;
     }
+
+    int noctet = 2 + i;
+    long int value = data[noctet]; // VALTMi
+    if((data[noctet] & 0x80) > 0) { // Ones' complement
+      value = -(value ^ 0xFF);
+    }
+    unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
+
+    ReadingParameters params;
+    params.label = label;
+    params.msg_code = msg_code;
+    params.station_addr = m_remote_address;
+    params.msg_address = msg_address;
+    params.value = value;
+    params.valid = valid;
+    params.an = "TMA";
+    readings.push_back(m_prepare_reading(params));
   }
 }
 
@@ -226,31 +227,32 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& d
                                   to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
-
-  if (!label.empty()) {
-    long int value = (data[2] >> 3) & 0x1;  // E bit
-    unsigned int valid = (data[2] >> 4) & 0x1;  // V bit
-
-    unsigned int ts = ((data[3] << 8) | data[4]); // Timestamp in 10 milliseconds in modulo of 10 minutes of current day
-    unsigned int ts_iv = (data[2] >> 2) & 0x1;  // HNV bit
-    unsigned int ts_s = data[2] & 0x1;          // S bit
-    unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
-    unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::now(), m_daySection, ts);
-
-    ReadingParameters params;
-    params.label = label;
-    params.msg_code = msg_code;
-    params.station_addr = m_remote_address;
-    params.msg_address = msg_address;
-    params.value = value;
-    params.valid = valid;
-    params.ts = epochMs;
-    params.ts_iv = ts_iv;
-    params.ts_c = ts_c;
-    params.ts_s = ts_s;
-    params.cg = false;
-    readings.push_back(m_prepare_reading(params));
+  if (label.empty()) {
+    return;
   }
+  
+  long int value = (data[2] >> 3) & 0x1;  // E bit
+  unsigned int valid = (data[2] >> 4) & 0x1;  // V bit
+
+  unsigned int ts = ((data[3] << 8) | data[4]); // Timestamp in 10 milliseconds in modulo of 10 minutes of current day
+  unsigned int ts_iv = (data[2] >> 2) & 0x1;  // HNV bit
+  unsigned int ts_s = data[2] & 0x1;          // S bit
+  unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
+  unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::now(), m_daySection, ts);
+
+  ReadingParameters params;
+  params.label = label;
+  params.msg_code = msg_code;
+  params.station_addr = m_remote_address;
+  params.msg_address = msg_address;
+  params.value = value;
+  params.valid = valid;
+  params.ts = epochMs;
+  params.ts_iv = ts_iv;
+  params.ts_c = ts_c;
+  params.ts_s = ts_s;
+  params.cg = false;
+  readings.push_back(m_prepare_reading(params));
 }
 
 void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& data) {
@@ -262,23 +264,24 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
         to_string((int)data[1] + (int)i / 8) +
         to_string(i % 8));  // AD0 + i%8 for first 8, (AD0+1) + i%8 for others
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
-
-    if (!label.empty()) {
-      int noctet = 2 + (i / 4);
-      int dep = (3 - (i % 4)) * 2;
-      long int value = (data[noctet] >> dep) & 0x1;  // E
-      unsigned int valid = ((data[noctet] >> dep) & 0x2) >> 1;  // V
-
-      ReadingParameters params;
-      params.label = label;
-      params.msg_code = msg_code;
-      params.station_addr = m_remote_address;
-      params.msg_address = msg_address;
-      params.value = value;
-      params.valid = valid;
-      params.cg = true;
-      m_gi_readings_temp.push_back(m_prepare_reading(params));
+    if (label.empty()) {
+      continue;
     }
+
+    int noctet = 2 + (i / 4);
+    int dep = (3 - (i % 4)) * 2;
+    long int value = (data[noctet] >> dep) & 0x1;  // E
+    unsigned int valid = ((data[noctet] >> dep) & 0x2) >> 1;  // V
+
+    ReadingParameters params;
+    params.label = label;
+    params.msg_code = msg_code;
+    params.station_addr = m_remote_address;
+    params.msg_address = msg_address;
+    params.value = value;
+    params.valid = valid;
+    params.cg = true;
+    m_gi_readings_temp.push_back(m_prepare_reading(params));
   }
 
   // Check if GI is complete
@@ -296,43 +299,44 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
   // If TMN can contain either 4 TMs of 8bits (TM8) or 2 TMs of 16bits (TM16)
   bool isTM8 = ((data[6] >> 7) == 1);
   unsigned int nbrTM = isTM8 ? 4 : 2;
-  for (size_t i = 0; i < nbrTM; i++) {
+  for (int i = 0; i < nbrTM; i++) {
     // 2 or 4 TM inside a TMn
-    unsigned char addressOffset = isTM8 ? i : i*2; // For TM16 contains TMs with ADR+0 and ADR+2
+    unsigned char addressOffset = static_cast<unsigned char>(isTM8 ? i : i*2); // For TM16 contains TMs with ADR+0 and ADR+2
     unsigned int msg_address = data[1] + addressOffset;
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
-
-    if (!label.empty()) {
-      long int value;
-      unsigned int valid;
-
-      if (isTM8) {
-        int noctet = 2 + i;
-
-        value = (data[noctet]);        // Vi
-        valid = (data[6] >> i) & 0x1;  // Ii
-      } else {
-        int noctet = 2 + (i * 2);
-
-        value = (data[noctet + 1] << 8 | data[noctet]); // Concat V1/V2 and V3/V4
-        // Make negative values actual negatives in two's complement
-        if ((value & 0x8000) > 0) {
-            value &= 0x7FFF;
-            value -= 32768;
-        }
-        valid = (data[6] >> (i * 2)) & 0x1;             // I1 or I3
-      }
-
-      ReadingParameters params;
-      params.label = label;
-      params.msg_code = msg_code;
-      params.station_addr = m_remote_address;
-      params.msg_address = msg_address;
-      params.value = value;
-      params.valid = valid;
-      params.an = isTM8 ? "TM8" : "TM16";
-      readings.push_back(m_prepare_reading(params));
+    if (label.empty()) {
+      continue;
     }
+    
+    long int value;
+    unsigned int valid;
+
+    if (isTM8) {
+      int noctet = 2 + i;
+
+      value = (data[noctet]);        // Vi
+      valid = (data[6] >> i) & 0x1;  // Ii
+    } else {
+      int noctet = 2 + (i * 2);
+
+      value = (data[noctet + 1] << 8 | data[noctet]); // Concat V1/V2 and V3/V4
+      // Make negative values actual negatives in two's complement
+      if ((value & 0x8000) > 0) {
+        value &= 0x7FFF;
+        value -= 32768;
+      }
+      valid = (data[6] >> (i * 2)) & 0x1;             // I1 or I3
+    }
+
+    ReadingParameters params;
+    params.label = label;
+    params.msg_code = msg_code;
+    params.station_addr = m_remote_address;
+    params.msg_address = msg_address;
+    params.value = value;
+    params.valid = valid;
+    params.an = isTM8 ? "TM8" : "TM16";
+    readings.push_back(m_prepare_reading(params));
   }
 }
 
@@ -344,23 +348,24 @@ void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& d
   m_hnz_connection->getActivePath()->receivedCommandACK("TVC", msg_address);
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
-
-  if (!label.empty()) {
-    unsigned int a = (data[1] >> 6) & 0x1; // A
-    long int value = data[2] & 0x7F;
-    if (((data[3] >> 7) & 0x1) == 1) {
-      value *= -1;  // S
-    }
-
-    ReadingParameters params;
-    params.label = label;
-    params.msg_code = msg_code;
-    params.station_addr = m_remote_address;
-    params.msg_address = msg_address;
-    params.value = value;
-    params.valid = a;
-    readings.push_back(m_prepare_reading(params));
+  if (label.empty()) {
+    return;
   }
+
+  unsigned int a = (data[1] >> 6) & 0x1; // A
+  long int value = data[2] & 0x7F;
+  if (((data[3] >> 7) & 0x1) == 1) {
+    value *= -1;  // S
+  }
+
+  ReadingParameters params;
+  params.label = label;
+  params.msg_code = msg_code;
+  params.station_addr = m_remote_address;
+  params.msg_address = msg_address;
+  params.value = value;
+  params.valid = a;
+  readings.push_back(m_prepare_reading(params));
 }
 
 void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& data) const {
@@ -372,21 +377,22 @@ void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& da
   m_hnz_connection->getActivePath()->receivedCommandACK("TC", msg_address);
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
-
-  if (!label.empty()) {
-    long int value = (data[2] >> 3) & 0x3;
-    unsigned int CR = data[2] & 0x7;
-    unsigned int valid = (CR == 0x1) ? 0 : 1;
-
-    ReadingParameters params;
-    params.label = label;
-    params.msg_code = msg_code;
-    params.station_addr = m_remote_address;
-    params.msg_address = msg_address;
-    params.value = value;
-    params.valid = valid;
-    readings.push_back(m_prepare_reading(params));
+  if (label.empty()) {
+    return;
   }
+
+  long int value = (data[2] >> 3) & 0x3;
+  unsigned int CR = data[2] & 0x7;
+  unsigned int valid = (CR == 0x1) ? 0 : 1;
+
+  ReadingParameters params;
+  params.label = label;
+  params.msg_code = msg_code;
+  params.station_addr = m_remote_address;
+  params.msg_address = msg_address;
+  params.value = value;
+  params.valid = valid;
+  readings.push_back(m_prepare_reading(params));
 }
 
 Reading HNZ::m_prepare_reading(const ReadingParameters& params) {

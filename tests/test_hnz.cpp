@@ -79,7 +79,7 @@ static string exchanged_data_def = QUOTE({
           "name" : "hnz",
           "station_address" : 1,
           "message_address" : 20,
-          "message_code" : "TMA"
+          "message_code" : "TM"
         } ]
       },
       {
@@ -90,7 +90,7 @@ static string exchanged_data_def = QUOTE({
           "name" : "hnz",
           "station_address" : 1,
           "message_address" : 21,
-          "message_code" : "TMA"
+          "message_code" : "TM"
         } ]
       },
       {
@@ -101,7 +101,7 @@ static string exchanged_data_def = QUOTE({
           "name" : "hnz",
           "station_address" : 1,
           "message_address" : 22,
-          "message_code" : "TMA"
+          "message_code" : "TM"
         } ]
       },
       {
@@ -112,7 +112,7 @@ static string exchanged_data_def = QUOTE({
           "name" : "hnz",
           "station_address" : 1,
           "message_address" : 23,
-          "message_code" : "TMA"
+          "message_code" : "TM"
         } ]
       },
       {
@@ -185,8 +185,7 @@ class HNZTest : public testing::Test {
     delete hnz;
 
     while (!storedReadings.empty()) {
-      delete storedReadings.front();
-      storedReadings.pop();
+      delete popFrontReading();
     }
   }
 
@@ -281,12 +280,12 @@ class HNZTest : public testing::Test {
     std::string value;
   };
   static void validateReading(Reading* currentReading, std::string assetName, std::map<std::string, ReadingInfo> attributes) {
-    ASSERT_NE(nullptr, currentReading);
+    ASSERT_NE(nullptr, currentReading) << assetName << ": Invalid reading";
     ASSERT_EQ(assetName, currentReading->getAssetName());
     // Validate data_object structure received
-    ASSERT_TRUE(hasObject(*currentReading, "data_object"));
+    ASSERT_TRUE(hasObject(*currentReading, "data_object")) << assetName << ": data_object not found";
     Datapoint* data_object = getObject(*currentReading, "data_object");
-    ASSERT_NE(nullptr, data_object);
+    ASSERT_NE(nullptr, data_object) << assetName << ": data_object is null";
     // Validate existance of the required keys and non-existance of the others
     for(const std::string& name: allAttributeNames) {
       ASSERT_EQ(hasChild(*data_object, name), static_cast<bool>(attributes.count(name))) << assetName << ": Attribute not found: " << name;;
@@ -300,7 +299,7 @@ class HNZTest : public testing::Test {
         ASSERT_EQ(expectedValue, getStrValue(getChild(*data_object, name))) << assetName << ": Unexpected value for attribute " << name;
       }
       else if(type == std::string("int64_t")) {
-        ASSERT_EQ(std::stoull(expectedValue), getIntValue(getChild(*data_object, name))) << assetName << ": Unexpected value for attribute " << name;
+        ASSERT_EQ(std::stoll(expectedValue), getIntValue(getChild(*data_object, name))) << assetName << ": Unexpected value for attribute " << name;
       }
       else {
         FAIL() << assetName << ": Unknown type: " << type;
@@ -344,7 +343,7 @@ class HNZTest : public testing::Test {
     if(!fullFrame) {
       expectedLength += 4;
     }
-    ASSERT_EQ(frameFound->usLgBuffer, expectedLength);
+    ASSERT_EQ(frameFound->usLgBuffer, expectedLength) << "Unexpected length for frame with id " << BasicHNZServer::toHexStr(frameId);
     for(int i=0 ; i<expectedLength ; i++){
       if(!fullFrame){
         // Ignore the first two bytes (NPC + A/B, NR + P + NS) and the last two bytes (FCS x2)
@@ -368,6 +367,15 @@ class HNZTest : public testing::Test {
     static int port = 6000;
     port++;
     return port;
+  }
+
+  static Reading* popFrontReading() {
+    Reading* currentReading = nullptr;
+    if (!storedReadings.empty()) {
+      currentReading = storedReadings.front();
+      storedReadings.pop();
+    }
+    return currentReading;
   }
 
   static HNZTestComp* hnz;
@@ -497,7 +505,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  Reading* currentReading = storedReadings.front();
+  Reading* currentReading = popFrontReading();
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -510,7 +518,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_ts_c", {"int64_t", "0"}},
     {"do_ts_s", {"int64_t", "0"}},
   });
-  storedReadings.pop();
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TS1 with invalid flag
@@ -522,7 +530,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -535,7 +543,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_ts_c", {"int64_t", "0"}},
     {"do_ts_s", {"int64_t", "0"}},
   });
-  storedReadings.pop();
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TS1 with modified day section
@@ -550,7 +558,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -563,7 +571,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_ts_c", {"int64_t", "0"}},
     {"do_ts_s", {"int64_t", "0"}},
   });
-  storedReadings.pop();
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TS1 with modified timestamp
@@ -579,7 +587,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -592,7 +600,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_ts_c", {"int64_t", "0"}},
     {"do_ts_s", {"int64_t", "0"}},
   });
-  storedReadings.pop();
+  if(HasFatalFailure()) return;
 }
 
 TEST_F(HNZTest, ReceivingTSCGMessages) {
@@ -612,6 +620,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     // Find the CG frame in the list of frames received by server and validate it
     printf("Validating CG frame %d\n", i);
     validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+    if(HasFatalFailure()) return;
     this_thread::sleep_for(chrono::milliseconds(1000)); // gi_time
   }
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
@@ -628,6 +637,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
 
   // Find the CG frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+  if(HasFatalFailure()) return;
 
   // Send only one of the two expected TS
   server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
@@ -655,7 +665,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 3);
   ingestCallbackCalled = 0;
-  Reading* currentReading = storedReadings.front();
+  Reading* currentReading = popFrontReading();
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -664,8 +674,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_valid", {"int64_t", "0"}},
     {"do_cg", {"int64_t", "1"}}
   });
-  storedReadings.pop();
-  currentReading = storedReadings.front();
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS2", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -674,8 +684,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_valid", {"int64_t", "0"}},
     {"do_cg", {"int64_t", "1"}}
   });
-  storedReadings.pop();
-  currentReading = storedReadings.front();
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS3", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -684,7 +694,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_valid", {"int64_t", "0"}},
     {"do_cg", {"int64_t", "1"}}
   });
-  storedReadings.pop();
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TS1 + TS2 + TS3 as CG answer with invalid flag for TS3
@@ -695,6 +705,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
 
   // Find the CG frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+  if(HasFatalFailure()) return;
 
   server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
@@ -704,7 +715,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 3);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -713,8 +724,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_valid", {"int64_t", "0"}},
     {"do_cg", {"int64_t", "1"}}
   });
-  storedReadings.pop();
-  currentReading = storedReadings.front();
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS2", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -723,8 +734,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_valid", {"int64_t", "0"}},
     {"do_cg", {"int64_t", "1"}}
   });
-  storedReadings.pop();
-  currentReading = storedReadings.front();
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReading();
   validateReading(currentReading, "TS3", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -733,7 +744,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_valid", {"int64_t", "1"}},
     {"do_cg", {"int64_t", "1"}}
   });
-  storedReadings.pop();
+  if(HasFatalFailure()) return;
 }
 
 TEST_F(HNZTest, ReceivingTMAMessages) {
@@ -744,8 +755,13 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   ///////////////////////////////////////
   // Send TMA
   ///////////////////////////////////////
-  server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0x00}, false);
-  printf("[HNZ Server] TM4 sent\n");
+  int values[] = {-127, -1, 1, 127};
+  unsigned char val0 = static_cast<unsigned char>((-values[0]) ^ 0xFF); // Ones' complement
+  unsigned char val1 = static_cast<unsigned char>((-values[1]) ^ 0xFF); // Ones' complement
+  unsigned char val2 = static_cast<unsigned char>(values[2]);
+  unsigned char val3 = static_cast<unsigned char>(values[3]);
+  server->sendFrame({0x02, 0x14, val0, val1, val2, val3}, false);
+  printf("[HNZ Server] TMA sent\n");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called 4x time more
@@ -754,22 +770,23 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
 
   Reading* currentReading = nullptr;
   for (int i = 0; i < 4; i++) {
-    currentReading = storedReadings.front();
+    currentReading = popFrontReading();
     validateReading(currentReading, "TM" + to_string(i + 1), {
-      {"do_type", {"string", "TMA"}},
+      {"do_type", {"string", "TM"}},
       {"do_station", {"int64_t", "1"}},
       {"do_addr", {"int64_t", std::to_string(20 + i)}},
-      {"do_value", {"int64_t", "0"}},
+      {"do_value", {"int64_t", std::to_string(values[i])}},
       {"do_valid", {"int64_t", "0"}},
+      {"do_an", {"string", "TMA"}},
     });
-    storedReadings.pop();
+    if(HasFatalFailure()) return;
   }
 
   ///////////////////////////////////////
   // Send TMA with invalid flag for the last one
   ///////////////////////////////////////
-  server->sendFrame({0x02, 0x02, 0x00, 0x00, 0x00, 0xFF}, false);
-  printf("[HNZ Server] TM4 2 sent\n");
+  server->sendFrame({0x02, 0x14, val0, val1, val2, 0xFF}, false);
+  printf("[HNZ Server] TMA 2 sent\n");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that ingestCallback had been called 4x time more
@@ -777,26 +794,169 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   ingestCallbackCalled = 0;
 
   for (int i = 0; i < 4; i++) {
-    currentReading = storedReadings.front();
+    currentReading = popFrontReading();
     if (i < 3) {
       validateReading(currentReading, "TM" + to_string(i + 1), {
-        {"do_type", {"string", "TMA"}},
+        {"do_type", {"string", "TM"}},
         {"do_station", {"int64_t", "1"}},
         {"do_addr", {"int64_t", std::to_string(20 + i)}},
-        {"do_value", {"int64_t", "0"}},
+        {"do_value", {"int64_t", std::to_string(values[i])}},
         {"do_valid", {"int64_t", "0"}},
+        {"do_an", {"string", "TMA"}},
       });
     } else {
       validateReading(currentReading, "TM" + to_string(i + 1), {
-        {"do_type", {"string", "TMA"}},
+        {"do_type", {"string", "TM"}},
         {"do_station", {"int64_t", "1"}},
         {"do_addr", {"int64_t", std::to_string(20 + i)}},
-        {"do_value", {"int64_t", "-1"}},
+        {"do_value", {"int64_t", "0"}},
         {"do_valid", {"int64_t", "1"}},
+        {"do_an", {"string", "TMA"}},
       });
     }
-    storedReadings.pop();
+    if(HasFatalFailure()) return;
   }
+}
+
+TEST_F(HNZTest, ReceivingTMNMessages) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+
+  ///////////////////////////////////////
+  // Send TMN 8 bits
+  ///////////////////////////////////////
+  int values[] = {1, 42, 142, 255};
+  unsigned char val0 = static_cast<unsigned char>(values[0]);
+  unsigned char val1 = static_cast<unsigned char>(values[1]);
+  unsigned char val2 = static_cast<unsigned char>(values[2]);
+  unsigned char val3 = static_cast<unsigned char>(values[3]);
+  server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x80}, false);
+  printf("[HNZ Server] TM8 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called 4x time more
+  ASSERT_EQ(ingestCallbackCalled, 4);
+  ingestCallbackCalled = 0;
+
+  Reading* currentReading = nullptr;
+  for (int i = 0; i < 4; i++) {
+    currentReading = popFrontReading();
+    validateReading(currentReading, "TM" + to_string(i + 1), {
+      {"do_type", {"string", "TM"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", std::to_string(20 + i)}},
+      {"do_value", {"int64_t", std::to_string(values[i])}},
+      {"do_valid", {"int64_t", "0"}},
+      {"do_an", {"string", "TM8"}},
+    });
+    if(HasFatalFailure()) return;
+  }
+
+  ///////////////////////////////////////
+  // Send TMN 8 bits with invalid flag for the last one
+  ///////////////////////////////////////
+  server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x88}, false);
+  printf("[HNZ Server] TM8 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called 4x time more
+  ASSERT_EQ(ingestCallbackCalled, 4);
+  ingestCallbackCalled = 0;
+
+  for (int i = 0; i < 4; i++) {
+    currentReading = popFrontReading();
+    if (i < 3) {
+      validateReading(currentReading, "TM" + to_string(i + 1), {
+        {"do_type", {"string", "TM"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", std::to_string(20 + i)}},
+        {"do_value", {"int64_t", std::to_string(values[i])}},
+        {"do_valid", {"int64_t", "0"}},
+        {"do_an", {"string", "TM8"}},
+      });
+    } else {
+      validateReading(currentReading, "TM" + to_string(i + 1), {
+        {"do_type", {"string", "TM"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", std::to_string(20 + i)}},
+        {"do_value", {"int64_t", std::to_string(values[i])}},
+        {"do_valid", {"int64_t", "1"}},
+        {"do_an", {"string", "TM8"}},
+      });
+    }
+    if(HasFatalFailure()) return;
+  }
+  
+  ///////////////////////////////////////
+  // Send TMN 16 bits
+  ///////////////////////////////////////
+  int val11 = 420;
+  int val12 = -420;
+  unsigned char lsb1 = static_cast<unsigned char>(val11 & 0xFF);
+  unsigned char msb1 = static_cast<unsigned char>(val11 >> 8);
+  unsigned char lsb2 = static_cast<unsigned char>(val12 & 0xFF);
+  unsigned char msb2 = static_cast<unsigned char>(val12 >> 8);
+  server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x00}, false);
+  printf("[HNZ Server] TM16 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called 2x time more
+  ASSERT_EQ(ingestCallbackCalled, 2);
+  ingestCallbackCalled = 0;
+
+  currentReading = popFrontReading();
+  validateReading(currentReading, "TM1", {
+    {"do_type", {"string", "TM"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "20"}},
+    {"do_value", {"int64_t", std::to_string(val11)}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_an", {"string", "TM16"}},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReading();
+  validateReading(currentReading, "TM3", {
+    {"do_type", {"string", "TM"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "22"}},
+    {"do_value", {"int64_t", std::to_string(val12)}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_an", {"string", "TM16"}},
+  });
+  if(HasFatalFailure()) return;
+
+  ///////////////////////////////////////
+  // Send TMN 16 bits with invalid flag for the last one
+  ///////////////////////////////////////
+  server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x04}, false);
+  printf("[HNZ Server] TM16 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that ingestCallback had been called 2x time more
+  ASSERT_EQ(ingestCallbackCalled, 2);
+  ingestCallbackCalled = 0;
+
+  currentReading = popFrontReading();
+  validateReading(currentReading, "TM1", {
+    {"do_type", {"string", "TM"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "20"}},
+    {"do_value", {"int64_t", std::to_string(val11)}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_an", {"string", "TM16"}},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReading();
+  validateReading(currentReading, "TM3", {
+    {"do_type", {"string", "TM"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "22"}},
+    {"do_value", {"int64_t", std::to_string(val12)}},
+    {"do_valid", {"int64_t", "1"}},
+    {"do_an", {"string", "TM16"}},
+  });
+  if(HasFatalFailure()) return;
 }
 
 TEST_F(HNZTest, SendingTCMessages) {
@@ -819,6 +979,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Find the TC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  if(HasFatalFailure()) return;
 
   // Send TC ACK from server
   server->sendFrame({0x09, 0x0e, 0x49}, false);
@@ -827,8 +988,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  Reading* currentReading = storedReadings.front();
-  storedReadings.pop();
+  Reading* currentReading = popFrontReading();
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "ACK_TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -836,6 +996,7 @@ TEST_F(HNZTest, SendingTCMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "0"}},
   });
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TC1 with negative ack (Critical fault)
@@ -846,6 +1007,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Find the TC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 011b
   server->sendFrame({0x09, 0x0e, 0x4b}, false);
@@ -854,8 +1016,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
-  storedReadings.pop();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "ACK_TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -863,6 +1024,7 @@ TEST_F(HNZTest, SendingTCMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
   });
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TC1 with negative ack (Non critical fault)
@@ -873,6 +1035,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Find the TC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 101b
   server->sendFrame({0x09, 0x0e, 0x4d}, false);
@@ -881,8 +1044,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
-  storedReadings.pop();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "ACK_TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -890,6 +1052,7 @@ TEST_F(HNZTest, SendingTCMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
   });
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TC1 with negative ack (Exterior fault)
@@ -900,6 +1063,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Find the TC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 111b
   server->sendFrame({0x09, 0x0e, 0x4f}, false);
@@ -908,8 +1072,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
-  storedReadings.pop();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "ACK_TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -917,6 +1080,7 @@ TEST_F(HNZTest, SendingTCMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
   });
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TC1 with negative ack (Order not allowed)
@@ -927,6 +1091,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Find the TC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 010b
   server->sendFrame({0x09, 0x0e, 0x4a}, false);
@@ -935,8 +1100,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
-  storedReadings.pop();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "ACK_TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -944,6 +1108,7 @@ TEST_F(HNZTest, SendingTCMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
   });
+  if(HasFatalFailure()) return;
 }
 
 TEST_F(HNZTest, SendingTVCMessages) {
@@ -966,6 +1131,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
 
   // Find the TVC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x00});
+  if(HasFatalFailure()) return;
 
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
@@ -974,8 +1140,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  Reading* currentReading = storedReadings.front();
-  storedReadings.pop();
+  Reading* currentReading = popFrontReading();
   validateReading(currentReading, "TVC1", {
     {"do_type", {"string", "ACK_TVC"}},
     {"do_station", {"int64_t", "1"}},
@@ -983,6 +1148,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
     {"do_value", {"int64_t", "42"}},
     {"do_valid", {"int64_t", "0"}},
   });
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TVC1 with negative value
@@ -994,6 +1160,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
 
   // Find the TVC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x80});
+  if(HasFatalFailure()) return;
 
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x80}, false);
@@ -1002,8 +1169,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
-  storedReadings.pop();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TVC1", {
     {"do_type", {"string", "ACK_TVC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1011,6 +1177,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
     {"do_value", {"int64_t", "-42"}},
     {"do_valid", {"int64_t", "0"}},
   });
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TVC1 with negative ack
@@ -1021,6 +1188,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
 
   // Find the TVC frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x80});
+  if(HasFatalFailure()) return;
 
   // Send TVC ACK from server with A bit = 1
   server->sendFrame({0x0a, 0xdf, 0x2a, 0x80}, false);
@@ -1029,8 +1197,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(ingestCallbackCalled, 1);
   ingestCallbackCalled = 0;
-  currentReading = storedReadings.front();
-  storedReadings.pop();
+  currentReading = popFrontReading();
   validateReading(currentReading, "TVC1", {
     {"do_type", {"string", "ACK_TVC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1038,6 +1205,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
     {"do_value", {"int64_t", "-42"}},
     {"do_valid", {"int64_t", "1"}},
   });
+  if(HasFatalFailure()) return;
 }
 
 TEST_F(HNZTest, TCPConnectionTwoPathOK) {

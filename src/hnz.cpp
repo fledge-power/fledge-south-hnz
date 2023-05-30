@@ -193,18 +193,18 @@ void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned ch
 }
 
 void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& data) const {
-  string msg_code = "TMA";
+  string msg_code = "TM";
   for (size_t i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
-    unsigned int msg_address =
-        stoi(to_string((int)data[1]) + to_string(i));  // ADTM + i
+    unsigned int msg_address = data[1] + i; // ADR + i
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
     if (!label.empty()) {
       int noctet = 2 + i;
-      long int value =
-          (((data[noctet] >> 7) == 0x1) ? (-1 * ((int)data[noctet] ^ 0xFF) - 1)
-                                        : data[noctet]);  // VALTMi
+      long int value = data[noctet]; // VALTMi
+      if((data[noctet] & 0x80) > 0) { // Ones' complement
+        value = -(value ^ 0xFF);
+      }
       unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
 
       ReadingParameters params;
@@ -214,6 +214,7 @@ void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& da
       params.msg_address = msg_address;
       params.value = value;
       params.valid = valid;
+      params.an = "TMA";
       readings.push_back(m_prepare_reading(params));
     }
   }
@@ -291,20 +292,21 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
 }
 
 void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& data) const {
-  string msg_code = "TMN";
-  // 2 or 4 TM inside a TMn
-  unsigned int nbrTM = ((data[6] >> 7) == 1) ? 4 : 2;
+  string msg_code = "TM";
+  // If TMN can contain either 4 TMs of 8bits (TM8) or 2 TMs of 16bits (TM16)
+  bool isTM8 = ((data[6] >> 7) == 1);
+  unsigned int nbrTM = isTM8 ? 4 : 2;
   for (size_t i = 0; i < nbrTM; i++) {
     // 2 or 4 TM inside a TMn
-    unsigned int msg_address =
-        stoi(to_string((int)data[1]) + to_string(i * 4));  // ADTM + i*4
+    unsigned char addressOffset = isTM8 ? i : i*2; // For TM16 contains TMs with ADR+0 and ADR+2
+    unsigned int msg_address = data[1] + addressOffset;
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
 
     if (!label.empty()) {
       long int value;
       unsigned int valid;
 
-      if (nbrTM == 4) {
+      if (isTM8) {
         int noctet = 2 + i;
 
         value = (data[noctet]);        // Vi
@@ -312,9 +314,13 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
       } else {
         int noctet = 2 + (i * 2);
 
-        value = (data[noctet + 1] << 8 |
-                      data[noctet]);            // Concat V1/V2 and V3/V4
-        valid = (data[6] >> i * 2) & 0x1;  // I1 or I3
+        value = (data[noctet + 1] << 8 | data[noctet]); // Concat V1/V2 and V3/V4
+        // Make negative values actual negatives in two's complement
+        if ((value & 0x8000) > 0) {
+            value &= 0x7FFF;
+            value -= 32768;
+        }
+        valid = (data[6] >> (i * 2)) & 0x1;             // I1 or I3
       }
 
       ReadingParameters params;
@@ -324,6 +330,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
       params.msg_address = msg_address;
       params.value = value;
       params.valid = valid;
+      params.an = isTM8 ? "TM8" : "TM16";
       readings.push_back(m_prepare_reading(params));
     }
   }
@@ -385,6 +392,7 @@ void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& da
 Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   bool isTS = (params.msg_code == "TS");
   bool isTSCE = isTS && !params.cg;
+  bool isTM = (params.msg_code == "TM");
   std::string debugStr = "Send to fledge " + params.msg_code +
       " with station address = " + to_string(params.station_addr) +
       ", message address = " + to_string(params.msg_address) +
@@ -395,6 +403,9 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   if(isTSCE) {
     debugStr += ", ts = " + to_string(params.ts) + ", iv = " + to_string(params.ts_iv) +
                 ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
+  }
+  if(isTM) {
+    debugStr += ", an= " + params.an;
   }
   Logger::getLogger()->debug(debugStr);
 
@@ -415,6 +426,9 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
     measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));
     measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(params.ts_c)));
     measure_features->push_back(m_createDatapoint("do_ts_s", static_cast<long int>(params.ts_s)));
+  }
+  if(isTM) {
+    measure_features->push_back(m_createDatapoint("do_an", params.an));
   }
 
   DatapointValue dpv(measure_features, true);

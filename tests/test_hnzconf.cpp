@@ -67,7 +67,7 @@ string exchanged_data_def = QUOTE({
             "name" : "hnz",
             "station_address" : 20,
             "message_address" : 511,
-            "message_code" : "TMN"
+            "message_code" : "TM"
           }
         ]
       }

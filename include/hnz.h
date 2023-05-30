@@ -185,11 +185,15 @@ class HNZ {
     long int value = 0;
     unsigned int valid = 0;
     // Those are optional parameters
+    // TSCE only
     unsigned long ts = 0;
     unsigned int ts_iv = 0;
     unsigned int ts_c = 0;
     unsigned int ts_s = 0;
+    // TS only
     bool cg = false;
+    // TM only
+    std::string an = "";
   };
   /**
    * Create a reading from the values given in argument.

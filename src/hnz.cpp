@@ -196,7 +196,7 @@ void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& da
   string msg_code = "TM";
   for (int i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
-    unsigned int msg_address = static_cast<unsigned int>(data[1] + i); // ADR + i
+    auto msg_address = static_cast<unsigned int>(data[1] + i); // ADR + i
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
     if (label.empty()) {
       continue;
@@ -301,7 +301,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
   unsigned int nbrTM = isTM8 ? 4 : 2;
   for (int i = 0; i < nbrTM; i++) {
     // 2 or 4 TM inside a TMn
-    unsigned char addressOffset = static_cast<unsigned char>(isTM8 ? i : i*2); // For TM16 contains TMs with ADR+0 and ADR+2
+    auto addressOffset = static_cast<unsigned char>(isTM8 ? i : i*2); // For TM16 contains TMs with ADR+0 and ADR+2
     unsigned int msg_address = data[1] + addressOffset;
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
     if (label.empty()) {

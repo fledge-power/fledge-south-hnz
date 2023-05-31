@@ -159,23 +159,23 @@ void HNZConf::importExchangedDataJson(const string &json) {
 
       is_complete &= m_retrieve(protocol, NAME, &protocol_name);
 
-      if (protocol_name == HNZ_NAME) {
-        std::string address;
-        std::string msg_code;
+      if (protocol_name != HNZ_NAME) continue;
 
-        is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address);
-        is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code);
-        
-        unsigned long tmp = std::stoul(address);
-        unsigned int msg_address = 0;
-        // Check if number is in range for unsigned int
-        if (tmp > static_cast<unsigned int>(-1)) {
-          is_complete = false;
-        } else {
-          msg_address = static_cast<unsigned int>(tmp);
-        }
-        m_msg_list[msg_code][m_remote_station_addr][msg_address] = label;
+      std::string address;
+      std::string msg_code;
+
+      is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address);
+      is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code);
+      
+      unsigned long tmp = std::stoul(address);
+      unsigned int msg_address = 0;
+      // Check if number is in range for unsigned int
+      if (tmp > static_cast<unsigned int>(-1)) {
+        is_complete = false;
+      } else {
+        msg_address = static_cast<unsigned int>(tmp);
       }
+      m_msg_list[msg_code][m_remote_station_addr][msg_address] = label;
     }
   }
 

@@ -50,10 +50,9 @@ string exchanged_data_def = QUOTE({
             "typeid" : "Data_StateQTimeTagExtended"
           },
           {
-            "name" : "hnz",
-            "station_address" : 12,
-            "message_address" : 511,
-            "message_code" : "TS"
+            "name" : "hnzip",
+            "address" : "511",
+            "typeid" : "TS"
           }
         ]
       },
@@ -64,10 +63,9 @@ string exchanged_data_def = QUOTE({
         "protocols" : [
           {"name" : "iec104", "address" : "45-984", "typeid" : "M_ME_NA_1"},
           {"name" : "tase2", "address" : "S_114562", "typeid" : "Data_RealQ"}, {
-            "name" : "hnz",
-            "station_address" : 20,
-            "message_address" : 511,
-            "message_code" : "TM"
+            "name" : "hnzip",
+            "address" : "511",
+            "typeid" : "TM"
           }
         ]
       }

@@ -72,10 +72,9 @@ using namespace std;
               "typeid" : "Data_StateQTimeTagExtended"                          \
             },                                                                 \
             {                                                                  \
-              "name" : "hnz",                                                  \
-              "station_address" : 1,                                           \
-              "message_address" : 511,                                         \
-              "message_code" : "TS"                                            \
+              "name" : "hnzip",                                                \
+              "address" : "511",                                               \
+              "typeid" : "TS"                                                  \
             }                                                                  \
           ]                                                                    \
         },                                                                     \
@@ -91,10 +90,9 @@ using namespace std;
               "typeid" : "Data_RealQ"                                          \
             },                                                                 \
             {                                                                  \
-              "name" : "hnz",                                                  \
-              "station_address" : 20,                                          \
-              "message_address" : 511,                                         \
-              "message_code" : "TM"                                            \
+              "name" : "hnzip",                                                \
+              "address" : "511",                                               \
+              "typeid" : "TM"                                                  \
             }                                                                  \
           ]                                                                    \
         }                                                                      \

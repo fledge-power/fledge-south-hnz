@@ -159,16 +159,22 @@ void HNZConf::importExchangedDataJson(const string &json) {
         is_complete &= m_retrieve(protocol, NAME, &protocol_name);
 
         if (protocol_name == HNZ_NAME) {
-          unsigned int station_address;
-          unsigned int msg_address;
-          string msg_code;
+          std::string address;
+          std::string msg_code;
 
           is_complete &=
-              m_retrieve(protocol, STATION_ADDRESS, &station_address) &&
-              m_retrieve(protocol, MESSAGE_ADDRESS, &msg_address) &&
+              m_retrieve(protocol, MESSAGE_ADDRESS, &address) &&
               m_retrieve(protocol, MESSAGE_CODE, &msg_code);
-
-          m_msg_list[msg_code][station_address][msg_address] = label;
+          
+          unsigned long tmp = std::stoul(address);
+          unsigned int msg_address = 0;
+          // Check if number is in range for unsigned int
+          if (tmp > static_cast<unsigned int>(-1)) {
+            is_complete = false;
+          } else {
+            msg_address = static_cast<unsigned int>(tmp);
+          }
+          m_msg_list[msg_code][m_remote_station_addr][msg_address] = label;
         }
       }
     }
@@ -183,7 +189,7 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
     label = m_msg_list.at(msg_code).at(m_remote_station_addr).at(msg_address);
   } catch (const std::out_of_range &e) {
     string code = MESSAGE_CODE;
-    string st_addr = STATION_ADDRESS;
+    string st_addr = REMOTE_ADDR;
     string msg_addr = MESSAGE_ADDRESS;
     label = "";
     Logger::getLogger()->warn(

@@ -47,10 +47,9 @@ static string exchanged_data_def = QUOTE({
           "typeid" : "Data_StateQTimeTagExtended"
         },
         {
-          "name" : "hnz",
-          "station_address" : 12,
-          "message_address" : 511,
-          "message_code" : "TSCE"
+          "name" : "hnzip",
+          "address" : "511",
+          "typeid" : "TSCE"
         }
       ]
     } ]

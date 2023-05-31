@@ -28,10 +28,9 @@ static string exchanged_data_def = QUOTE({
             "typeid" : "Data_StateQTimeTagExtended"
           },
           {
-            "name" : "hnz",
-            "station_address" : 1,
-            "message_address" : 511,
-            "message_code" : "TS"
+            "name" : "hnzip",
+            "address" : "511",
+            "typeid" : "TS"
           }
         ]
       },
@@ -46,10 +45,9 @@ static string exchanged_data_def = QUOTE({
             "typeid" : "Data_StateQTimeTagExtended"
           },
           {
-            "name" : "hnz",
-            "station_address" : 1,
-            "message_address" : 522,
-            "message_code" : "TS"
+            "name" : "hnzip",
+            "address" : "522",
+            "typeid" : "TS"
           }
         ]
       },
@@ -64,10 +62,9 @@ static string exchanged_data_def = QUOTE({
             "typeid" : "Data_StateQTimeTagExtended"
           },
           {
-            "name" : "hnz",
-            "station_address" : 1,
-            "message_address" : 577,
-            "message_code" : "TS"
+            "name" : "hnzip",
+            "address" : "577",
+            "typeid" : "TS"
           }
         ]
       },
@@ -76,10 +73,9 @@ static string exchanged_data_def = QUOTE({
         "pivot_id" : "ID111111",
         "pivot_type" : "SpsTyp",
         "protocols" : [ {
-          "name" : "hnz",
-          "station_address" : 1,
-          "message_address" : 20,
-          "message_code" : "TM"
+          "name" : "hnzip",
+          "address" : "20",
+          "typeid" : "TM"
         } ]
       },
       {
@@ -87,10 +83,9 @@ static string exchanged_data_def = QUOTE({
         "pivot_id" : "ID111111",
         "pivot_type" : "SpsTyp",
         "protocols" : [ {
-          "name" : "hnz",
-          "station_address" : 1,
-          "message_address" : 21,
-          "message_code" : "TM"
+          "name" : "hnzip",
+          "address" : "21",
+          "typeid" : "TM"
         } ]
       },
       {
@@ -98,10 +93,9 @@ static string exchanged_data_def = QUOTE({
         "pivot_id" : "ID111111",
         "pivot_type" : "SpsTyp",
         "protocols" : [ {
-          "name" : "hnz",
-          "station_address" : 1,
-          "message_address" : 22,
-          "message_code" : "TM"
+          "name" : "hnzip",
+          "address" : "22",
+          "typeid" : "TM"
         } ]
       },
       {
@@ -109,10 +103,9 @@ static string exchanged_data_def = QUOTE({
         "pivot_id" : "ID111111",
         "pivot_type" : "SpsTyp",
         "protocols" : [ {
-          "name" : "hnz",
-          "station_address" : 1,
-          "message_address" : 23,
-          "message_code" : "TM"
+          "name" : "hnzip",
+          "address" : "23",
+          "typeid" : "TM"
         } ]
       },
       {
@@ -121,10 +114,9 @@ static string exchanged_data_def = QUOTE({
         "pivot_type" : "DPCTyp",
         "protocols" : [
           {
-            "name": "hnz",
-            "station_address": 1,
-            "message_address": 142,
-            "message_code": "TC"
+            "name": "hnzip",
+            "address" : "142",
+            "typeid": "TC"
           }
         ]
       },
@@ -134,10 +126,9 @@ static string exchanged_data_def = QUOTE({
         "pivot_type" : "DPCTyp",
         "protocols" : [
           {
-            "name": "hnz",
-            "station_address": 1,
-            "message_address": 31,
-            "message_code": "TVC"
+            "name": "hnzip",
+            "address" : "31",
+            "typeid": "TVC"
           }
         ]
       }

@@ -47,10 +47,9 @@ constexpr char LABEL[] = "label";
 constexpr char PIVOT_ID[] = "pivot_id";
 constexpr char PIVOT_TYPE[] = "pivot_type";
 constexpr char PROTOCOLS[] = "protocols";
-constexpr char HNZ_NAME[] = "hnz";
-constexpr char MESSAGE_CODE[] = "message_code";
-constexpr char STATION_ADDRESS[] = "station_address";
-constexpr char MESSAGE_ADDRESS[] = "message_address";
+constexpr char HNZ_NAME[] = "hnzip";
+constexpr char MESSAGE_CODE[] = "typeid";
+constexpr char MESSAGE_ADDRESS[] = "address";
 
 // Default value
 constexpr unsigned int DEFAULT_PORT = 6001;

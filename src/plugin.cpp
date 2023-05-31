@@ -72,10 +72,9 @@ using namespace std;
               "typeid" : "Data_StateQTimeTagExtended"                          \
             },                                                                 \
             {                                                                  \
-              "name" : "hnz",                                                  \
-              "station_address" : 1,                                           \
-              "message_address" : 511,                                         \
-              "message_code" : "TS"                                            \
+              "name" : "hnzip",                                                \
+              "address" : "511",                                               \
+              "typeid" : "TS"                                                  \
             }                                                                  \
           ]                                                                    \
         },                                                                     \
@@ -91,10 +90,9 @@ using namespace std;
               "typeid" : "Data_RealQ"                                          \
             },                                                                 \
             {                                                                  \
-              "name" : "hnz",                                                  \
-              "station_address" : 20,                                          \
-              "message_address" : 511,                                         \
-              "message_code" : "TM"                                            \
+              "name" : "hnzip",                                                \
+              "address" : "511",                                               \
+              "typeid" : "TM"                                                  \
             }                                                                  \
           ]                                                                    \
         }                                                                      \
@@ -125,7 +123,7 @@ static const char *default_config = QUOTE({
 
   "protocol_stack" : {
     "description" : "protocol stack parameters",
-    "type" : "string",
+    "type" : "JSON",
     "displayName" : "Protocol stack parameters",
     "order" : "2",
     "default" : PROTOCOL_STACK_DEF,
@@ -134,7 +132,7 @@ static const char *default_config = QUOTE({
 
   "exchanged_data" : {
     "description" : "exchanged data list",
-    "type" : "string",
+    "type" : "JSON",
     "displayName" : "Exchanged data list",
     "order" : "3",
     "default" : EXCHANGED_DATA_DEF,

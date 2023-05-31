@@ -136,8 +136,8 @@ void HNZConf::importExchangedDataJson(const string &json) {
 
   const Value &info = document[JSON_EXCHANGED_DATA_NAME];
 
-  is_complete &=
-      m_check_string(info, NAME) && m_check_string(info, JSON_VERSION);
+  is_complete &= m_check_string(info, NAME);
+  is_complete &= m_check_string(info, JSON_VERSION);
 
   if (!m_check_array(info, DATAPOINTS)) return;
 
@@ -146,31 +146,36 @@ void HNZConf::importExchangedDataJson(const string &json) {
 
     string label;
 
-    is_complete &= m_retrieve(msg, LABEL, &label) &&
-                   m_check_string(msg, PIVOT_ID) &&
-                   m_check_string(msg, PIVOT_TYPE);
+    is_complete &= m_retrieve(msg, LABEL, &label);
+    is_complete &= m_check_string(msg, PIVOT_ID);
+    is_complete &= m_check_string(msg, PIVOT_TYPE);
 
-    if (m_check_array(msg, PROTOCOLS)) {
-      for (const Value &protocol : msg[PROTOCOLS].GetArray()) {
-        if (!protocol.IsObject()) return;
+    if (!m_check_array(msg, PROTOCOLS)) continue;
+  
+    for (const Value &protocol : msg[PROTOCOLS].GetArray()) {
+      if (!protocol.IsObject()) return;
 
-        string protocol_name;
+      string protocol_name;
 
-        is_complete &= m_retrieve(protocol, NAME, &protocol_name);
+      is_complete &= m_retrieve(protocol, NAME, &protocol_name);
 
-        if (protocol_name == HNZ_NAME) {
-          unsigned int station_address;
-          unsigned int msg_address;
-          string msg_code;
+      if (protocol_name != HNZ_NAME) continue;
 
-          is_complete &=
-              m_retrieve(protocol, STATION_ADDRESS, &station_address) &&
-              m_retrieve(protocol, MESSAGE_ADDRESS, &msg_address) &&
-              m_retrieve(protocol, MESSAGE_CODE, &msg_code);
+      std::string address;
+      std::string msg_code;
 
-          m_msg_list[msg_code][station_address][msg_address] = label;
-        }
+      is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address);
+      is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code);
+      
+      unsigned long tmp = std::stoul(address);
+      unsigned int msg_address = 0;
+      // Check if number is in range for unsigned int
+      if (tmp > static_cast<unsigned int>(-1)) {
+        is_complete = false;
+      } else {
+        msg_address = static_cast<unsigned int>(tmp);
       }
+      m_msg_list[msg_code][m_remote_station_addr][msg_address] = label;
     }
   }
 
@@ -183,7 +188,7 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
     label = m_msg_list.at(msg_code).at(m_remote_station_addr).at(msg_address);
   } catch (const std::out_of_range &e) {
     string code = MESSAGE_CODE;
-    string st_addr = STATION_ADDRESS;
+    string st_addr = REMOTE_ADDR;
     string msg_addr = MESSAGE_ADDRESS;
     label = "";
     Logger::getLogger()->warn(

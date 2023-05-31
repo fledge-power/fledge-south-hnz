@@ -123,7 +123,7 @@ static const char *default_config = QUOTE({
 
   "protocol_stack" : {
     "description" : "protocol stack parameters",
-    "type" : "string",
+    "type" : "JSON",
     "displayName" : "Protocol stack parameters",
     "order" : "2",
     "default" : PROTOCOL_STACK_DEF,
@@ -132,7 +132,7 @@ static const char *default_config = QUOTE({
 
   "exchanged_data" : {
     "description" : "exchanged data list",
-    "type" : "string",
+    "type" : "JSON",
     "displayName" : "Exchanged data list",
     "order" : "3",
     "default" : EXCHANGED_DATA_DEF,

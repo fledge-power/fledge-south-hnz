@@ -125,7 +125,7 @@ void HNZPath::disconnect() {
 }
 
 void HNZPath::m_manageHNZProtocolConnection() {
-  milliseconds sleep = milliseconds(1000);
+  auto sleep = milliseconds(1000);
   long now;
 
   Logger::getLogger()->debug(m_name_log +
@@ -156,7 +156,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
 }
 
 milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
-  milliseconds sleep = milliseconds(1000);
+  auto sleep = milliseconds(1000);
   // Must have received a SARM and an UA (in response to our SARM) from
   // the PA to be connected.
   if (!sarm_ARP_UA || !sarm_PA_received) {
@@ -189,7 +189,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
 }
 
 milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
-  milliseconds sleep = milliseconds(1000);
+  auto sleep = milliseconds(1000);
   if (now - m_last_msg_time <= m_inacc_timeout) {
     m_sendBULLE();
     sleep = milliseconds(10000);

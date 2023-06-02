@@ -156,7 +156,7 @@ class HNZTestComp : public HNZ {
  public:
   HNZTestComp() : HNZ() {}
   void sendCG() {
-    m_hnz_connection->sendInitialGI();
+    sendInitialGI();
   }
 };
 

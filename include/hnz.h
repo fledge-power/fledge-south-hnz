@@ -136,6 +136,14 @@ class HNZ {
   GiStatus getGiStatus();
 
  protected:
+  /**
+   * Sends a CG request (reset counters if any was already in progress)
+   */
+  void sendInitialGI() {
+    m_hnz_connection->sendInitialGI();
+  }
+
+private:
   string m_asset;  // Plugin name in fledge
   atomic<bool> m_is_running;
   thread *m_receiving_thread_A,

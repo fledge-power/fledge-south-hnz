@@ -617,7 +617,7 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
 
   DatapointValue dpv(attributes, true);
 
-  Datapoint* southEvent = new Datapoint("south_event", dpv);
+  auto* southEvent = new Datapoint("south_event", dpv);
   std::vector<Reading> status_readings = {Reading(asset, southEvent)};
   m_sendToFledge(status_readings);
 }

@@ -115,6 +115,14 @@ void HNZConf::importConfigJson(const string &json) {
     is_complete = false;
   }
 
+  if (m_check_object(info, SOUTH_MONITORING)) {
+    const Value &conf = info[SOUTH_MONITORING];
+
+    if(m_check_string(conf, SOUTH_MONITORING_ASSET)) {
+      is_complete &= m_retrieve(conf, SOUTH_MONITORING_ASSET, &m_connx_status);
+    }
+  }
+
   m_config_is_complete = is_complete;
 }
 

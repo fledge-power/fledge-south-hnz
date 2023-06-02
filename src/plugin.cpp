@@ -49,6 +49,9 @@ using namespace std;
         "gi_repeat_count" : 3,                        \
         "gi_time" : 255,                              \
         "c_ack_time" : 10                             \
+      },                                              \
+      "south_monitoring" : {                          \
+        "asset" : "CONNECTION-1"                      \
       }                                               \
     }                                                 \
   })

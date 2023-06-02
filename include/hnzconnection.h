@@ -11,15 +11,18 @@
 #ifndef HNZConnection_H
 #define HNZConnection_H
 
-#include <logger.h>
+#include <atomic>
 
-#include "hnz.h"
 #include "hnzconf.h"
-#include "hnzpath.h"
 
-using namespace std;
+namespace std {
+  class thread;
+}
 
 class HNZ;
+class HNZPath;
+enum class ConnectionStatus;
+enum class GiStatus;
 
 /**
  * @brief Class used to manage the HNZ connection. Manage one path (or two path,
@@ -71,11 +74,30 @@ class HNZConnection {
    */
   void sendInitialGI();
 
+  /**
+   * Called to update the current connection status
+   *
+   * @param newState New status for the connection
+   */
+  void updateConnectionStatus(ConnectionStatus newState);
+
+  /**
+   * Called to update the current GI status
+   *
+   * @param newState New status for the GI
+   */
+  void updateGiStatus(GiStatus newState);
+
+  /**
+   * Returns the current GI status
+   */
+  GiStatus getGiStatus();
+
  private:
   HNZPath* m_active_path = nullptr;
   HNZPath* m_passive_path = nullptr;
-  thread* m_messages_thread = nullptr;  // Main thread that monitors messages
-  atomic<bool> m_is_running;  // If false, the connection thread will stop
+  std::thread* m_messages_thread = nullptr;  // Main thread that monitors messages
+  std::atomic<bool> m_is_running;  // If false, the connection thread will stop
   uint64_t m_current;         // Store the last time requested
   uint64_t m_days_since_epoch;
 

@@ -8,6 +8,7 @@
  * Author: Justin Facquet
  */
 
+#include "hnz.h"
 #include "hnzpath.h"
 
 HNZPath::HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
@@ -101,6 +102,9 @@ bool HNZPath::connect() {
 
 void HNZPath::disconnect() {
   Logger::getLogger()->debug(m_name_log + " HNZ Connection stopping...");
+  if (m_is_active_path) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
+  }
 
   m_is_running = false;
   m_connected = false;
@@ -155,6 +159,9 @@ void HNZPath::m_manageHNZProtocolConnection() {
           }
         } else {
           m_protocol_state = CONNECTED;
+          if (m_is_active_path) {
+            m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
+          }
           sleep = milliseconds(10);
         }
         break;
@@ -189,6 +196,9 @@ void HNZPath::go_to_connection() {
   Logger::getLogger()->warn(
       m_name_log + " Going to HNZ connection state... Waiting for a SARM.");
   m_protocol_state = CONNECTION;
+  if (m_is_active_path) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
+  }
 
   // Initialize internal variable
   sarm_PA_received = false;
@@ -213,6 +223,9 @@ void HNZPath::go_to_connection() {
 
 void HNZPath::m_go_to_connected() {
   m_protocol_state = CONNECTED;
+  if (m_is_active_path) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
+  }
   Logger::getLogger()->debug(m_name_log + " HNZ Connection initialized !!");
 
   if (m_is_active_path) {
@@ -575,6 +588,9 @@ void HNZPath::sendGeneralInterrogation() {
   m_sendInfo(msg, sizeof(msg));
   Logger::getLogger()->warn(m_name_log +
                             " GI (General Interrogation) request sent");
+  if ((gi_repeat == 0) || (m_hnz_connection->getGiStatus() != GiStatus::IN_PROGRESS)) {
+    m_hnz_connection->updateGiStatus(GiStatus::STARTED);
+  }
   gi_repeat++;
   gi_start_time = duration_cast<milliseconds>(
                       high_resolution_clock::now().time_since_epoch())

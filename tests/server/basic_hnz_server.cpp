@@ -80,6 +80,7 @@ bool BasicHNZServer::HNZServerIsReady() {
   }
   m_t1->join();
   delete m_t1;
+  m_t1 = nullptr;
 
   // Loop that sending sarm every 3s
   thread *m_t2 = new thread(&BasicHNZServer::sendSARMLoop, this);
@@ -116,6 +117,8 @@ bool BasicHNZServer::HNZServerIsReady() {
     if (ua_ok && sarm_ok) break;
   }
   m_t2->join();
+  delete m_t2;
+  m_t2 = nullptr;
   printf("[HNZ Server] Connection OK !!\n");
 
   // Connection established

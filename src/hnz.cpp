@@ -291,6 +291,10 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
     m_hnz_connection->GI_completed();
     m_sendToFledge(m_gi_readings_temp);
     m_gi_readings_temp.clear();
+  } else {
+    if (getGiStatus() == GiStatus::STARTED) {
+      updateGiStatus(GiStatus::IN_PROGRESS);
+    }
   }
 }
 
@@ -473,6 +477,10 @@ bool HNZ::operation(const std::string &operation, int count,
 
     m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
     return true;
+  } else if (operation.compare("request_connection_status") == 0) {
+    Logger::getLogger()->info("received request_connection_status", operation.c_str());
+    m_sendConnectionStatus();
+    return true;
   }
 
   Logger::getLogger()->error("Unrecognised operation %s", operation.c_str());
@@ -519,4 +527,97 @@ unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::syst
   // Add the time since section of day start (blocks of 10 ms)
   epochMs += ts * 10;
   return epochMs;
+}
+
+void HNZ::updateConnectionStatus(ConnectionStatus newState) {
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  if (m_connStatus == newState) return;
+
+  m_connStatus = newState;
+
+  m_sendSouthMonitoringEvent(true, false);
+}
+
+void HNZ::updateGiStatus(GiStatus newState) {
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  if (m_giStatus == newState) return;
+
+  m_giStatus = newState;
+
+  m_sendSouthMonitoringEvent(false, true);
+}
+
+GiStatus HNZ::getGiStatus() {
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  return m_giStatus;
+}
+
+void HNZ::m_sendConnectionStatus() {
+  m_sendSouthMonitoringEvent(true, true);
+}
+
+void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::string asset = m_hnz_conf->get_connx_status_signal();
+  if (asset.empty()) return;
+
+  if ((connxStatus == false) && (giStatus == false)) return;
+
+  auto* attributes = new vector<Datapoint*>;
+
+  if (connxStatus) {
+    Datapoint* eventDp = nullptr;
+
+    switch (m_connStatus)
+    {
+      case ConnectionStatus::NOT_CONNECTED:
+        eventDp = m_createDatapoint("connx_status", "not connected");
+        break;
+
+      case ConnectionStatus::STARTED:
+        eventDp = m_createDatapoint("connx_status", "started");
+        break;
+    }
+
+    if (eventDp) {
+      attributes->push_back(eventDp);
+    }
+  }
+
+  if (giStatus) {
+    Datapoint* eventDp = nullptr;
+
+    switch(m_giStatus)
+    {
+      case GiStatus::STARTED:
+        eventDp = m_createDatapoint("gi_status", "started");
+        break;
+
+      case GiStatus::IN_PROGRESS:
+        eventDp = m_createDatapoint("gi_status", "in progress");
+        break;
+
+      case GiStatus::FAILED:
+        eventDp = m_createDatapoint("gi_status", "failed");
+        break;
+
+      case GiStatus::FINISHED:
+        eventDp = m_createDatapoint("gi_status", "finished");
+        break;
+
+      case GiStatus::IDLE:
+        eventDp = m_createDatapoint("gi_status", "idle");
+        break;
+    }
+
+    if (eventDp) {
+      attributes->push_back(eventDp);
+    }
+  }
+
+  DatapointValue dpv(attributes, true);
+
+  auto* southEvent = new Datapoint("south_event", dpv);
+  std::vector<Reading> status_readings = {Reading(asset, southEvent)};
+  m_sendToFledge(status_readings);
 }

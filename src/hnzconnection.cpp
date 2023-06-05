@@ -8,6 +8,10 @@
  * Author: Justin Facquet
  */
 
+#include <logger.h>
+
+#include "hnz.h"
+#include "hnzpath.h"
 #include "hnzconnection.h"
 
 HNZConnection::HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge) {
@@ -66,7 +70,10 @@ void HNZConnection::stop() {
   Logger::getLogger()->info("HNZ Connection stopped !");
 }
 
-void HNZConnection::GI_completed() { m_active_path->gi_repeat = 0; }
+void HNZConnection::GI_completed() { 
+  m_active_path->gi_repeat = 0;
+  updateGiStatus(GiStatus::FINISHED);
+}
 
 void HNZConnection::m_manageMessages() {
   m_update_current_time();
@@ -143,6 +150,7 @@ void HNZConnection::m_check_GI() {
         Logger::getLogger()->error("General Interrogation FAILED !");
         m_active_path->gi_repeat = 0;
         // DF.GLOB.TS : nothing to do in HNZ
+        updateGiStatus(GiStatus::FAILED);
       } else {
         Logger::getLogger()->warn("General Interrogation Timeout, repeat GI");
         // Clean queue in HNZ class
@@ -229,4 +237,16 @@ void HNZConnection::switchPath() {
 void HNZConnection::sendInitialGI() {
   m_active_path->gi_repeat = 0;
   m_active_path->sendGeneralInterrogation();
+}
+
+void HNZConnection::updateConnectionStatus(ConnectionStatus newState) {
+  m_hnz_fledge->updateConnectionStatus(newState);
+}
+
+void HNZConnection::updateGiStatus(GiStatus newState) {
+  m_hnz_fledge->updateGiStatus(newState);
+}
+
+GiStatus HNZConnection::getGiStatus() {
+  return m_hnz_fledge->getGiStatus();
 }

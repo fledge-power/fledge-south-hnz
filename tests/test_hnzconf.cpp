@@ -30,6 +30,9 @@ string protocol_stack_def = QUOTE({
       "gi_time" : 300,
       "c_ack_time" : 20,
       "cmd_recv_timeout" : 200000
+    },
+    "south_monitoring" : {
+      "asset" : "TEST_ASSET"
     }
   }
 });
@@ -164,6 +167,8 @@ TEST_F(HNZConfTest, GetLabelTS1) {
 TEST_F(HNZConfTest, GetLabelUnknown) {
   ASSERT_STREQ(hnz_conf->getLabel("TS", 999).c_str(), "");
 }
+
+TEST_F(HNZConfTest, GetConnxStatusSignal) { ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "TEST_ASSET"); }
 
 string min_protocol_stack_def = QUOTE({
   "protocol_stack" : {

@@ -210,6 +210,20 @@ class HNZPath {
   void m_manageHNZProtocolConnection();
 
   /**
+   * Manage the HNZ protocol when connecting
+   * @param now epoch time in seconds
+   * @return Number of miliseconds to sleep after this step
+   */
+  milliseconds m_manageHNZProtocolConnecting(long now);
+
+  /**
+   * Manage the HNZ protocol when connected
+   * @param now epoch time in seconds
+   * @return Number of miliseconds to sleep after this step
+   */
+  milliseconds m_manageHNZProtocolConnected(long now);
+
+  /**
    * Analyze a HNZ frame. If the frame is an information frame then we extract
    * its content and sends an acknowledgement, otherwise we return an empty
    * list/vector. Also manages the protocol aspect with SARM, UA and RR.

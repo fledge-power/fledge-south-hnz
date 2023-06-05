@@ -29,6 +29,21 @@ using namespace std::chrono;
 class HNZConnection;
 class HNZPath;
 
+// Enums put outside of the HNZ class so that they can be forward declared
+enum class ConnectionStatus
+{
+    STARTED,
+    NOT_CONNECTED
+};
+enum class GiStatus
+{
+    IDLE,
+    STARTED,
+    IN_PROGRESS,
+    FAILED,
+    FINISHED
+};
+
 /**
  * @brief Class used to receive messages and push them to fledge.
  */
@@ -101,7 +116,34 @@ class HNZ {
   static unsigned long getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
                                             unsigned char daySection, unsigned int ts);
 
+  /**
+   * Called to update the current connection status
+   *
+   * @param newState New status for the connection
+   */
+  void updateConnectionStatus(ConnectionStatus newState);
+
+  /**
+   * Called to update the current GI status
+   *
+   * @param newState New status for the GI
+   */
+  void updateGiStatus(GiStatus newState);
+
+  /**
+   * Returns the current GI status
+   */
+  GiStatus getGiStatus();
+
  protected:
+  /**
+   * Sends a CG request (reset counters if any was already in progress)
+   */
+  void sendInitialGI() {
+    m_hnz_connection->sendInitialGI();
+  }
+
+private:
   string m_asset;  // Plugin name in fledge
   atomic<bool> m_is_running;
   thread *m_receiving_thread_A,
@@ -122,6 +164,11 @@ class HNZ {
   BulleFormat m_test_msg_receive;
   // Section of day (modulo 10 minutes)
   unsigned char m_daySection = 0;
+
+  // Connection and GI status management
+  ConnectionStatus m_connStatus = ConnectionStatus::NOT_CONNECTED;
+  GiStatus m_giStatus = GiStatus::IDLE;
+  std::recursive_mutex m_connexionGiMutex;
 
   /**
    * Waits for new messages and processes them
@@ -225,6 +272,20 @@ class HNZ {
    * @param reading The reading to push to fledge
    */
   void ingest(Reading& reading);
+
+  /**
+   * Send the updated values of connection and GI states
+   */
+  void m_sendConnectionStatus();
+
+  /**
+   * Send the updated values of connection and GI states if the corresponding parameter is true
+   * 
+   * @param connxStatus If true, updates the connexion status part of the reading
+   * @param giStatus If true, updates the GI status part of the reading
+   */
+  void m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus);
+
 };
 
 #endif

@@ -8,6 +8,7 @@
  * Author: Justin Facquet
  */
 
+#include "hnz.h"
 #include "hnzpath.h"
 
 HNZPath::HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
@@ -101,6 +102,9 @@ bool HNZPath::connect() {
 
 void HNZPath::disconnect() {
   Logger::getLogger()->debug(m_name_log + " HNZ Connection stopping...");
+  if (m_is_active_path) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
+  }
 
   m_is_running = false;
   m_connected = false;
@@ -121,7 +125,7 @@ void HNZPath::disconnect() {
 }
 
 void HNZPath::m_manageHNZProtocolConnection() {
-  milliseconds sleep = milliseconds(1000);
+  auto sleep = milliseconds(1000);
   long now;
 
   Logger::getLogger()->debug(m_name_log +
@@ -132,44 +136,10 @@ void HNZPath::m_manageHNZProtocolConnection() {
 
     switch (m_protocol_state) {
       case CONNECTION:
-        // Must have received a SARM and an UA (in response to our SARM) from
-        // the PA to be connected.
-        if (!sarm_ARP_UA || !sarm_PA_received) {
-          if (now - m_last_msg_time <= m_inacc_timeout) {
-            if (m_nbr_sarm_sent == m_max_sarm) {
-              Logger::getLogger()->warn(
-                  m_name_log + " The maximum number of SARM was reached.");
-              // If the path is the active one, switch to passive path if
-              // available
-              if (m_is_active_path) m_hnz_connection->switchPath();
-              m_nbr_sarm_sent = 0;
-            }
-            // Send SARM and wait
-            m_sendSARM();
-            sleep = milliseconds(m_repeat_timeout);
-
-          } else {
-            // Inactivity timer reached
-            Logger::getLogger()->error(m_name_log + " Inacc timeout !");
-            // DF.GLOB.TS : nothing to do in HNZ
-          }
-        } else {
-          m_protocol_state = CONNECTED;
-          sleep = milliseconds(10);
-        }
+        sleep = m_manageHNZProtocolConnecting(now);
         break;
       case CONNECTED:
-        if (now - m_last_msg_time <= m_inacc_timeout) {
-          m_sendBULLE();
-          sleep = milliseconds(10000);
-        } else {
-          Logger::getLogger()->warn(
-              m_name_log +
-              " Inactivity timer reached, a message or a BULLE were not "
-              "received on time, back to SARM");
-          go_to_connection();
-          sleep = milliseconds(10);
-        }
+        sleep = m_manageHNZProtocolConnected(now);
         break;
       default:
         Logger::getLogger()->debug(m_name_log + " STOP state");
@@ -185,10 +155,62 @@ void HNZPath::m_manageHNZProtocolConnection() {
       m_name_log + " HNZ Connection Management thread is shutting down...");
 }
 
+milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
+  auto sleep = milliseconds(1000);
+  // Must have received a SARM and an UA (in response to our SARM) from
+  // the PA to be connected.
+  if (!sarm_ARP_UA || !sarm_PA_received) {
+    if (now - m_last_msg_time <= m_inacc_timeout) {
+      if (m_nbr_sarm_sent == m_max_sarm) {
+        Logger::getLogger()->warn(
+            m_name_log + " The maximum number of SARM was reached.");
+        // If the path is the active one, switch to passive path if
+        // available
+        if (m_is_active_path) m_hnz_connection->switchPath();
+        m_nbr_sarm_sent = 0;
+      }
+      // Send SARM and wait
+      m_sendSARM();
+      sleep = milliseconds(m_repeat_timeout);
+
+    } else {
+      // Inactivity timer reached
+      Logger::getLogger()->error(m_name_log + " Inacc timeout !");
+      // DF.GLOB.TS : nothing to do in HNZ
+    }
+  } else {
+    m_protocol_state = CONNECTED;
+    if (m_is_active_path) {
+      m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
+    }
+    sleep = milliseconds(10);
+  }
+  return sleep;
+}
+
+milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
+  auto sleep = milliseconds(1000);
+  if (now - m_last_msg_time <= m_inacc_timeout) {
+    m_sendBULLE();
+    sleep = milliseconds(10000);
+  } else {
+    Logger::getLogger()->warn(
+        m_name_log +
+        " Inactivity timer reached, a message or a BULLE were not "
+        "received on time, back to SARM");
+    go_to_connection();
+    sleep = milliseconds(10);
+  }
+  return sleep;
+}
+
 void HNZPath::go_to_connection() {
   Logger::getLogger()->warn(
       m_name_log + " Going to HNZ connection state... Waiting for a SARM.");
   m_protocol_state = CONNECTION;
+  if (m_is_active_path) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
+  }
 
   // Initialize internal variable
   sarm_PA_received = false;
@@ -213,6 +235,9 @@ void HNZPath::go_to_connection() {
 
 void HNZPath::m_go_to_connected() {
   m_protocol_state = CONNECTED;
+  if (m_is_active_path) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
+  }
   Logger::getLogger()->debug(m_name_log + " HNZ Connection initialized !!");
 
   if (m_is_active_path) {
@@ -575,6 +600,9 @@ void HNZPath::sendGeneralInterrogation() {
   m_sendInfo(msg, sizeof(msg));
   Logger::getLogger()->warn(m_name_log +
                             " GI (General Interrogation) request sent");
+  if ((gi_repeat == 0) || (m_hnz_connection->getGiStatus() != GiStatus::IN_PROGRESS)) {
+    m_hnz_connection->updateGiStatus(GiStatus::STARTED);
+  }
   gi_repeat++;
   gi_start_time = duration_cast<milliseconds>(
                       high_resolution_clock::now().time_since_epoch())

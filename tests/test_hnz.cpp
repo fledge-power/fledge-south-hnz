@@ -6,6 +6,7 @@
 #include <queue>
 #include <utility>
 #include <vector>
+#include <mutex>
 
 #include "hnz.h"
 #include "server/basic_hnz_server.h"
@@ -147,15 +148,15 @@ string protocol_stack_generator(int port, int port2) {
                              to_string(port2) + "}"
                        : "") +
          " ] } , \"application_layer\" : { "
-         "\"remote_station_addr\" : "
-         "1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2 } } }";
+         "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2 },"
+         "\"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
 }
 
 class HNZTestComp : public HNZ {
  public:
   HNZTestComp() : HNZ() {}
   void sendCG() {
-    m_hnz_connection->sendInitialGI();
+    sendInitialGI();
   }
 };
 
@@ -167,7 +168,7 @@ class HNZTest : public testing::Test {
 
     hnz->registerIngest(NULL, ingestCallback);
 
-    ingestCallbackCalled = 0;
+    resetCounters();
   }
 
   void TearDown() {
@@ -175,15 +176,23 @@ class HNZTest : public testing::Test {
 
     delete hnz;
 
-    while (!storedReadings.empty()) {
-      delete popFrontReading();
-    }
+    std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+    storedReadings = {};
+  }
+
+  static void resetCounters() {
+    std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+    ingestCallbackCalled = 0;
+    dataObjectsReceived = 0;
+    southEventsReceived = 0;
+  }
+
+  static void initConfig(int port, int port2) {
+    hnz->setJsonConfig(protocol_stack_generator(port, port2), exchanged_data_def);
   }
 
   static void startHNZ(int port, int port2) {
-    hnz->setJsonConfig(protocol_stack_generator(port, port2),
-                       exchanged_data_def);
-
+    initConfig(port, port2);
     hnz->start();
   }
 
@@ -260,18 +269,24 @@ class HNZTest : public testing::Test {
     //     printf("name: %s value: %s\n", sdp->getName().c_str(),
     //     sdp->getData().toString().c_str());
     // }
-
-    storedReadings.push(new Reading(reading));
+    std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+    storedReadings.push(std::make_shared<Reading>(reading));
 
     ingestCallbackCalled++;
+    if (hasObject(reading, "data_object"))  {
+      dataObjectsReceived++;
+    }
+    else if (hasObject(reading, "south_event")) {
+      southEventsReceived++;
+    }
   }
 
   struct ReadingInfo {
     std::string type;
     std::string value;
   };
-  static void validateReading(Reading* currentReading, std::string assetName, std::map<std::string, ReadingInfo> attributes) {
-    ASSERT_NE(nullptr, currentReading) << assetName << ": Invalid reading";
+  static void validateReading(std::shared_ptr<Reading> currentReading, std::string assetName, std::map<std::string, ReadingInfo> attributes) {
+    ASSERT_NE(nullptr, currentReading.get()) << assetName << ": Invalid reading";
     ASSERT_EQ(assetName, currentReading->getAssetName());
     // Validate data_object structure received
     ASSERT_TRUE(hasObject(*currentReading, "data_object")) << assetName << ": data_object not found";
@@ -296,8 +311,25 @@ class HNZTest : public testing::Test {
         FAIL() << assetName << ": Unknown type: " << type;
       }
     }
+  }
 
-    delete currentReading;
+  static void validateSouthEvent(std::shared_ptr<Reading> currentReading, std::string assetName, std::map<std::string, std::string> attributes) {
+    ASSERT_NE(nullptr, currentReading.get()) << assetName << ": Invalid south event";
+    ASSERT_EQ(assetName, currentReading->getAssetName());
+    // Validate data_object structure received
+    ASSERT_TRUE(hasObject(*currentReading, "south_event")) << assetName << ": south_event not found";
+    Datapoint* data_object = getObject(*currentReading, "south_event");
+    ASSERT_NE(nullptr, data_object) << assetName << ": south_event is null";
+    // Validate existance of the required keys and non-existance of the others
+    for(const std::string& name: allSouthEventAttributeNames) {
+      ASSERT_EQ(hasChild(*data_object, name), static_cast<bool>(attributes.count(name))) << assetName << ": Attribute not found: " << name;;
+    }
+    // Validate value and type of each key
+    for(auto const& kvp: attributes) {
+      const std::string& name = kvp.first;
+      const std::string& expectedValue = kvp.second;
+      ASSERT_EQ(expectedValue, getStrValue(getChild(*data_object, name))) << assetName << ": Unexpected value for attribute " << name;
+    }
   }
 
   static std::shared_ptr<MSG_TRAME> findFrameWithId(const std::vector<std::shared_ptr<MSG_TRAME>>& frames, unsigned char frameId) {
@@ -360,8 +392,9 @@ class HNZTest : public testing::Test {
     return port;
   }
 
-  static Reading* popFrontReading() {
-    Reading* currentReading = nullptr;
+  static std::shared_ptr<Reading> popFrontReading() {
+    std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+    std::shared_ptr<Reading> currentReading = nullptr;
     if (!storedReadings.empty()) {
       currentReading = storedReadings.front();
       storedReadings.pop();
@@ -369,10 +402,48 @@ class HNZTest : public testing::Test {
     return currentReading;
   }
 
+  static std::shared_ptr<Reading> popFrontReadingsUntil(std::string label) {
+    std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+    std::shared_ptr<Reading> foundReading = nullptr;
+    while (!storedReadings.empty()) {
+      std::shared_ptr<Reading> currentReading = popFrontReading();
+      if (label == currentReading->getAssetName()) {
+        foundReading = currentReading;
+        break;
+      }
+    }
+
+    return foundReading;
+  }
+
+  static void waitUntil(int& counter, int expectedCount, int timeoutMs) {
+    int waitTimeMs = 100;
+    int attempts = timeoutMs / waitTimeMs;
+    bool expectedCountNotReached = true;
+    {
+      // Counter is often one of the readings counter, so lock-guard it
+      std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+      expectedCountNotReached = counter < expectedCount;
+    }
+    while (expectedCountNotReached && (attempts > 0)) {
+      this_thread::sleep_for(chrono::milliseconds(waitTimeMs));
+      attempts--;
+      {
+        // Counter is often one of the readings counter, so lock-guard it
+        std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+        expectedCountNotReached = counter < expectedCount;
+      }
+    } 
+  }
+
   static HNZTestComp* hnz;
   static int ingestCallbackCalled;
-  static queue<Reading*> storedReadings;
+  static int dataObjectsReceived;
+  static int southEventsReceived;
+  static queue<std::shared_ptr<Reading>> storedReadings;
+  static std::recursive_mutex storedReadingsMutex;
   static const std::vector<std::string> allAttributeNames;
+  static const std::vector<std::string> allSouthEventAttributeNames;
   static constexpr unsigned long oneHourMs = 3600000; // 60 * 60 * 1000
   static constexpr unsigned long oneDayMs = 86400000; // 24 * 60 * 60 * 1000
   static constexpr unsigned long tenMinMs = 600000;   // 10 * 60 * 1000
@@ -380,36 +451,50 @@ class HNZTest : public testing::Test {
 
 HNZTestComp* HNZTest::hnz;
 int HNZTest::ingestCallbackCalled;
-queue<Reading*> HNZTest::storedReadings;
+int HNZTest::dataObjectsReceived;
+int HNZTest::southEventsReceived;
+queue<std::shared_ptr<Reading>> HNZTest::storedReadings;
+std::recursive_mutex HNZTest::storedReadingsMutex;
 const std::vector<std::string> HNZTest::allAttributeNames = {
   "do_type", "do_station", "do_addr", "do_value", "do_valid", "do_ts", "do_ts_iv", "do_ts_c", "do_ts_s", "do_cg"
 };
+const std::vector<std::string> HNZTest::allSouthEventAttributeNames = {"connx_status", "gi_status"};
 constexpr unsigned long HNZTest::oneHourMs;
 constexpr unsigned long HNZTest::oneDayMs;
 constexpr unsigned long HNZTest::tenMinMs;
 
 class ServersWrapper {
   public:
-    ServersWrapper(int addr, int port1, int port2=0) {
-      m_server1 = std::make_shared<BasicHNZServer>(port1, addr);
+    ServersWrapper(int addr, int port1, int port2=0, bool autoStart = true) {
+      m_port1 = port1;
+      m_port2 = port2;
+      m_server1 = std::make_shared<BasicHNZServer>(m_port1, addr);
       m_server1->startHNZServer();
 
-      if(port2 > 0) {
-        m_server2 = std::make_shared<BasicHNZServer>(port2, addr);
+      if(m_port2 > 0) {
+        m_server2 = std::make_shared<BasicHNZServer>(m_port2, addr);
         m_server2->startHNZServer();
       }
 
-      // Start HNZ Plugin
-      HNZTest::startHNZ(port1, port2); 
+      if (autoStart) {
+        // Start HNZ Plugin
+        startHNZPlugin(); 
+      }
+    }
+    void initHNZPlugin() {
+      HNZTest::initConfig(m_port1, m_port2);
+    }
+    void startHNZPlugin() {
+      HNZTest::startHNZ(m_port1, m_port2);
     }
     std::shared_ptr<BasicHNZServer> server1() {
-      if (!m_server1->HNZServerIsReady()) {
+      if (m_server1 && !m_server1->HNZServerIsReady()) {
         m_server1 = nullptr;
       }
       return m_server1;
     }
     std::shared_ptr<BasicHNZServer> server2() {
-      if (!m_server2->HNZServerIsReady()) {
+      if (m_server2 && !m_server2->HNZServerIsReady()) {
         m_server2 = nullptr;
       }
       return m_server2;
@@ -417,6 +502,8 @@ class ServersWrapper {
   private:
     std::shared_ptr<BasicHNZServer> m_server1;
     std::shared_ptr<BasicHNZServer> m_server2;
+    int m_port1 = 0;
+    int m_port2 = 0;
 };
 
 TEST_F(HNZTest, TCPConnectionOnePathOK) {
@@ -491,12 +578,12 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   unsigned char lsb = static_cast<unsigned char>(ts & 0xFF);
   server->sendFrame({0x0B, 0x33, 0x28, msb, lsb}, false);
   printf("[HNZ Server] TSCE sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  Reading* currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TS1");
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -516,12 +603,12 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ///////////////////////////////////////
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
   printf("[HNZ Server] TSCE 2 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TS1");
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -544,12 +631,12 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   server->sendFrame({0x0F, daySection}, false);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
   printf("[HNZ Server] TSCE 3 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TS1");
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -573,12 +660,12 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   lsb = static_cast<unsigned char>(ts & 0xFF);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
   printf("[HNZ Server] TSCE 4 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TS1");
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -636,7 +723,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
 
   // Only one of the 2 TS CG messages were sent, check that the TS have not yet been transmitted
-  ASSERT_EQ(ingestCallbackCalled, 0);
+  ASSERT_EQ(dataObjectsReceived, 0);
   // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
   frames = server->popLastFramesReceived();
   CGframe = findFrameWithId(frames, 0x13);
@@ -654,9 +741,9 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after all TS were received, but found: " << BasicHNZServer::frameToStr(CGframe);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 3);
-  ingestCallbackCalled = 0;
-  Reading* currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 3);
+  resetCounters();
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TS1");
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -666,7 +753,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_cg", {"int64_t", "1"}}
   });
   if(HasFatalFailure()) return;
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TS2");
   validateReading(currentReading, "TS2", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -676,7 +763,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_cg", {"int64_t", "1"}}
   });
   if(HasFatalFailure()) return;
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TS3");
   validateReading(currentReading, "TS3", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -701,12 +788,12 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
   printf("[HNZ Server] TSCG 3 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 3, 1000);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 3);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 3);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TS1");
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -716,7 +803,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_cg", {"int64_t", "1"}}
   });
   if(HasFatalFailure()) return;
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TS2");
   validateReading(currentReading, "TS2", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -726,7 +813,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_cg", {"int64_t", "1"}}
   });
   if(HasFatalFailure()) return;
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TS3");
   validateReading(currentReading, "TS3", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -753,16 +840,17 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   unsigned char val3 = static_cast<unsigned char>(values[3]);
   server->sendFrame({0x02, 0x14, val0, val1, val2, val3}, false);
   printf("[HNZ Server] TMA sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
-  ASSERT_EQ(ingestCallbackCalled, 4);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 4);
+  resetCounters();
 
-  Reading* currentReading = nullptr;
+  std::shared_ptr<Reading> currentReading = nullptr;
   for (int i = 0; i < 4; i++) {
-    currentReading = popFrontReading();
-    validateReading(currentReading, "TM" + to_string(i + 1), {
+    std::string label("TM" + to_string(i + 1));
+    currentReading = popFrontReadingsUntil(label);
+    validateReading(currentReading, label, {
       {"do_type", {"string", "TM"}},
       {"do_station", {"int64_t", "1"}},
       {"do_addr", {"int64_t", std::to_string(20 + i)}},
@@ -778,16 +866,17 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   ///////////////////////////////////////
   server->sendFrame({0x02, 0x14, val0, val1, val2, 0xFF}, false);
   printf("[HNZ Server] TMA 2 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
-  ASSERT_EQ(ingestCallbackCalled, 4);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 4);
+  resetCounters();
 
   for (int i = 0; i < 4; i++) {
-    currentReading = popFrontReading();
+    std::string label("TM" + to_string(i + 1));
+    currentReading = popFrontReadingsUntil(label);
     if (i < 3) {
-      validateReading(currentReading, "TM" + to_string(i + 1), {
+      validateReading(currentReading, label, {
         {"do_type", {"string", "TM"}},
         {"do_station", {"int64_t", "1"}},
         {"do_addr", {"int64_t", std::to_string(20 + i)}},
@@ -796,7 +885,7 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
         {"do_an", {"string", "TMA"}},
       });
     } else {
-      validateReading(currentReading, "TM" + to_string(i + 1), {
+      validateReading(currentReading, label, {
         {"do_type", {"string", "TM"}},
         {"do_station", {"int64_t", "1"}},
         {"do_addr", {"int64_t", std::to_string(20 + i)}},
@@ -824,16 +913,17 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   unsigned char val3 = static_cast<unsigned char>(values[3]);
   server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x80}, false);
   printf("[HNZ Server] TM8 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
-  ASSERT_EQ(ingestCallbackCalled, 4);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 4);
+  resetCounters();
 
-  Reading* currentReading = nullptr;
+  std::shared_ptr<Reading> currentReading = nullptr;
   for (int i = 0; i < 4; i++) {
-    currentReading = popFrontReading();
-    validateReading(currentReading, "TM" + to_string(i + 1), {
+    std::string label("TM" + to_string(i + 1));
+    currentReading = popFrontReadingsUntil(label);
+    validateReading(currentReading, label, {
       {"do_type", {"string", "TM"}},
       {"do_station", {"int64_t", "1"}},
       {"do_addr", {"int64_t", std::to_string(20 + i)}},
@@ -849,16 +939,17 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   ///////////////////////////////////////
   server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x88}, false);
   printf("[HNZ Server] TM8 2 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
-  ASSERT_EQ(ingestCallbackCalled, 4);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 4);
+  resetCounters();
 
   for (int i = 0; i < 4; i++) {
-    currentReading = popFrontReading();
+    std::string label("TM" + to_string(i + 1));
+    currentReading = popFrontReadingsUntil(label);
     if (i < 3) {
-      validateReading(currentReading, "TM" + to_string(i + 1), {
+      validateReading(currentReading, label, {
         {"do_type", {"string", "TM"}},
         {"do_station", {"int64_t", "1"}},
         {"do_addr", {"int64_t", std::to_string(20 + i)}},
@@ -867,7 +958,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
         {"do_an", {"string", "TM8"}},
       });
     } else {
-      validateReading(currentReading, "TM" + to_string(i + 1), {
+      validateReading(currentReading, label, {
         {"do_type", {"string", "TM"}},
         {"do_station", {"int64_t", "1"}},
         {"do_addr", {"int64_t", std::to_string(20 + i)}},
@@ -890,13 +981,13 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   unsigned char msb2 = static_cast<unsigned char>(val12 >> 8);
   server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x00}, false);
   printf("[HNZ Server] TM16 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 2, 1000);
 
   // Check that ingestCallback had been called 2x time more
-  ASSERT_EQ(ingestCallbackCalled, 2);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 2);
+  resetCounters();
 
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TM1");
   validateReading(currentReading, "TM1", {
     {"do_type", {"string", "TM"}},
     {"do_station", {"int64_t", "1"}},
@@ -906,7 +997,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
     {"do_an", {"string", "TM16"}},
   });
   if(HasFatalFailure()) return;
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TM3");
   validateReading(currentReading, "TM3", {
     {"do_type", {"string", "TM"}},
     {"do_station", {"int64_t", "1"}},
@@ -922,13 +1013,13 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   ///////////////////////////////////////
   server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x04}, false);
   printf("[HNZ Server] TM16 2 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 2, 1000);
 
   // Check that ingestCallback had been called 2x time more
-  ASSERT_EQ(ingestCallbackCalled, 2);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 2);
+  resetCounters();
 
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TM1");
   validateReading(currentReading, "TM1", {
     {"do_type", {"string", "TM"}},
     {"do_station", {"int64_t", "1"}},
@@ -938,7 +1029,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
     {"do_an", {"string", "TM16"}},
   });
   if(HasFatalFailure()) return;
-  currentReading = popFrontReading();
+  currentReading = popFrontReadingsUntil("TM3");
   validateReading(currentReading, "TM3", {
     {"do_type", {"string", "TM"}},
     {"do_station", {"int64_t", "1"}},
@@ -975,11 +1066,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC ACK from server
   server->sendFrame({0x09, 0x0e, 0x49}, false);
   printf("[HNZ Server] TC ACK sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  Reading* currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TC1");
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1003,11 +1094,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC ACK from server with CR bit = 011b
   server->sendFrame({0x09, 0x0e, 0x4b}, false);
   printf("[HNZ Server] TC ACK 2 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TC1");
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1031,11 +1122,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC ACK from server with CR bit = 101b
   server->sendFrame({0x09, 0x0e, 0x4d}, false);
   printf("[HNZ Server] TC ACK 3 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TC1");
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1059,11 +1150,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC ACK from server with CR bit = 111b
   server->sendFrame({0x09, 0x0e, 0x4f}, false);
   printf("[HNZ Server] TC ACK 4 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TC1");
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1087,11 +1178,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC ACK from server with CR bit = 010b
   server->sendFrame({0x09, 0x0e, 0x4a}, false);
   printf("[HNZ Server] TC ACK 5 sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TC1");
   validateReading(currentReading, "TC1", {
     {"do_type", {"string", "TC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1127,11 +1218,11 @@ TEST_F(HNZTest, SendingTVCMessages) {
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
   printf("[HNZ Server] TVC ACK sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  Reading* currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TVC1");
   validateReading(currentReading, "TVC1", {
     {"do_type", {"string", "TVC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1156,11 +1247,11 @@ TEST_F(HNZTest, SendingTVCMessages) {
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x80}, false);
   printf("[HNZ Server] TVC 2 ACK sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TVC1");
   validateReading(currentReading, "TVC1", {
     {"do_type", {"string", "TVC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1184,11 +1275,11 @@ TEST_F(HNZTest, SendingTVCMessages) {
   // Send TVC ACK from server with A bit = 1
   server->sendFrame({0x0a, 0xdf, 0x2a, 0x80}, false);
   printf("[HNZ Server] TVC 3 ACK sent\n");
-  this_thread::sleep_for(chrono::milliseconds(1000));
+  waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
-  currentReading = popFrontReading();
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TVC1");
   validateReading(currentReading, "TVC1", {
     {"do_type", {"string", "TVC"}},
     {"do_station", {"int64_t", "1"}},
@@ -1220,7 +1311,7 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
   this_thread::sleep_for(chrono::milliseconds(3000));
 
   // Check that ingestCallback had been called only one time
-  ASSERT_EQ(ingestCallbackCalled, 1);
+  ASSERT_EQ(dataObjectsReceived, 1);
 
   // Send a SARM to put hnz plugin on path A in connection state
   // and don't send UA then to switch on path B
@@ -1228,15 +1319,14 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
 
   // Wait 20s
   this_thread::sleep_for(chrono::milliseconds(30000));
-
-  ingestCallbackCalled = 0;
+  resetCounters();
 
   server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   printf("[HNZ Server] TSCE sent on path B\n");
   this_thread::sleep_for(chrono::milliseconds(3000));
 
   // Check that ingestCallback had been called only one time
-  ASSERT_EQ(ingestCallbackCalled, 1);
+  ASSERT_EQ(dataObjectsReceived, 1);
 }
 
 TEST_F(HNZTest, SendingMessagesTwoPath) {
@@ -1272,35 +1362,176 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   printf("[HNZ Server] TC ACK sent on both path\n");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had been called only one time
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
 
-  // Send TVC1
-  std::string operationTVC("TVC");
-  int nbParamsTVC = 3;
-  PLUGIN_PARAMETER paramTVC1 = {"type", "TVC"};
-  PLUGIN_PARAMETER paramTVC2 = {"address", "31"};
-  PLUGIN_PARAMETER paramTVC3 = {"value", "42"};
-  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
-  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
-  printf("[HNZ south plugin] TVC sent\n");
+  // Send a SARM to put hnz plugin on path A in connection state
+  // and don't send UA then to switch on path B
+  server->sendSARM();
+
+  // Wait 20s
+  this_thread::sleep_for(chrono::milliseconds(30000));
+  resetCounters();
+
+  // Send TC1 on path B
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  printf("[HNZ south plugin] TC 2 sent\n");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
-  // Find the TVC frame in the list of frames received by server
-  frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
-  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << BasicHNZServer::framesToStr(frames);
-  // Check that TVC is only received on active path (server) and not on passive path (server2)
+  // Find the TC frame in the list of frames received by server2
   frames = server2->popLastFramesReceived();
-  TVCframe = findFrameWithId(frames, 0x1a);
-  ASSERT_EQ(TCframe.get(), nullptr) << "No TVC frame should be received by server2, found: " << BasicHNZServer::frameToStr(TVCframe);
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
+  // Check that TC is only received on active path (server2) and not on passive path (server)
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "No TC frame should be received by server, found: " << BasicHNZServer::frameToStr(TCframe);
 
-  // Send TVC ACK from servers
-  server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
-  server2->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
-  printf("[HNZ Server] TVC ACK sent on both path\n");
+  // Send TC ACK from server2 only
+  server2->sendFrame({0x09, 0x0e, 0x49}, false);
+  printf("[HNZ Server] TC ACK sent on path B\n");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had been called only one time
-  ASSERT_EQ(ingestCallbackCalled, 1);
-  ingestCallbackCalled = 0;
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+}
+
+TEST_F(HNZTest, ConnectionLossAndGIStatus) {
+  // Create server but do not start connection to HNZ device
+  std::shared_ptr<ServersWrapper> wrapperPtr = std::make_shared<ServersWrapper>(0x05, getNextPort(), 0, false);
+  // Initialize configuration only (mandatory for operation processing)
+  wrapperPtr->initHNZPlugin();
+  // Send request_connection_status
+  std::string operationRCS("request_connection_status");
+  ASSERT_TRUE(hnz->operation(operationRCS, 0, nullptr));
+  printf("[HNZ south plugin] request_connection_status sent\n");
+
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate initial states
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+    {"gi_status", "idle"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Wait for connection to be initialized
+  wrapperPtr->startHNZPlugin();
+  printf("[HNZ south plugin] waiting for connection established...\n");
+  BasicHNZServer* server = wrapperPtr->server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  // Also wait for initial CG request to expire as happens really short after connection is established
+  waitUntil(southEventsReceived, 3, 3000);
+  // Check that ingestCallback had been called the expected number of times
+  ASSERT_EQ(southEventsReceived, 3);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "failed"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Send new CG request
+  hnz->sendCG();
+  printf("[HNZ south plugin] CG request sent\n");
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Send one TS CG
+  server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  printf("[HNZ Server] TSCG 1 sent\n");
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Wait for all CG attempts to expire
+  printf("[HNZ south plugin] waiting for CG timeout...\n");
+  waitUntil(southEventsReceived, 1, 3000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "failed"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Send new CG request
+  hnz->sendCG();
+  printf("[HNZ south plugin] CG request 2 sent\n");
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Complete CG request by sending all expected TS
+  server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
+  printf("[HNZ Server] TSCG 2 sent\n");
+  waitUntil(southEventsReceived, 2, 1000);
+  // Check that ingestCallback had been called only for two GI status updates
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Disconnect server
+  wrapperPtr = nullptr;
+  printf("[HNZ Server] Server disconnected\n");
+  waitUntil(southEventsReceived, 1, 30000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+  });
+  if(HasFatalFailure()) return;
+
 }

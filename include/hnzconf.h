@@ -40,6 +40,8 @@ constexpr char GI_REPEAT_COUNT[] = "gi_repeat_count";
 constexpr char GI_TIME[] = "gi_time";
 constexpr char C_ACK_TIME[] = "c_ack_time";
 constexpr char CMD_RECV_TIMEOUT[] = "cmd_recv_timeout";
+constexpr char SOUTH_MONITORING[] = "south_monitoring";
+constexpr char SOUTH_MONITORING_ASSET[] = "asset";
 
 constexpr char JSON_EXCHANGED_DATA_NAME[] = "exchanged_data";
 constexpr char DATAPOINTS[] = "datapoints";
@@ -259,6 +261,13 @@ class HNZConf {
    */
   long long int get_cmd_recv_timeout() const { return m_cmd_recv_timeout; }
 
+  /**
+   * Get the "asset" name for south plugin monitoring event
+   *
+   * @return  string
+   */
+  std::string get_connx_status_signal() const { return m_connx_status; }
+
  private:
   string m_ip_A, m_ip_B = "";
   unsigned int m_port_A, m_port_B;
@@ -276,6 +285,8 @@ class HNZConf {
   unsigned int m_gi_time;
   unsigned int m_c_ack_time;
   long long int m_cmd_recv_timeout;
+
+  std::string m_connx_status = "";
 
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 

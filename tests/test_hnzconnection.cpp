@@ -5,6 +5,7 @@
 
 #include <string>
 
+#include "hnz.h"
 #include "hnzconf.h"
 #include "hnzconnection.h"
 

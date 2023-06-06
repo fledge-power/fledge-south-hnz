@@ -10,18 +10,14 @@
  *
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
-#include <config_category.h>
-#include <logger.h>
-#include <plugin_api.h>
-#include <reading.h>
-
 #include <atomic>
-#include <sstream>
 #include <thread>
+#include <mutex>
+
+#include <reading.h>
+#include <plugin_api.h>
 
 #include "hnzconf.h"
-#include "hnzconnection.h"
-#include "hnzpath.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -145,9 +141,7 @@ class HNZ {
   /**
    * Sends a CG request (reset counters if any was already in progress)
    */
-  void sendInitialGI() {
-    m_hnz_connection->sendInitialGI();
-  }
+  void sendInitialGI();
 
 private:
   string m_asset;  // Plugin name in fledge

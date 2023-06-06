@@ -12,11 +12,7 @@
 #define HNZConf_H
 
 #include <map>
-#include <sstream>
-
-#include "logger.h"
 #include "rapidjson/document.h"
-#include "rapidjson/error/en.h"
 
 constexpr char JSON_CONF_NAME[] = "protocol_stack";
 constexpr char NAME[] = "name";

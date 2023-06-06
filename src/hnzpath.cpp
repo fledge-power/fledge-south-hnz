@@ -7,6 +7,7 @@
  *
  * Author: Justin Facquet
  */
+#include <logger.h>
 
 #include "hnz.h"
 #include "hnzpath.h"

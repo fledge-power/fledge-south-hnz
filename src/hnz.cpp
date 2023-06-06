@@ -8,7 +8,13 @@
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
 
+#include <logger.h>
+
+#include <hnz_server.h>
+
 #include "hnz.h"
+#include "hnzconnection.h"
+#include "hnzpath.h"
 
 HNZ::HNZ() : m_hnz_conf(new HNZConf), m_is_running(false) {}
 
@@ -633,4 +639,8 @@ void HNZ::GICompleted(bool success) {
     updateGiStatus(GiStatus::FAILED);
   }
   resetGIQueue();
+}
+
+void HNZ::sendInitialGI() {
+  m_hnz_connection->sendInitialGI();
 }

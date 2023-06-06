@@ -8,7 +8,10 @@
  * Author: Justin Facquet
  */
 
+#include <logger.h>
+
 #include "hnzconf.h"
+#include "rapidjson/error/en.h"
 
 HNZConf::HNZConf()
     : m_config_is_complete(false), m_exchange_data_is_complete(false) {}

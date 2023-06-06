@@ -11,15 +11,13 @@
 #ifndef HNZPath_H
 #define HNZPath_H
 
-#include <logger.h>
-#include <math.h>
-
 #include <atomic>
 #include <list>
 #include <queue>
 #include <thread>
 
-#include "hnz_client.h"
+#include <hnz_client.h>
+
 #include "hnzconnection.h"
 
 #define CONNECTION 0

@@ -70,9 +70,27 @@ void HNZConnection::stop() {
   Logger::getLogger()->info("HNZ Connection stopped !");
 }
 
-void HNZConnection::GI_completed() { 
+void HNZConnection::checkGICompleted(bool success) { 
+  // GI is a success
+  if (success) {
+    m_hnz_fledge->GICompleted(true);
+    return;
+  }
+  // GI not completed in time or last TS received with other missing TS
+  if (m_active_path->gi_repeat > gi_repeat_count_max) {
+    // GI failed
+    m_hnz_fledge->GICompleted(false);
+  } else {
+    Logger::getLogger()->warn("General Interrogation Timeout, repeat GI");
+    // Clean queue in HNZ class
+    m_hnz_fledge->resetGIQueue();
+    // Send a new GI
+    m_active_path->sendGeneralInterrogation();
+  }
+}
+
+void HNZConnection::onGICompleted() { 
   m_active_path->gi_repeat = 0;
-  updateGiStatus(GiStatus::FINISHED);
 }
 
 void HNZConnection::m_manageMessages() {
@@ -144,20 +162,7 @@ void HNZConnection::m_check_GI() {
   // Check the status of an ongoing GI
   if (m_active_path->gi_repeat != 0) {
     if (m_active_path->gi_start_time + gi_time_max < m_current) {
-      // GI not completed in time
-      if (m_active_path->gi_repeat > gi_repeat_count_max) {
-        // GI failed
-        Logger::getLogger()->error("General Interrogation FAILED !");
-        m_active_path->gi_repeat = 0;
-        // DF.GLOB.TS : nothing to do in HNZ
-        updateGiStatus(GiStatus::FAILED);
-      } else {
-        Logger::getLogger()->warn("General Interrogation Timeout, repeat GI");
-        // Clean queue in HNZ class
-        m_hnz_fledge->resetGIQueue();
-        // Send a new GI
-        m_active_path->sendGeneralInterrogation();
-      }
+      checkGICompleted(false);
     }
   }
 

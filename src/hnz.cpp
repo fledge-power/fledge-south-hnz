@@ -8,7 +8,13 @@
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
 
+#include <logger.h>
+
+#include <hnz_server.h>
+
 #include "hnz.h"
+#include "hnzconnection.h"
+#include "hnzpath.h"
 
 HNZ::HNZ() : m_hnz_conf(new HNZConf), m_is_running(false) {}
 
@@ -256,7 +262,6 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& d
 }
 
 void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& data) {
-  readings.clear();
   string msg_code = "TS";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
@@ -281,20 +286,22 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
     params.value = value;
     params.valid = valid;
     params.cg = true;
-    m_gi_readings_temp.push_back(m_prepare_reading(params));
+    m_gi_addresses_received.push_back(msg_address);
+    readings.push_back(m_prepare_reading(params));
   }
 
   // Check if GI is complete
-  if (!m_gi_readings_temp.empty() &&
-      (m_gi_readings_temp.size() == m_hnz_conf->getNumberCG())) {
-    Logger::getLogger()->info("GI completed, push data to fledge.");
-    m_hnz_connection->GI_completed();
-    m_sendToFledge(m_gi_readings_temp);
-    m_gi_readings_temp.clear();
-  } else {
-    if (getGiStatus() == GiStatus::STARTED) {
-      updateGiStatus(GiStatus::IN_PROGRESS);
+  if (!m_gi_addresses_received.empty()) {
+    // All expected TS received: GI succeeded
+    if (m_gi_addresses_received.size() == m_hnz_conf->getNumberCG()) {
+      m_hnz_connection->checkGICompleted(true);
+    // Last expected TS received but some other TS were missing: GI failed
+    } else if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {
+      m_hnz_connection->checkGICompleted(false);
     }
+  }
+  if (getGiStatus() == GiStatus::STARTED) {
+    updateGiStatus(GiStatus::IN_PROGRESS);
   }
 }
 
@@ -620,4 +627,20 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
   auto* southEvent = new Datapoint("south_event", dpv);
   std::vector<Reading> status_readings = {Reading(asset, southEvent)};
   m_sendToFledge(status_readings);
+}
+
+void HNZ::GICompleted(bool success) { 
+  m_hnz_connection->onGICompleted();
+  if (success) {
+    Logger::getLogger()->info("General Interrogation completed.");
+    updateGiStatus(GiStatus::FINISHED);
+  } else {
+    Logger::getLogger()->error("General Interrogation FAILED !");
+    updateGiStatus(GiStatus::FAILED);
+  }
+  resetGIQueue();
+}
+
+void HNZ::sendInitialGI() {
+  m_hnz_connection->sendInitialGI();
 }

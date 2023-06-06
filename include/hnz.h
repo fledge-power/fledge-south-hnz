@@ -85,7 +85,7 @@ class HNZ {
   /**
    * Reset the GI queue. Delete previous TSCG received.
    */
-  void resetGIQueue() { m_gi_readings_temp.clear(); };
+  void resetGIQueue() { m_gi_addresses_received.clear(); };
 
   /**
    * Called by Fledge to send a command message
@@ -135,6 +135,12 @@ class HNZ {
    */
   GiStatus getGiStatus();
 
+  /**
+   * GI is complete, send GI status and clear timer.
+   * @param success Indicates if the GIT was completed with success (true) or if it failed (false)
+   */
+  void GICompleted(bool success);
+
  protected:
   /**
    * Sends a CG request (reset counters if any was already in progress)
@@ -148,8 +154,8 @@ private:
   atomic<bool> m_is_running;
   thread *m_receiving_thread_A,
       *m_receiving_thread_B = nullptr;  // Receiving threads
-  vector<Reading> m_gi_readings_temp;  // Contains all Reading of GI waiting for
-                                       // the completeness check
+  // Contains all addressed of the TS received in response to a GI request
+  vector<unsigned int> m_gi_addresses_received;  
 
   // Others HNZ related class
   HNZConf* m_hnz_conf = nullptr;              // HNZ Configuration

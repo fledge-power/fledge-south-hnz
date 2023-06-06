@@ -170,6 +170,8 @@ TEST_F(HNZConfTest, GetLabelUnknown) {
 
 TEST_F(HNZConfTest, GetConnxStatusSignal) { ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "TEST_ASSET"); }
 
+TEST_F(HNZConfTest, GetLastTSAddress) { ASSERT_EQ(hnz_conf->getLastTSAddress(), 511); }
+
 string min_protocol_stack_def = QUOTE({
   "protocol_stack" : {
     "name" : "hnzclient",
@@ -218,6 +220,8 @@ TEST(HNZCONF, MinimumConf) {
   ASSERT_EQ(hnz_conf->get_gi_time(), 255);
 
   ASSERT_EQ(hnz_conf->get_c_ack_time(), 10);
+
+  ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "");
 
   delete hnz_conf;
 }

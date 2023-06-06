@@ -705,9 +705,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(frames, 0x13);
   ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after gi_repeat_count was reached, but found: " << BasicHNZServer::frameToStr(CGframe);
   
-
   ///////////////////////////////////////
-  // Send TS1 + TS2 + TS3 as CG answer
+  // Send TS1 + TS2 only, then TS1 + TS2 + TS3 as CG answer
   ///////////////////////////////////////
   hnz->sendCG();
   printf("[HNZ south plugin] CG request 2 sent\n");
@@ -717,22 +716,68 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
   if(HasFatalFailure()) return;
 
-  // Send only one of the two expected TS
+  // Send only first of the two expected TS
   server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
   printf("[HNZ Server] TSCG 1 sent\n");
   this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
 
-  // Only one of the 2 TS CG messages were sent, check that the TS have not yet been transmitted
-  ASSERT_EQ(dataObjectsReceived, 0);
+  // Only first of the 2 TS CG messages were sent, it contains data for TS1 and TS2 only
+  ASSERT_EQ(dataObjectsReceived, 2);
+  resetCounters();
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TS1");
+  validateReading(currentReading, "TS1", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "511"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TS2");
+  validateReading(currentReading, "TS2", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "522"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  if(HasFatalFailure()) return;
+
   // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
   frames = server->popLastFramesReceived();
   CGframe = findFrameWithId(frames, 0x13);
   ASSERT_NE(CGframe.get(), nullptr) << "Cound not find CG in frames received: " << BasicHNZServer::framesToStr(frames);
 
-  // Send both TS this time (new CG was sent so the TS received earlier is ignored)
-  server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  // Send only second of the two expected TS (new CG was sent so the TS received earlier are ignored)
   server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
   printf("[HNZ Server] TSCG 2 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
+
+  // Only second of the 2 TS CG messages were sent, it contains data for TS3
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TS3");
+  validateReading(currentReading, "TS3", {
+    {"do_type", {"string", "TS"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "577"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}}
+  });
+  if(HasFatalFailure()) return;
+
+  // Extra CG messages should have been sent automatically because some TS are missing and last expected TS was received
+  frames = server->popLastFramesReceived();
+  CGframe = findFrameWithId(frames, 0x13);
+  ASSERT_NE(CGframe.get(), nullptr) << "Cound not find CG in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send both TS this time (new CG was sent so the TS received earlier are ignored)
+  server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
+  printf("[HNZ Server] TSCG 3 sent\n");
   this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
 
   // All TS were received so no more CG should be sent automatically any more
@@ -743,7 +788,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 3);
   resetCounters();
-  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TS1");
+  currentReading = popFrontReadingsUntil("TS1");
   validateReading(currentReading, "TS1", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
@@ -787,7 +832,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
 
   server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
-  printf("[HNZ Server] TSCG 3 sent\n");
+  printf("[HNZ Server] TSCG 4 sent\n");
   waitUntil(dataObjectsReceived, 3, 1000);
 
   // Check that ingestCallback had been called
@@ -1475,7 +1520,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   if(HasFatalFailure()) return;
 
   // Wait for all CG attempts to expire
-  printf("[HNZ south plugin] waiting for CG timeout...\n");
+  printf("[HNZ south plugin] waiting for full CG timeout...\n");
   waitUntil(southEventsReceived, 1, 3000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);

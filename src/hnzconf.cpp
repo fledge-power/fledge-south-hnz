@@ -149,6 +149,7 @@ void HNZConf::importExchangedDataJson(const string &json) {
 
   if (!m_check_array(info, DATAPOINTS)) return;
 
+  m_lastTSAddr = 0;
   for (const Value &msg : info[DATAPOINTS].GetArray()) {
     if (!msg.IsObject()) return;
 
@@ -184,6 +185,9 @@ void HNZConf::importExchangedDataJson(const string &json) {
         msg_address = static_cast<unsigned int>(tmp);
       }
       m_msg_list[msg_code][m_remote_station_addr][msg_address] = label;
+      if (msg_address > m_lastTSAddr) {
+        m_lastTSAddr = msg_address;
+      }
     }
   }
 
@@ -218,6 +222,10 @@ unsigned long HNZConf::getNumberCG() const {
     Logger::getLogger()->error("Error while retrieving the number of TSCG");
   }
   return nb;
+}
+
+unsigned int HNZConf::getLastTSAddress() const {
+  return m_lastTSAddr;
 }
 
 bool HNZConf::m_check_string(const Value &json, const char *key) {

@@ -12,12 +12,9 @@
 #define HNZConnection_H
 
 #include <atomic>
+#include <thread>
 
 #include "hnzconf.h"
-
-namespace std {
-  class thread;
-}
 
 class HNZ;
 class HNZPath;
@@ -46,9 +43,17 @@ class HNZConnection {
   void stop();
 
   /**
-   * GI is complete, stop timers.
+   * When a signle GI request is over, in case it failed, retry if there is any retry left.
+   * If it succeeded mark the whole GI as finished, if there is no more retry left, mark the whole GI as failed.
+   * @param success Indicates if the GI was completed with success (true) or if it failed (false)
    */
-  void GI_completed();
+  void checkGICompleted(bool success);
+
+  /**
+   * GI is complete, stop timers.
+   * @param success Indicates if the GI was completed with success (true) or if it failed (false)
+   */
+  void onGICompleted();
 
   /**
    * Get the path currently in use by HNZ to exchange messages (informations and

@@ -133,6 +133,12 @@ class HNZConf {
   unsigned long getNumberCG() const;
 
   /**
+   * Get the address of the last TS expected when doing a CG.
+   * Used to avoid waiting for full timeout when somme TS are missing during a GI.
+   */
+  unsigned int getLastTSAddress() const;
+
+  /**
    * Get the IP address to remote IEC 104 server (A path)
    *
    * @return string
@@ -287,6 +293,7 @@ class HNZConf {
   long long int m_cmd_recv_timeout;
 
   std::string m_connx_status = "";
+  unsigned int m_lastTSAddr = 0;
 
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 

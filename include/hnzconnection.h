@@ -104,6 +104,7 @@ class HNZConnection {
   std::thread* m_messages_thread = nullptr;  // Main thread that monitors messages
   std::atomic<bool> m_is_running;  // If false, the connection thread will stop
   uint64_t m_current;         // Store the last time requested
+  uint64_t m_elapsedTimeMs;   // Store elapsed time in milliseconds every time m_current is updated
   uint64_t m_days_since_epoch;
 
   // Plugin configuration
@@ -145,10 +146,14 @@ class HNZConnection {
   void m_check_command_timer();
 
   /**
-   * Get the current time and save it.
-   * @return current timestamp
+   * Update the current time and time elapsed since last call to this function
    */
-  uint64_t m_update_current_time();
+  void m_update_current_time();
+
+  /**
+   * Update the timer for quality update
+   */
+  void m_update_quality_update_timer();
 
   HNZConf* m_hnz_conf = nullptr;  // HNZ Configuration
   HNZ* m_hnz_fledge = nullptr;    // HNZ Fledge

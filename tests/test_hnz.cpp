@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 #include <mutex>
+#include <sstream>
 
 #include "hnz.h"
 #include "server/basic_hnz_server.h"
@@ -281,6 +282,16 @@ class HNZTest : public testing::Test {
     }
   }
 
+  static std::vector<std::string> split(const std::string &s, char delim) {
+    std::stringstream ss(s);
+    std::string item;
+    std::vector<std::string> elems;
+    while (std::getline(ss, item, delim)) {
+      elems.push_back(std::move(item));
+    }
+    return elems;
+  }
+
   struct ReadingInfo {
     std::string type;
     std::string value;
@@ -294,7 +305,8 @@ class HNZTest : public testing::Test {
     ASSERT_NE(nullptr, data_object) << assetName << ": data_object is null";
     // Validate existance of the required keys and non-existance of the others
     for(const std::string& name: allAttributeNames) {
-      ASSERT_EQ(hasChild(*data_object, name), static_cast<bool>(attributes.count(name))) << assetName << ": Attribute not found: " << name;;
+      bool attributeIsExpected = static_cast<bool>(attributes.count(name));
+      ASSERT_EQ(hasChild(*data_object, name), attributeIsExpected) << assetName << ": Attribute " << (attributeIsExpected ? "not found: " : "should not exist: ") << name;
     }
     // Validate value and type of each key
     for(auto const& kvp: attributes) {
@@ -306,6 +318,14 @@ class HNZTest : public testing::Test {
       }
       else if(type == std::string("int64_t")) {
         ASSERT_EQ(std::stoll(expectedValue), getIntValue(getChild(*data_object, name))) << assetName << ": Unexpected value for attribute " << name;
+      }
+      else if(type == std::string("int64_t_range")) {
+        auto splitted = split(expectedValue, ';');
+        ASSERT_EQ(splitted.size(), 2);
+        const std::string& expectedRangeMin = splitted.front();
+        const std::string& expectedRangeMax = splitted.back();
+        ASSERT_GE(getIntValue(getChild(*data_object, name)), std::stoll(expectedRangeMin)) << assetName << ": Value lower than min for attribute " << name;
+        ASSERT_LE(getIntValue(getChild(*data_object, name)), std::stoll(expectedRangeMax)) << assetName << ": Value higher than max for attribute " << name;
       }
       else {
         FAIL() << assetName << ": Unknown type: " << type;
@@ -382,6 +402,102 @@ class HNZTest : public testing::Test {
     }
   }
 
+  static void validateAllTIQualityUpdate(bool invalid, bool outdated) {
+    // We only expect invalid messages at init, and during init we will also receive 3 extra messages for the failed CG request
+    int expectedMessages = invalid ? 10 : 7;
+    int maxWaitTimeMs = 3000; // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000)
+    std::string validStr(invalid ? "1" : "0");
+    std::string ourdatedStr(outdated ? "1" : "0");
+    printf("[HNZ Server] Waiting for quality update...\n");
+    waitUntil(dataObjectsReceived, expectedMessages, maxWaitTimeMs);
+    ASSERT_EQ(dataObjectsReceived, expectedMessages);
+    resetCounters();
+    unsigned long epochMs = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    // First 7 messages are from init
+    // Those messages are expected to be sent before the CG time frame
+    std::string timeRangeStr(to_string(epochMs - (maxWaitTimeMs + 10000)) + ";" + to_string(epochMs - maxWaitTimeMs));
+    std::shared_ptr<Reading> currentReading = nullptr;
+    for (int i = 0; i < 4; i++) {
+      std::string label("TM" + to_string(i + 1));
+      currentReading = popFrontReadingsUntil(label);
+      validateReading(currentReading, label, {
+        {"do_type", {"string", "TM"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", std::to_string(20 + i)}},
+        {"do_valid", {"int64_t", validStr}},
+        {"do_an", {"string", "TMA"}},
+        {"do_outdated", {"int64_t", ourdatedStr}},
+      });
+      if(HasFatalFailure()) return;
+    }
+    for (int i = 0; i < 3; i++) {
+      std::string label("TS" + to_string(i + 1));
+      currentReading = popFrontReadingsUntil(label);
+      validateReading(currentReading, label, {
+        {"do_type", {"string", "TS"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", addrByTS[label]}},
+        {"do_valid", {"int64_t", validStr}},
+        {"do_cg", {"int64_t", "0"}},
+        {"do_outdated", {"int64_t", ourdatedStr}},
+        {"do_ts", {"int64_t_range", timeRangeStr}},
+        {"do_ts_iv", {"int64_t", "0"}},
+        {"do_ts_c", {"int64_t", "0"}},
+        {"do_ts_s", {"int64_t", "0"}},
+      });
+      if(HasFatalFailure()) return;
+    }
+    if (expectedMessages > 7) {
+      // Last 3 messages are from failed initial CG
+      // Those messages are expected to be sent during the CG time frame
+      std::string timeRangeStr2(to_string(epochMs - maxWaitTimeMs) + ";" + to_string(epochMs));
+      for (int i = 0; i < 3; i++) {
+        std::string label("TS" + to_string(i + 1));
+        currentReading = popFrontReadingsUntil(label);
+        validateReading(currentReading, label, {
+          {"do_type", {"string", "TS"}},
+          {"do_station", {"int64_t", "1"}},
+          {"do_addr", {"int64_t", addrByTS[label]}},
+          {"do_valid", {"int64_t", validStr}},
+          {"do_cg", {"int64_t", "0"}},
+          {"do_outdated", {"int64_t", ourdatedStr}},
+          {"do_ts", {"int64_t_range", timeRangeStr2}},
+          {"do_ts_iv", {"int64_t", "0"}},
+          {"do_ts_c", {"int64_t", "0"}},
+          {"do_ts_s", {"int64_t", "0"}},
+        });
+        if(HasFatalFailure()) return;
+      }
+    }
+  }
+
+  void validateMissingTSCGQualityUpdate(const std::vector<std::string> labels, bool validateCount = true) {
+    if (validateCount) {
+      ASSERT_EQ(dataObjectsReceived, labels.size());
+      resetCounters();
+    }
+    unsigned long epochMs = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    std::string timeRangeStr(to_string(epochMs - 1000) + ";" + to_string(epochMs));
+    std::shared_ptr<Reading> currentReading = nullptr;
+    for(const auto& label: labels) {
+      currentReading = popFrontReadingsUntil(label);
+      validateReading(currentReading, label, {
+        {"do_type", {"string", "TS"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", addrByTS[label]}},
+        {"do_valid", {"int64_t", "1"}},
+        {"do_cg", {"int64_t", "0"}},
+        {"do_outdated", {"int64_t", "0"}},
+        {"do_ts", {"int64_t_range", timeRangeStr}},
+        {"do_ts_iv", {"int64_t", "0"}},
+        {"do_ts_c", {"int64_t", "0"}},
+        {"do_ts_s", {"int64_t", "0"}},
+      });
+      if(HasFatalFailure()) return;
+    }
+  }
+   
+
   // When a test using a BasicHNZServer completes, the server is not destroyed immediately
   // so the next test can start before the server is deleted.
   // Because of that the port of the server from the previous test is still in use, so when starting a new test
@@ -447,6 +563,7 @@ class HNZTest : public testing::Test {
   static constexpr unsigned long oneHourMs = 3600000; // 60 * 60 * 1000
   static constexpr unsigned long oneDayMs = 86400000; // 24 * 60 * 60 * 1000
   static constexpr unsigned long tenMinMs = 600000;   // 10 * 60 * 1000
+  static std::map<std::string, std::string> addrByTS;
 };
 
 HNZTestComp* HNZTest::hnz;
@@ -456,12 +573,13 @@ int HNZTest::southEventsReceived;
 queue<std::shared_ptr<Reading>> HNZTest::storedReadings;
 std::recursive_mutex HNZTest::storedReadingsMutex;
 const std::vector<std::string> HNZTest::allAttributeNames = {
-  "do_type", "do_station", "do_addr", "do_value", "do_valid", "do_ts", "do_ts_iv", "do_ts_c", "do_ts_s", "do_cg"
+  "do_type", "do_station", "do_addr", "do_value", "do_valid", "do_ts", "do_ts_iv", "do_ts_c", "do_ts_s", "do_cg", "do_outdated"
 };
 const std::vector<std::string> HNZTest::allSouthEventAttributeNames = {"connx_status", "gi_status"};
 constexpr unsigned long HNZTest::oneHourMs;
 constexpr unsigned long HNZTest::oneDayMs;
 constexpr unsigned long HNZTest::tenMinMs;
+std::map<std::string, std::string> HNZTest::addrByTS = {{"TS1", "511"}, {"TS2", "522"}, {"TS3", "577"}};
 
 class ServersWrapper {
   public:
@@ -516,6 +634,8 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Validate epoch timestamp encoding
@@ -591,6 +711,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "0"}},
     {"do_cg", {"int64_t", "0"}},
+    {"do_outdated", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
@@ -616,6 +737,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
     {"do_cg", {"int64_t", "0"}},
+    {"do_outdated", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
@@ -644,6 +766,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
     {"do_cg", {"int64_t", "0"}},
+    {"do_outdated", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
@@ -673,6 +796,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
     {"do_cg", {"int64_t", "0"}},
+    {"do_outdated", {"int64_t", "0"}},
     {"do_ts", {"int64_t", to_string(expectedEpochMs)}},
     {"do_ts_iv", {"int64_t", "0"}},
     {"do_ts_c", {"int64_t", "0"}},
@@ -685,6 +809,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // CG abandonned after gi_repeat_count retries
@@ -704,6 +830,9 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
   std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(frames, 0x13);
   ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after gi_repeat_count was reached, but found: " << BasicHNZServer::frameToStr(CGframe);
+  // Validate quality update for TS messages that were not sent
+  validateMissingTSCGQualityUpdate({"TS1", "TS2", "TS3"});
+  if(HasFatalFailure()) return;
   
   ///////////////////////////////////////
   // Send TS1 + TS2 only, then TS1 + TS2 + TS3 as CG answer
@@ -724,26 +853,21 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Only first of the 2 TS CG messages were sent, it contains data for TS1 and TS2 only
   ASSERT_EQ(dataObjectsReceived, 2);
   resetCounters();
-  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TS1");
-  validateReading(currentReading, "TS1", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "511"}},
-    {"do_value", {"int64_t", "1"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
-  });
-  if(HasFatalFailure()) return;
-  currentReading = popFrontReadingsUntil("TS2");
-  validateReading(currentReading, "TS2", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "522"}},
-    {"do_value", {"int64_t", "1"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
-  });
-  if(HasFatalFailure()) return;
+  std::shared_ptr<Reading> currentReading = nullptr;
+  for (int i = 0; i < 2; i++) {
+    std::string label("TS" + to_string(i + 1));
+    currentReading = popFrontReadingsUntil(label);
+    validateReading(currentReading, label, {
+      {"do_type", {"string", "TS"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", addrByTS[label]}},
+      {"do_value", {"int64_t", "1"}},
+      {"do_valid", {"int64_t", "0"}},
+      {"do_cg", {"int64_t", "1"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
+    if(HasFatalFailure()) return;
+  }
 
   // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
   frames = server->popLastFramesReceived();
@@ -765,7 +889,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     {"do_addr", {"int64_t", "577"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
+    {"do_cg", {"int64_t", "1"}},
+    {"do_outdated", {"int64_t", "0"}},
   });
   if(HasFatalFailure()) return;
 
@@ -788,36 +913,20 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 3);
   resetCounters();
-  currentReading = popFrontReadingsUntil("TS1");
-  validateReading(currentReading, "TS1", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "511"}},
-    {"do_value", {"int64_t", "1"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
-  });
-  if(HasFatalFailure()) return;
-  currentReading = popFrontReadingsUntil("TS2");
-  validateReading(currentReading, "TS2", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "522"}},
-    {"do_value", {"int64_t", "1"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
-  });
-  if(HasFatalFailure()) return;
-  currentReading = popFrontReadingsUntil("TS3");
-  validateReading(currentReading, "TS3", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "577"}},
-    {"do_value", {"int64_t", "1"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
-  });
-  if(HasFatalFailure()) return;
+  for (int i = 0; i < 3; i++) {
+    std::string label("TS" + to_string(i + 1));
+    currentReading = popFrontReadingsUntil(label);
+    validateReading(currentReading, label, {
+      {"do_type", {"string", "TS"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", addrByTS[label]}},
+      {"do_value", {"int64_t", "1"}},
+      {"do_valid", {"int64_t", "0"}},
+      {"do_cg", {"int64_t", "1"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
+    if(HasFatalFailure()) return;
+  }
 
   ///////////////////////////////////////
   // Send TS1 + TS2 + TS3 as CG answer with invalid flag for TS3
@@ -838,35 +947,79 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 3);
   resetCounters();
-  currentReading = popFrontReadingsUntil("TS1");
-  validateReading(currentReading, "TS1", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "511"}},
-    {"do_value", {"int64_t", "0"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
-  });
+  for (int i = 0; i < 3; i++) {
+    std::string label("TS" + to_string(i + 1));
+    std::string valid(label == "TS3" ? "1" : "0");
+    currentReading = popFrontReadingsUntil(label);
+    validateReading(currentReading, label, {
+      {"do_type", {"string", "TS"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", addrByTS[label]}},
+      {"do_value", {"int64_t", "0"}},
+      {"do_valid", {"int64_t", valid}},
+      {"do_cg", {"int64_t", "1"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
+    if(HasFatalFailure()) return;
+  }
+
+  ///////////////////////////////////////
+  // Send TS3 only as CG answer
+  ///////////////////////////////////////
+  hnz->sendCG();
+  printf("[HNZ south plugin] CG request 4 sent\n");
+  this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
+
+  // Find the CG frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
   if(HasFatalFailure()) return;
-  currentReading = popFrontReadingsUntil("TS2");
-  validateReading(currentReading, "TS2", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "522"}},
-    {"do_value", {"int64_t", "0"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}}
-  });
-  if(HasFatalFailure()) return;
+
+  // Abort the first two of the 3 CG requests by sending the last TS only
+  for(int i=0 ; i<2 ; i++) {
+    // Send only second of the two expected TS
+    server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
+    printf("[HNZ Server] TSCG %d sent\n", (5+i));
+    waitUntil(dataObjectsReceived, 1, 1000);
+
+    // Check that ingestCallback had been called
+    ASSERT_EQ(dataObjectsReceived, 1);
+    resetCounters();
+    currentReading = popFrontReadingsUntil("TS3");
+    validateReading(currentReading, "TS3", {
+      {"do_type", {"string", "TS"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", "577"}},
+      {"do_value", {"int64_t", "1"}},
+      {"do_valid", {"int64_t", "0"}},
+      {"do_cg", {"int64_t", "1"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
+    if(HasFatalFailure()) return;
+  }
+
+  // Send only second of the two expected TS on the final CG attempt
+  server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
+  printf("[HNZ Server] TSCG 7 sent\n");
+  waitUntil(dataObjectsReceived, 3, 1000);
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(dataObjectsReceived, 3);
+  resetCounters();
+  // Only TS3 was received, the other two were sent as invalid quality update
   currentReading = popFrontReadingsUntil("TS3");
   validateReading(currentReading, "TS3", {
     {"do_type", {"string", "TS"}},
     {"do_station", {"int64_t", "1"}},
     {"do_addr", {"int64_t", "577"}},
-    {"do_value", {"int64_t", "0"}},
-    {"do_valid", {"int64_t", "1"}},
-    {"do_cg", {"int64_t", "1"}}
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
+    {"do_cg", {"int64_t", "1"}},
+    {"do_outdated", {"int64_t", "0"}},
   });
+  if(HasFatalFailure()) return;
+
+  // Validate quality update for TS messages that were not sent
+  validateMissingTSCGQualityUpdate({"TS1", "TS2"}, false);
   if(HasFatalFailure()) return;
 }
 
@@ -874,6 +1027,8 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TMA
@@ -902,6 +1057,7 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
       {"do_value", {"int64_t", std::to_string(values[i])}},
       {"do_valid", {"int64_t", "0"}},
       {"do_an", {"string", "TMA"}},
+      {"do_outdated", {"int64_t", "0"}},
     });
     if(HasFatalFailure()) return;
   }
@@ -919,26 +1075,18 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
 
   for (int i = 0; i < 4; i++) {
     std::string label("TM" + to_string(i + 1));
+    std::string value(label == "TM4" ? "0" : std::to_string(values[i]));
+    std::string valid(label == "TM4" ? "1" : "0");
     currentReading = popFrontReadingsUntil(label);
-    if (i < 3) {
-      validateReading(currentReading, label, {
-        {"do_type", {"string", "TM"}},
-        {"do_station", {"int64_t", "1"}},
-        {"do_addr", {"int64_t", std::to_string(20 + i)}},
-        {"do_value", {"int64_t", std::to_string(values[i])}},
-        {"do_valid", {"int64_t", "0"}},
-        {"do_an", {"string", "TMA"}},
-      });
-    } else {
-      validateReading(currentReading, label, {
-        {"do_type", {"string", "TM"}},
-        {"do_station", {"int64_t", "1"}},
-        {"do_addr", {"int64_t", std::to_string(20 + i)}},
-        {"do_value", {"int64_t", "0"}},
-        {"do_valid", {"int64_t", "1"}},
-        {"do_an", {"string", "TMA"}},
-      });
-    }
+    validateReading(currentReading, label, {
+      {"do_type", {"string", "TM"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", std::to_string(20 + i)}},
+      {"do_value", {"int64_t", value}},
+      {"do_valid", {"int64_t", valid}},
+      {"do_an", {"string", "TMA"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
     if(HasFatalFailure()) return;
   }
 }
@@ -947,6 +1095,8 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TMN 8 bits
@@ -975,6 +1125,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
       {"do_value", {"int64_t", std::to_string(values[i])}},
       {"do_valid", {"int64_t", "0"}},
       {"do_an", {"string", "TM8"}},
+      {"do_outdated", {"int64_t", "0"}},
     });
     if(HasFatalFailure()) return;
   }
@@ -992,26 +1143,17 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
 
   for (int i = 0; i < 4; i++) {
     std::string label("TM" + to_string(i + 1));
+    std::string valid(label == "TM4" ? "1" : "0");
     currentReading = popFrontReadingsUntil(label);
-    if (i < 3) {
-      validateReading(currentReading, label, {
-        {"do_type", {"string", "TM"}},
-        {"do_station", {"int64_t", "1"}},
-        {"do_addr", {"int64_t", std::to_string(20 + i)}},
-        {"do_value", {"int64_t", std::to_string(values[i])}},
-        {"do_valid", {"int64_t", "0"}},
-        {"do_an", {"string", "TM8"}},
-      });
-    } else {
-      validateReading(currentReading, label, {
-        {"do_type", {"string", "TM"}},
-        {"do_station", {"int64_t", "1"}},
-        {"do_addr", {"int64_t", std::to_string(20 + i)}},
-        {"do_value", {"int64_t", std::to_string(values[i])}},
-        {"do_valid", {"int64_t", "1"}},
-        {"do_an", {"string", "TM8"}},
-      });
-    }
+    validateReading(currentReading, label, {
+      {"do_type", {"string", "TM"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", std::to_string(20 + i)}},
+      {"do_value", {"int64_t", std::to_string(values[i])}},
+      {"do_valid", {"int64_t", valid}},
+      {"do_an", {"string", "TM8"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
     if(HasFatalFailure()) return;
   }
   
@@ -1040,6 +1182,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
     {"do_value", {"int64_t", std::to_string(val11)}},
     {"do_valid", {"int64_t", "0"}},
     {"do_an", {"string", "TM16"}},
+    {"do_outdated", {"int64_t", "0"}},
   });
   if(HasFatalFailure()) return;
   currentReading = popFrontReadingsUntil("TM3");
@@ -1050,6 +1193,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
     {"do_value", {"int64_t", std::to_string(val12)}},
     {"do_valid", {"int64_t", "0"}},
     {"do_an", {"string", "TM16"}},
+    {"do_outdated", {"int64_t", "0"}},
   });
   if(HasFatalFailure()) return;
 
@@ -1072,6 +1216,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
     {"do_value", {"int64_t", std::to_string(val11)}},
     {"do_valid", {"int64_t", "0"}},
     {"do_an", {"string", "TM16"}},
+    {"do_outdated", {"int64_t", "0"}},
   });
   if(HasFatalFailure()) return;
   currentReading = popFrontReadingsUntil("TM3");
@@ -1082,6 +1227,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
     {"do_value", {"int64_t", std::to_string(val12)}},
     {"do_valid", {"int64_t", "1"}},
     {"do_an", {"string", "TM16"}},
+    {"do_outdated", {"int64_t", "0"}},
   });
   if(HasFatalFailure()) return;
 }
@@ -1090,6 +1236,8 @@ TEST_F(HNZTest, SendingTCMessages) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TC1
@@ -1150,6 +1298,7 @@ TEST_F(HNZTest, SendingTCMessages) {
     {"do_addr", {"int64_t", "142"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
+    
   });
   if(HasFatalFailure()) return;
 
@@ -1242,6 +1391,8 @@ TEST_F(HNZTest, SendingTVCMessages) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   ///////////////////////////////////////
   // Send TVC1
@@ -1349,6 +1500,8 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
   BasicHNZServer* server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
@@ -1380,6 +1533,8 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   BasicHNZServer* server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
   // Send TC1
   std::string operationTC("TC");
@@ -1467,7 +1622,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   printf("[HNZ south plugin] waiting for connection established...\n");
   BasicHNZServer* server = wrapperPtr->server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
-  // Also wait for initial CG request to expire as happens really short after connection is established
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
   waitUntil(southEventsReceived, 3, 3000);
   // Check that ingestCallback had been called the expected number of times
   ASSERT_EQ(southEventsReceived, 3);
@@ -1519,7 +1674,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   });
   if(HasFatalFailure()) return;
 
-  // Wait for all CG attempts to expire
+  // Wait for all CG attempts to expire (gi_time * (gi_repeat_count+1) * 1000)
   printf("[HNZ south plugin] waiting for full CG timeout...\n");
   waitUntil(southEventsReceived, 1, 3000);
   // Check that ingestCallback had been called only one time

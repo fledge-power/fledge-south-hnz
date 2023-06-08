@@ -172,6 +172,31 @@ TEST_F(HNZConfTest, GetConnxStatusSignal) { ASSERT_STREQ(hnz_conf->get_connx_sta
 
 TEST_F(HNZConfTest, GetLastTSAddress) { ASSERT_EQ(hnz_conf->getLastTSAddress(), 511); }
 
+TEST_F(HNZConfTest, GetAllMessages) {
+  unsigned int remote_station_addr = 12;
+  unsigned int msg_address = 511;
+  const auto& allMessages = hnz_conf->get_all_messages();
+  ASSERT_EQ(allMessages.size(), 2);
+  ASSERT_EQ(allMessages.count("TS"), 1);
+  ASSERT_EQ(allMessages.count("TM"), 1);
+
+  const auto& allTSMessages = allMessages.at("TS");
+  ASSERT_EQ(allTSMessages.size(), 1);
+  ASSERT_EQ(allTSMessages.count(remote_station_addr), 1);
+  const auto& allTMMessages = allMessages.at("TM");
+  ASSERT_EQ(allTMMessages.size(), 1);
+  ASSERT_EQ(allTMMessages.count(remote_station_addr), 1);
+
+  const auto& allTSForRemoteAddr = allTSMessages.at(remote_station_addr);
+  ASSERT_EQ(allTSForRemoteAddr.size(), 1);
+  ASSERT_EQ(allTSForRemoteAddr.count(msg_address), 1);
+  ASSERT_STREQ(allTSForRemoteAddr.at(msg_address).c_str(), "TS1");
+  const auto& allTMForRemoteAddr = allTMMessages.at(remote_station_addr);
+  ASSERT_EQ(allTMForRemoteAddr.size(), 1);
+  ASSERT_EQ(allTMForRemoteAddr.count(msg_address), 1);
+  ASSERT_STREQ(allTMForRemoteAddr.at(msg_address).c_str(), "TM1");
+}
+
 string min_protocol_stack_def = QUOTE({
   "protocol_stack" : {
     "name" : "hnzclient",

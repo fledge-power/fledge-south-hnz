@@ -8,6 +8,8 @@
  * Author: Lucas Barret, Colin Constans, Justin Facquet
  */
 
+#include <set>
+
 #include <logger.h>
 
 #include <hnz_server.h>
@@ -38,6 +40,9 @@ void HNZ::start() {
   Logger::getLogger()->info("Starting HNZ south plugin...");
 
   m_is_running = true;
+
+  m_sendAllTMQualityReadings(true, false);
+  m_sendAllTSQualityReadings(true, false);
 
   m_receiving_thread_A =
       new thread(&HNZ::receive, this, m_hnz_connection->getActivePath());
@@ -189,6 +194,16 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
   if (!readings.empty()) {
     m_sendToFledge(readings);
   }
+  // Check if GI is complete (make sure we only update the end of GI status after creating readings for all TS received)
+  if ((t == TSCG_CODE) && !m_gi_addresses_received.empty()) {
+    // All expected TS received: GI succeeded
+    if (m_gi_addresses_received.size() == m_hnz_conf->getNumberCG()) {
+      m_hnz_connection->checkGICompleted(true);
+    // Last expected TS received but some other TS were missing: GI failed
+    } else if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {
+      m_hnz_connection->checkGICompleted(false);
+    }
+  }
 }
 
 void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned char>& data) {
@@ -288,17 +303,6 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
     params.cg = true;
     m_gi_addresses_received.push_back(msg_address);
     readings.push_back(m_prepare_reading(params));
-  }
-
-  // Check if GI is complete
-  if (!m_gi_addresses_received.empty()) {
-    // All expected TS received: GI succeeded
-    if (m_gi_addresses_received.size() == m_hnz_conf->getNumberCG()) {
-      m_hnz_connection->checkGICompleted(true);
-    // Last expected TS received but some other TS were missing: GI failed
-    } else if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {
-      m_hnz_connection->checkGICompleted(false);
-    }
   }
   if (getGiStatus() == GiStatus::STARTED) {
     updateGiStatus(GiStatus::IN_PROGRESS);
@@ -417,25 +421,40 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   if(isTS) {
     debugStr += ", cg= " + to_string(params.cg);
   }
+  if(isTM) {
+    debugStr += ", an= " + params.an;
+  }
+  if(isTM || isTS) {
+    debugStr += ", outdated= " + to_string(params.outdated);
+    debugStr += ", qualityUpdate= " + to_string(params.qualityUpdate);
+  }
   if(isTSCE) {
     debugStr += ", ts = " + to_string(params.ts) + ", iv = " + to_string(params.ts_iv) +
                 ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
   }
-  if(isTM) {
-    debugStr += ", an= " + params.an;
-  }
+
   Logger::getLogger()->debug(debugStr);
 
   auto *measure_features = new vector<Datapoint *>;
   measure_features->push_back(m_createDatapoint("do_type", params.msg_code));
   measure_features->push_back(m_createDatapoint("do_station", static_cast<long int>(params.station_addr)));
   measure_features->push_back(m_createDatapoint("do_addr", static_cast<long int>(params.msg_address)));
-  measure_features->push_back(m_createDatapoint("do_value", params.value));
+  // Do not send value when creating a quality update reading
+  if (!params.qualityUpdate) {
+    measure_features->push_back(m_createDatapoint("do_value", params.value));
+  }
   measure_features->push_back(m_createDatapoint("do_valid", static_cast<long int>(params.valid)));
 
+  if(isTM) {
+    measure_features->push_back(m_createDatapoint("do_an", params.an));
+  }
   if(isTS) {
     // Casting "bool" to "long int" result in true => 1 / false => 0
     measure_features->push_back(m_createDatapoint("do_cg", static_cast<long int>(params.cg)));
+  }
+  if(isTM || isTS) {
+    // Casting "bool" to "long int" result in true => 1 / false => 0
+    measure_features->push_back(m_createDatapoint("do_outdated", static_cast<long int>(params.outdated)));
   }
   if (isTSCE) {
     // Casting "unsigned long" into "long" for do_ts in order to match implementation of iec104 plugin
@@ -443,9 +462,6 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
     measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));
     measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(params.ts_c)));
     measure_features->push_back(m_createDatapoint("do_ts_s", static_cast<long int>(params.ts_s)));
-  }
-  if(isTM) {
-    measure_features->push_back(m_createDatapoint("do_an", params.an));
   }
 
   DatapointValue dpv(measure_features, true);
@@ -542,6 +558,13 @@ void HNZ::updateConnectionStatus(ConnectionStatus newState) {
 
   m_connStatus = newState;
 
+  // When connection lost, start timer to update all readings quality
+  if (m_connStatus == ConnectionStatus::NOT_CONNECTED) {
+    m_qualityUpdateTimer = m_qualityUpdateTimeoutMs;
+  } else {
+    m_qualityUpdateTimer = 0;
+  }
+  
   m_sendSouthMonitoringEvent(true, false);
 }
 
@@ -557,6 +580,20 @@ void HNZ::updateGiStatus(GiStatus newState) {
 GiStatus HNZ::getGiStatus() {
   std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
   return m_giStatus;
+}
+
+void HNZ::updateQualityUpdateTimer(long elapsedTimeMs) {
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  // If timer is running
+  if (m_qualityUpdateTimer > 0) {
+    m_qualityUpdateTimer -= elapsedTimeMs;
+    // If timer expired, update quality of all TM and TS to outdated
+    if (m_qualityUpdateTimer <= 0) {
+      m_qualityUpdateTimer = 0;
+      m_sendAllTMQualityReadings(false, true);
+      m_sendAllTSQualityReadings(false, true);
+    } 
+  }
 }
 
 void HNZ::m_sendConnectionStatus() {
@@ -636,6 +673,7 @@ void HNZ::GICompleted(bool success) {
     updateGiStatus(GiStatus::FINISHED);
   } else {
     Logger::getLogger()->error("General Interrogation FAILED !");
+    m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FAILED);
   }
   resetGIQueue();
@@ -643,4 +681,48 @@ void HNZ::GICompleted(bool success) {
 
 void HNZ::sendInitialGI() {
   m_hnz_connection->sendInitialGI();
+}
+
+void HNZ::m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
+  ReadingParameters paramsTemplate;
+  paramsTemplate.msg_code = "TM";
+  paramsTemplate.station_addr = m_remote_address;
+  paramsTemplate.valid = static_cast<unsigned int>(invalid);
+  paramsTemplate.outdated = outdated;
+  paramsTemplate.an = "TMA";
+  paramsTemplate.qualityUpdate = true;
+  m_sendAllTIQualityReadings(paramsTemplate, rejectFilter);
+}
+
+void HNZ::m_sendAllTSQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
+  ReadingParameters paramsTemplate;
+  unsigned long epochMs = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  paramsTemplate.msg_code = "TS";
+  paramsTemplate.station_addr = m_remote_address;
+  paramsTemplate.valid = static_cast<unsigned int>(invalid);
+  paramsTemplate.outdated = outdated;
+  paramsTemplate.cg = false;
+  paramsTemplate.ts = epochMs;
+  paramsTemplate.qualityUpdate = true;
+  m_sendAllTIQualityReadings(paramsTemplate, rejectFilter);
+}
+
+void HNZ::m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, const vector<unsigned int>& rejectFilter /*= {}*/) {
+  set<unsigned int> hashFilter(rejectFilter.begin(), rejectFilter.end());
+  vector<Reading> readings;
+  const auto& allMessages = m_hnz_conf->get_all_messages();
+  const auto& allTMs = allMessages.at(paramsTemplate.msg_code).at(paramsTemplate.station_addr);
+  for(auto const& kvp: allTMs) {
+    unsigned int msg_address = kvp.first;
+    // Skip messages that are part of the reject filter
+    if (hashFilter.count(msg_address) > 0) continue;
+    // Complete the reading param infos
+    ReadingParameters params(paramsTemplate);
+    params.label = kvp.second;
+    params.msg_address = msg_address;
+    readings.push_back(m_prepare_reading(params));
+  }
+  if (!readings.empty()) {
+    m_sendToFledge(readings);
+  }
 }

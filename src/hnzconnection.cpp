@@ -127,6 +127,9 @@ void HNZConnection::m_manageMessages() {
     // Manage command ACK
     m_check_command_timer();
 
+    // Manage quality update
+    m_update_quality_update_timer();
+
     this_thread::sleep_for(milliseconds(100));
   } while (m_is_running);
 }
@@ -204,11 +207,16 @@ void HNZConnection::m_check_command_timer() {
   }
 }
 
-uint64_t HNZConnection::m_update_current_time() {
+void HNZConnection::m_update_current_time() {
+  uint64_t prevTimeMs = m_current;
   m_current =
       duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
-  return m_current;
+  m_elapsedTimeMs = m_current - prevTimeMs;
+}
+
+void HNZConnection::m_update_quality_update_timer() {
+  m_hnz_fledge->updateQualityUpdateTimer(m_elapsedTimeMs);
 }
 
 void HNZConnection::switchPath() {

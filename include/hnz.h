@@ -137,6 +137,12 @@ class HNZ {
    */
   void GICompleted(bool success);
 
+  /**
+   * Update the quality update timer and send quality update if it timed out
+   * @param elapsedTimeMs Time elapsed in milliseconds
+   */
+  void updateQualityUpdateTimer(long elapsedTimeMs);
+
  protected:
   /**
    * Sends a CG request (reset counters if any was already in progress)
@@ -169,6 +175,8 @@ private:
   ConnectionStatus m_connStatus = ConnectionStatus::NOT_CONNECTED;
   GiStatus m_giStatus = GiStatus::IDLE;
   std::recursive_mutex m_connexionGiMutex;
+  long m_qualityUpdateTimer = 0;
+  long m_qualityUpdateTimeoutMs = 500;
 
   /**
    * Waits for new messages and processes them
@@ -241,6 +249,9 @@ private:
     bool cg = false;
     // TM only
     std::string an = "";
+    // TS and TN only
+    bool outdated = false;
+    bool qualityUpdate = false;
   };
   /**
    * Create a reading from the values given in argument.
@@ -285,6 +296,30 @@ private:
    * @param giStatus If true, updates the GI status part of the reading
    */
   void m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus);
+
+  /**
+   * Create a quality reading for each TM available and send them to fledge
+   * @param invalid Send reading with do_valid = 1 if true and do_valid = 0 if false
+   * @param outdated Send reading with do_outdated = 1 if true and do_outdated = 0 if false
+   * @param rejectFilter Only the TM with an address NOT listed in this filter will be sent
+   */
+  void m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter = {});
+
+  /**
+   * Create a quality reading for each TS available and send them to fledge
+   * @param invalid Send reading with do_valid = 1 if true and do_valid = 0 if false
+   * @param outdated Send reading with do_outdated = 1 if true and do_outdated = 0 if false
+   * @param rejectFilter Only the TS with an address NOT listed in this filter will be sent
+   */
+  void m_sendAllTSQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter = {});
+
+  /**
+   * Create a quality reading for each TI available with type defined by paramsTemplate.msg_code and send them to fledge
+   * @param paramsTemplate Template of reading parameters to send, it must define any parameter necessary
+   * for the type of TI selected except label and msg_address.
+   * @param rejectFilter Only the TI with an address NOT listed in this filter will be sent
+   */
+  void m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, const vector<unsigned int>& rejectFilter = {});
 
 };
 

@@ -130,7 +130,9 @@ class HNZConf {
 
   /**
    * Get the address of the last TS expected when doing a CG.
-   * Used to avoid waiting for full timeout when somme TS are missing during a GI.
+   * This adress is the one with the highest value among all addresses configured
+   * because, during a CG, TS are always sent in ascending order of their addresses.
+   * Used to avoid waiting for full timeout when somme TS are missing during a CG.
    */
   unsigned int getLastTSAddress() const;
 
@@ -270,6 +272,13 @@ class HNZConf {
    */
   std::string get_connx_status_signal() const { return m_connx_status; }
 
+  /**
+   * Get the list of all messages loaded from exchange_data
+   *
+   * @return Nested map of messages defined in configuration
+   */
+  const map<string, map<unsigned int, map<unsigned int, string>>>& get_all_messages() const { return m_msg_list; }
+
  private:
   string m_ip_A, m_ip_B = "";
   unsigned int m_port_A, m_port_B;
@@ -290,7 +299,7 @@ class HNZConf {
 
   std::string m_connx_status = "";
   unsigned int m_lastTSAddr = 0;
-
+  // Nested map of msg_code, remote_station_addr and msg_address
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 
   bool m_config_is_complete;

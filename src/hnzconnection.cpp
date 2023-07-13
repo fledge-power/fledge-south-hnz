@@ -8,8 +8,7 @@
  * Author: Justin Facquet
  */
 
-#include <logger.h>
-
+#include "hnzutility.h"
 #include "hnz.h"
 #include "hnzpath.h"
 #include "hnzconnection.h"
@@ -44,12 +43,12 @@ HNZConnection::~HNZConnection() {
 }
 
 void HNZConnection::start() {
-  Logger::getLogger()->debug("HNZ Connection starting...");
+  HnzUtility::log_debug("HNZ Connection starting...");
   m_messages_thread = new thread(&HNZConnection::m_manageMessages, this);
 }
 
 void HNZConnection::stop() {
-  Logger::getLogger()->debug("HNZ Connection stopping...");
+  HnzUtility::log_debug("HNZ Connection stopping...");
   // Stop the thread that manage the messages
   m_is_running = false;
 
@@ -62,12 +61,12 @@ void HNZConnection::stop() {
   if (m_messages_thread != nullptr) {
     thread* temp = m_messages_thread;
     m_messages_thread = nullptr;
-    Logger::getLogger()->debug("Waiting for the messages managing thread");
+    HnzUtility::log_debug("Waiting for the messages managing thread");
     temp->join();
     delete temp;
   }
 
-  Logger::getLogger()->info("HNZ Connection stopped !");
+  HnzUtility::log_info("HNZ Connection stopped !");
 }
 
 void HNZConnection::checkGICompleted(bool success) { 
@@ -81,7 +80,7 @@ void HNZConnection::checkGICompleted(bool success) {
     // GI failed
     m_hnz_fledge->GICompleted(false);
   } else {
-    Logger::getLogger()->warn("General Interrogation Timeout, repeat GI");
+    HnzUtility::log_warn("General Interrogation Timeout, repeat GI");
     // Clean queue in HNZ class
     m_hnz_fledge->resetGIQueue();
     // Send a new GI
@@ -102,15 +101,15 @@ void HNZConnection::m_manageMessages() {
                         ((m_gi_schedule.hour * 60 + m_gi_schedule.min) * 60000);
   if (m_gi_schedule.activate) {
     // If GI schedule is activated, check if time scheduled is outdated
-    Logger::getLogger()->info("GI scheduled is set at " +
+    HnzUtility::log_info("GI scheduled is set at " +
                               to_string(m_gi_schedule.hour) + "h" +
                               to_string(m_gi_schedule.min) + ".");
     if (m_current >= m_gi_scheduled_time) {
-      Logger::getLogger()->info(
+      HnzUtility::log_info(
           "No GI for today because the scheduled time has already passed.");
       m_gi_schedule_already_sent = true;
     } else {
-      Logger::getLogger()->info("GI scheduled is set for today");
+      HnzUtility::log_info("GI scheduled is set for today");
     }
   }
 
@@ -140,13 +139,13 @@ void HNZConnection::m_check_timer(HNZPath* path) {
     if (path->last_sent_time + m_repeat_timeout < m_current) {
       if (path->getRepeat() >= path->repeat_max) {
         // Connection disrupted, back to SARM
-        Logger::getLogger()->warn(path->getName() +
+        HnzUtility::log_warn(path->getName() +
                                   " Connection disrupted, back to SARM");
 
         path->go_to_connection();
       } else {
         // Repeat the message
-        Logger::getLogger()->warn(
+        HnzUtility::log_warn(
             path->getName() +
             " Timeout, sending back first unacknowledged message");
         path->sendBackInfo(msg);
@@ -183,7 +182,7 @@ void HNZConnection::m_check_GI() {
   // Scheduled GI
   if (m_gi_schedule.activate && !m_gi_schedule_already_sent &&
       (m_gi_scheduled_time <= m_current)) {
-    Logger::getLogger()->warn("It's " + to_string(m_gi_schedule.hour) + "h" +
+    HnzUtility::log_warn("It's " + to_string(m_gi_schedule.hour) + "h" +
                               to_string(m_gi_schedule.min) + ". GI schedule.");
     m_active_path->sendGeneralInterrogation();
     m_gi_schedule_already_sent = true;
@@ -195,7 +194,7 @@ void HNZConnection::m_check_command_timer() {
     list<Command_message>::iterator it = m_active_path->command_sent.begin();
     while (it != m_active_path->command_sent.end()) {
       if (it->timestamp_max < m_current) {
-        Logger::getLogger()->error(
+        HnzUtility::log_error(
             "A remote control was not acknowledged in time !");
         m_active_path->go_to_connection();
         it = m_active_path->command_sent.erase(it);
@@ -222,7 +221,7 @@ void HNZConnection::m_update_quality_update_timer() {
 void HNZConnection::switchPath() {
   if (m_passive_path != nullptr) {
     if (m_passive_path->isConnected()) {
-      Logger::getLogger()->error("Switching active and passive path.");
+      HnzUtility::log_error("Switching active and passive path.");
 
       // Check the status of the passive path before switching
       // Permute path
@@ -232,17 +231,17 @@ void HNZConnection::switchPath() {
       temp->setActivePath(false);
       m_passive_path = temp;
 
-      Logger::getLogger()->error("New active path is " +
+      HnzUtility::log_error("New active path is " +
                                  m_active_path->getName());
 
     } else {
-      Logger::getLogger()->error(
+      HnzUtility::log_error(
           "Impossible to change the path, the TCP connection on the passive "
           "path is cut.");
     }
   } else {
     // Redundancy isn't enable, can't switch to the other path
-    Logger::getLogger()->error(
+    HnzUtility::log_error(
         "Redundancy isn't enable, can't switch to the other path");
   }
 }

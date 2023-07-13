@@ -10,10 +10,9 @@
 
 #include <set>
 
-#include <logger.h>
-
 #include <hnz_server.h>
 
+#include "hnzutility.h"
 #include "hnz.h"
 #include "hnzconnection.h"
 #include "hnzpath.h"
@@ -32,12 +31,12 @@ void HNZ::start() {
   Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 
   if (!m_hnz_conf->is_complete()) {
-    Logger::getLogger()->info(
+    HnzUtility::log_info(
         "HNZ south plugin can't start because configuration is incorrect.");
     return;
   }
 
-  Logger::getLogger()->info("Starting HNZ south plugin...");
+  HnzUtility::log_info("Starting HNZ south plugin...");
 
   m_is_running = true;
 
@@ -59,51 +58,53 @@ void HNZ::start() {
 }
 
 void HNZ::stop() {
-  Logger::getLogger()->info("Starting shutdown of HNZ plugin");
+  HnzUtility::log_info("Starting shutdown of HNZ plugin");
   m_is_running = false;
 
   if (m_hnz_connection != nullptr) m_hnz_connection->stop();
 
   if (m_receiving_thread_A != nullptr) {
-    Logger::getLogger()->debug("Waiting for the receiving thread (path A)");
+    HnzUtility::log_debug("Waiting for the receiving thread (path A)");
     m_receiving_thread_A->join();
     delete m_receiving_thread_A;
+    m_receiving_thread_A = nullptr;
   }
   if (m_receiving_thread_B != nullptr) {
-    Logger::getLogger()->debug("Waiting for the receiving thread (path B)");
+    HnzUtility::log_debug("Waiting for the receiving thread (path B)");
     m_receiving_thread_B->join();
     delete m_receiving_thread_B;
+    m_receiving_thread_B = nullptr;
   }
-  Logger::getLogger()->info("Plugin stopped !");
+  HnzUtility::log_info("Plugin stopped !");
 }
 
 bool HNZ::setJsonConfig(const string &protocol_conf_json,
                         const string &msg_conf_json) {
   bool was_running = m_is_running;
   if (m_is_running) {
-    Logger::getLogger()->info(
+    HnzUtility::log_info(
         "Configuration change requested, stopping the plugin");
     stop();
   }
 
-  Logger::getLogger()->info("Reading json config string...");
+  HnzUtility::log_info("Reading json config string...");
 
   m_hnz_conf->importConfigJson(protocol_conf_json);
   m_hnz_conf->importExchangedDataJson(msg_conf_json);
   if (!m_hnz_conf->is_complete()) {
-    Logger::getLogger()->fatal(
+    HnzUtility::log_fatal(
         "Unable to set Plugin configuration due to error with the json conf.");
     return false;
   }
 
-  Logger::getLogger()->info("Json config parsed successsfully.");
+  HnzUtility::log_info("Json config parsed successsfully.");
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
   m_hnz_connection = new HNZConnection(m_hnz_conf, this);
 
   if (was_running) {
-    Logger::getLogger()->warn("Restarting the plugin...");
+    HnzUtility::log_warn("Restarting the plugin...");
     start();
   }
   return true;
@@ -122,7 +123,7 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
     return;
   }
 
-  Logger::getLogger()->warn(path + " Listening for data...");
+  HnzUtility::log_warn(path + " Listening for data...");
 
   vector<vector<unsigned char>> messages;
 
@@ -131,7 +132,7 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
     messages = hnz_path_in_use->getData();
 
     if (messages.empty() && !hnz_path_in_use->isConnected()) {
-      Logger::getLogger()->warn(path +
+      HnzUtility::log_warn(path +
                                 " No data available, checking connection ...");
       // Try to reconnect
       if (!hnz_path_in_use->connect()) {
@@ -156,37 +157,37 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
 
   switch (t) {
     case MODULO_CODE:
-      Logger::getLogger()->info("Received modulo time update");
+      HnzUtility::log_info("Received modulo time update");
       m_handleModuloCode(readings, data);
       break;
     case TM4_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TMA");
+      HnzUtility::log_info("Pushing to Fledge a TMA");
       m_handleTM4(readings, data);
       break;
     case TSCE_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TSCE");
+      HnzUtility::log_info("Pushing to Fledge a TSCE");
       m_handleTSCE(readings, data);
       break;
     case TSCG_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TSCG");
+      HnzUtility::log_info("Pushing to Fledge a TSCG");
       m_handleTSCG(readings, data);
       break;
     case TMN_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TMN");
+      HnzUtility::log_info("Pushing to Fledge a TMN");
       m_handleTMN(readings, data);
       break;
     case TCACK_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TC ACK");
+      HnzUtility::log_info("Pushing to Fledge a TC ACK");
       m_handleATC(readings, data);
       break;
     case TVCACK_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TVC ACK");
+      HnzUtility::log_info("Pushing to Fledge a TVC ACK");
       m_handleATVC(readings, data);
       break;
     default:
       if (!(t == m_test_msg_receive.first &&
             data[1] == m_test_msg_receive.second)) {
-        Logger::getLogger()->error("Unknown message to push: " + frameToStr(data));
+        HnzUtility::log_error("Unknown message to push: " + frameToStr(data));
       }
       break;
   }
@@ -433,7 +434,7 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
                 ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
   }
 
-  Logger::getLogger()->debug(debugStr);
+  HnzUtility::log_debug(debugStr);
 
   auto *measure_features = new vector<Datapoint *>;
   measure_features->push_back(m_createDatapoint("do_type", params.msg_code));
@@ -486,7 +487,7 @@ void HNZ::registerIngest(void *data, INGEST_CB cb) {
 
 bool HNZ::operation(const std::string &operation, int count,
                     PLUGIN_PARAMETER **params) {
-  Logger::getLogger()->error("Operation %s", operation.c_str());
+  HnzUtility::log_error("Operation %s", operation.c_str());
 
   if (operation.compare("TC") == 0) {
     int address = atoi(params[1]->value.c_str());
@@ -501,12 +502,12 @@ bool HNZ::operation(const std::string &operation, int count,
     m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
     return true;
   } else if (operation.compare("request_connection_status") == 0) {
-    Logger::getLogger()->info("received request_connection_status", operation.c_str());
+    HnzUtility::log_info("received request_connection_status", operation.c_str());
     m_sendConnectionStatus();
     return true;
   }
 
-  Logger::getLogger()->error("Unrecognised operation %s", operation.c_str());
+  HnzUtility::log_error("Unrecognised operation %s", operation.c_str());
   return false;
 }
 
@@ -669,10 +670,10 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
 void HNZ::GICompleted(bool success) { 
   m_hnz_connection->onGICompleted();
   if (success) {
-    Logger::getLogger()->info("General Interrogation completed.");
+    HnzUtility::log_info("General Interrogation completed.");
     updateGiStatus(GiStatus::FINISHED);
   } else {
-    Logger::getLogger()->error("General Interrogation FAILED !");
+    HnzUtility::log_error("General Interrogation FAILED !");
     m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FAILED);
   }

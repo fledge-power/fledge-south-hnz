@@ -10,12 +10,13 @@
 
 #include <config_category.h>
 #include <hnz.h>
-#include <logger.h>
 #include <plugin_api.h>
 #include <rapidjson/document.h>
 #include <version.h>
 
 #include <string>
+
+#include "hnzutility.h"
 
 typedef void (*INGEST_CB)(void *, Reading);
 
@@ -160,13 +161,13 @@ static PLUGIN_INFORMATION info = {
  * Return the information about this plugin
  */
 PLUGIN_INFORMATION *plugin_info() {
-  Logger::getLogger()->info("HNZ Config is %s", info.config);
+  HnzUtility::log_info("HNZ Config is %s", info.config);
   return &info;
 }
 
 PLUGIN_HANDLE plugin_init(ConfigCategory *config) {
   HNZ *hnz;
-  Logger::getLogger()->info("Initializing the plugin");
+  HnzUtility::log_info("Initializing the plugin");
 
   hnz = new HNZ();
 
@@ -183,7 +184,7 @@ PLUGIN_HANDLE plugin_init(ConfigCategory *config) {
       return nullptr;
   }
 
-  Logger::getLogger()->info("Pluging initialized");
+  HnzUtility::log_info("Pluging initialized");
 
   return (PLUGIN_HANDLE)hnz;
 }
@@ -193,10 +194,10 @@ PLUGIN_HANDLE plugin_init(ConfigCategory *config) {
  */
 void plugin_start(PLUGIN_HANDLE *handle) {
   if (!handle) return;
-  Logger::getLogger()->info("Starting the plugin");
+  HnzUtility::log_info("Starting the plugin");
   HNZ *hnz = (HNZ *)handle;
   hnz->start();
-  Logger::getLogger()->info("Plugin started");
+  HnzUtility::log_info("Plugin started");
 }
 
 /**

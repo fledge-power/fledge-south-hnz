@@ -600,6 +600,10 @@ class ServersWrapper {
         m_server2->startHNZServer();
       }
 
+      // Add a small delay to make sure the servers are ready to accept TCP connections,
+      // else a path swap will happen during init and some tests will fail.
+      this_thread::sleep_for(chrono::milliseconds(1000));
+
       if (autoStart) {
         // Start HNZ Plugin
         startHNZPlugin(); 
@@ -1522,7 +1526,7 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
   debug_print("[HNZ Server] Send SARM on Path A to force switch to Path B");
   server->sendSARM();
 
-  // Wait 20s
+  // Wait 30s
   this_thread::sleep_for(chrono::milliseconds(30000));
   resetCounters();
 

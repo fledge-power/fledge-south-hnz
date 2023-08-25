@@ -135,7 +135,7 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
     if (messages.empty() && !hnz_path_in_use->isConnected()) {
       HnzUtility::log_warn(path +
                                 " No data available, checking connection ...");
-      // Try to reconnect
+      // Try to reconnect, unless thread is stopping
       if (m_is_running) {
         hnz_path_in_use->disconnect();
         hnz_path_in_use->connect();

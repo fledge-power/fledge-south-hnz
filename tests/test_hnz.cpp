@@ -1575,8 +1575,8 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   // and don't send UA then to switch on path B
   server->sendSARM();
 
-  // Wait 20s
-  this_thread::sleep_for(chrono::milliseconds(30000));
+  // Wait 30s
+  this_thread::sleep_for(chrono::seconds(30));
   resetCounters();
 
   // Send TC1 on path B

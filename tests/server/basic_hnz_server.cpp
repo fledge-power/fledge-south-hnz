@@ -7,7 +7,7 @@
 #include "basic_hnz_server.h"
 
 void BasicHNZServer::startHNZServer() {
-  printf("[HNZ Server] Server starting...\n"); fflush(stdout);
+  printf("[HNZ Server][%d] Server starting...\n", m_port); fflush(stdout);
   if (server == nullptr) {
     server = new HNZServer();
   }
@@ -15,7 +15,7 @@ void BasicHNZServer::startHNZServer() {
 }
 
 void BasicHNZServer::stopHNZServer() {
-  printf("[HNZ Server] Server stopping...\n"); fflush(stdout);
+  printf("[HNZ Server][%d] Server stopping...\n", m_port); fflush(stdout);
   if (server != nullptr) {
     is_running = false;
     server->stop();
@@ -42,11 +42,11 @@ void BasicHNZServer::receiving_loop() {
         int len = 0;
         switch (c) {
           case UA_CODE:
-            // printf("UA received\n"); fflush(stdout);
+            // printf("[HNZ Server][%d] UA received\n", m_port); fflush(stdout);
             len = 0;
             break;
           case SARM_CODE:
-            // printf("SARM received\n"); fflush(stdout);
+            // printf("[HNZ Server][%d] SARM received\n", m_port); fflush(stdout);
             len = 0;
             break;
           default:
@@ -98,11 +98,11 @@ void BasicHNZServer::sendSARMLoop() {
 bool BasicHNZServer::HNZServerIsReady() {
   is_running = true;
   long start = time(NULL);
-  printf("[HNZ Server] Waiting for initial connection...\n"); fflush(stdout);
+  printf("[HNZ Server][%d] Waiting for initial connection...\n", m_port); fflush(stdout);
   // Wait for the server to finish starting
   while (!server->isConnected() && is_running) {
     if (time(NULL) - start > 10) {
-      printf("[HNZ Server] Connection timeout\n"); fflush(stdout);
+      printf("[HNZ Server][%d] Connection timeout\n", m_port); fflush(stdout);
       return false;
     }
     this_thread::sleep_for(chrono::milliseconds(500));
@@ -111,7 +111,7 @@ bool BasicHNZServer::HNZServerIsReady() {
     auto future = std::async(std::launch::async, &std::thread::join, m_t1);
     if (future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
       // m_t1 did not join in time, abort
-      printf("[HNZ Server] Could not join m_t1, exiting\n"); fflush(stdout);
+      printf("[HNZ Server][%d] Could not join m_t1, exiting\n", m_port); fflush(stdout);
       return false;
     }
     delete m_t1;
@@ -122,14 +122,15 @@ bool BasicHNZServer::HNZServerIsReady() {
   this_thread::sleep_for(chrono::milliseconds(100));
   // Wait for UA and send UA in response of SARM
   start = time(NULL);
+  bool lastFrameWasEmpty = false;
   while (is_running) {
     if (time(NULL) - start > 10) {
-      printf("[HNZ Server] SARM/UA timeout\n"); fflush(stdout);
+      printf("[HNZ Server][%d] SARM/UA timeout\n", m_port); fflush(stdout);
       is_running = false;
       break;
     }
     if (!server->isConnected()) {
-      printf("[HNZ Server] Connection lost, restarting server...\n"); fflush(stdout);
+      printf("[HNZ Server][%d] Connection lost, restarting server...\n", m_port); fflush(stdout);
       // Server is still not connected? restart the server
       server->stop();
       startHNZServer();
@@ -137,7 +138,7 @@ bool BasicHNZServer::HNZServerIsReady() {
       // Wait for the server to finish starting
       while (!server->isConnected() && is_running) {
         if (time(NULL) - start > 10) {
-          printf("[HNZ Server] Reconnection timeout\n"); fflush(stdout);
+          printf("[HNZ Server][%d] Reconnection timeout\n", m_port); fflush(stdout);
           return false;
         }
         this_thread::sleep_for(chrono::milliseconds(500));
@@ -146,26 +147,31 @@ bool BasicHNZServer::HNZServerIsReady() {
       delete m_t1;
       m_t1 = nullptr;
       if (!is_running) {
-        printf("[HNZ Server] Not running after reconnection, exit\n"); fflush(stdout);
+        printf("[HNZ Server][%d] Not running after reconnection, exit\n", m_port); fflush(stdout);
         return false;
       }
-      printf("[HNZ Server] Server reconnected!\n"); fflush(stdout);
+      printf("[HNZ Server][%d] Server reconnected!\n", m_port); fflush(stdout);
     }
 
     MSG_TRAME *frReceived = (server->receiveFr());
     if (frReceived == nullptr) {
+      if (!lastFrameWasEmpty) {
+        lastFrameWasEmpty = true;
+        printf("[HNZ Server][%d] Received empty frame\n", m_port); fflush(stdout);
+      }
       continue;
     }
+    lastFrameWasEmpty = false;
     unsigned char *data = frReceived->aubTrame;
     unsigned char c = data[1];
     switch (c) {
       case UA_CODE:
-        printf("[HNZ Server] UA received\n"); fflush(stdout);
+        printf("[HNZ Server][%d] UA received\n", m_port); fflush(stdout);
         start = time(NULL);
         ua_ok = true;
         break;
       case SARM_CODE:
-        printf("[HNZ Server] SARM received, sending UA\n"); fflush(stdout);
+        printf("[HNZ Server][%d] SARM received, sending UA\n", m_port); fflush(stdout);
         start = time(NULL);
         unsigned char message[1];
         message[0] = 0x63;
@@ -173,7 +179,7 @@ bool BasicHNZServer::HNZServerIsReady() {
         sarm_ok = true;
         break;
       default:
-        printf("[HNZ Server] Neither UA nor SARM: %d\n", static_cast<int>(c)); fflush(stdout);
+        printf("[HNZ Server][%d] Neither UA nor SARM: %d\n", m_port, static_cast<int>(c)); fflush(stdout);
         break;
     }
     // Store the frame that was received for testing purposes
@@ -184,10 +190,10 @@ bool BasicHNZServer::HNZServerIsReady() {
   delete m_t2;
   m_t2 = nullptr;
   if (!is_running) {
-    printf("[HNZ Server] Not running after SARM/UA, exit\n"); fflush(stdout);
+    printf("[HNZ Server][%d] Not running after SARM/UA, exit\n", m_port); fflush(stdout);
     return false;
   }
-  printf("[HNZ Server] Connection OK !!\n"); fflush(stdout);
+  printf("[HNZ Server][%d] Connection OK !!\n", m_port); fflush(stdout);
 
   // Connection established
   receiving_thread = new thread(&BasicHNZServer::receiving_loop, this);
@@ -195,7 +201,7 @@ bool BasicHNZServer::HNZServerIsReady() {
 }
 
 void BasicHNZServer::sendSARM() {
-  printf("[HNZ Server] Sending SARM...\n"); fflush(stdout);
+  printf("[HNZ Server][%d] Sending SARM...\n", m_port); fflush(stdout);
   unsigned char message[1];
   message[0] = 0x0F;
   createAndSendFrame(0x05, message, sizeof(message));

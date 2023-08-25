@@ -19,6 +19,9 @@ class BasicHNZServer {
 
   void startHNZServer();
   void stopHNZServer();
+  bool joinStartThread();
+
+  bool waitForTCPConnection(int timeout_s);
   // Timeout = 16 = (5 * 3) + 1 sec = (SARM retries * SARM delay) + 1
   bool HNZServerIsReady(int timeout_s = 16);
 
@@ -41,14 +44,21 @@ class BasicHNZServer {
   int addr = 0;
 
  private:
-  thread* m_t1 = nullptr;
-  thread* receiving_thread = nullptr;
-  atomic<bool> is_running{false};
+  std::thread* m_t1 = nullptr;
+  std::mutex m_t1_mutex;
+
+  std::thread* receiving_thread = nullptr;
+  std::mutex m_init_mutex;
+
+  std::atomic<bool> is_running{false};
+
   int m_ns = 0;
   int m_nr = 0;
   int m_port = 0;
+  
   bool ua_ok = false;
   bool sarm_ok = false;
+  std::mutex m_sarm_ua_mutex;
 
   std::vector<std::shared_ptr<MSG_TRAME>> m_last_frames_received;
   std::mutex m_received_mutex;

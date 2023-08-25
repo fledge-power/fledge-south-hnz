@@ -1775,4 +1775,38 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
     {"gi_status", "failed"},
   });
   if(HasFatalFailure()) return;
+
+  // Validate that frames can be exchanged on the newly opened connection
+  // Send new CG request
+  hnz->sendCG();
+  debug_print("[HNZ south plugin] CG request 3 sent");
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Complete CG request by sending all expected TS
+  server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] TSCG 3 sent");
+  waitUntil(southEventsReceived, 2, 1000);
+  // Check that ingestCallback had been called only for two GI status updates
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  if(HasFatalFailure()) return;
 }

@@ -11,18 +11,42 @@ void BasicHNZServer::startHNZServer() {
   if (server == nullptr) {
     server = new HNZServer();
   }
+  std::lock_guard<std::mutex> guard(m_t1_mutex);
   m_t1 = new thread(&BasicHNZServer::m_start, server, m_port);
+}
+
+bool BasicHNZServer::joinStartThread() {
+  // Lock to prevent multiple joins in parallel
+  std::lock_guard<std::mutex> guard(m_t1_mutex);
+  if (m_t1 != nullptr) {
+    auto future = std::async(std::launch::async, &std::thread::join, m_t1);
+    if (future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
+      // m_t1 did not join in time, abort
+      printf("[HNZ Server][%d] Could not join m_t1, exiting\n", m_port); fflush(stdout);
+      return false;
+    }
+    delete m_t1;
+    m_t1 = nullptr;
+  }
+  return true;
 }
 
 void BasicHNZServer::stopHNZServer() {
   printf("[HNZ Server][%d] Server stopping...\n", m_port); fflush(stdout);
+  is_running = false;
+  
+  // Ensure that m_t1 was joined no matter what
+  joinStartThread();
+
+  // Stop HNZ server
   if (server != nullptr) {
-    is_running = false;
     server->stop();
     delete server;
     server = nullptr;
   }
-  
+
+  // Lock to wait for HNZServerIsReady to complete if it was running
+  std::lock_guard<std::mutex> guard(m_init_mutex);
   if (receiving_thread != nullptr) {
     receiving_thread->join();
     delete receiving_thread;
@@ -83,39 +107,58 @@ void BasicHNZServer::receiving_loop() {
 
 void BasicHNZServer::sendSARMLoop() {
   // Reset SARM/UA variables in case of reconnect
-  ua_ok = false;
-  sarm_ok = false;
-  while (is_running && (!ua_ok || !sarm_ok)) {
+  {
+    std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
+    ua_ok = false;
+    sarm_ok = false;
+  }
+  bool sarm_ua_ok = false;
+  while (is_running && !sarm_ua_ok) {
     if(server->isConnected()) {
       sendSARM();
+      std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
       ua_ok = false;
       sarm_ok = false;
     }
     this_thread::sleep_for(chrono::milliseconds(3000));
+    std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
+    sarm_ua_ok = ua_ok && sarm_ok;
   }
 }
 
+bool BasicHNZServer::waitForTCPConnection(int timeout_s) {
+  long start = time(NULL);
+  while (!server->isConnected() && is_running) {
+    if (time(NULL) - start > timeout_s) {
+      printf("[HNZ Server][%d] Connection timeout\n", m_port); fflush(stdout);
+      is_running = false;
+      break;
+    }
+    this_thread::sleep_for(chrono::milliseconds(500));
+  }
+  if (!joinStartThread()) {
+    return false;
+  }
+  return true;
+}
+
 bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
+  // Lock to prevent multiple calls to this function in parallel
+  std::lock_guard<std::mutex> guard(m_init_mutex);
+  if (receiving_thread) {
+    printf("[HNZ Server][%d] Server already connected\n", m_port); fflush(stdout);
+    return true;
+  }
   is_running = true;
   long start = time(NULL);
   printf("[HNZ Server][%d] Waiting for initial connection...\n", m_port); fflush(stdout);
   // Wait for the server to finish starting
-  while (!server->isConnected() && is_running) {
-    if (time(NULL) - start > timeout_s) {
-      printf("[HNZ Server][%d] Connection timeout\n", m_port); fflush(stdout);
-      return false;
-    }
-    this_thread::sleep_for(chrono::milliseconds(500));
+  if (!waitForTCPConnection(timeout_s)) {
+    return false;
   }
-  if (m_t1) {
-    auto future = std::async(std::launch::async, &std::thread::join, m_t1);
-    if (future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-      // m_t1 did not join in time, abort
-      printf("[HNZ Server][%d] Could not join m_t1, exiting\n", m_port); fflush(stdout);
-      return false;
-    }
-    delete m_t1;
-    m_t1 = nullptr;
+  if (!is_running) {
+    printf("[HNZ Server][%d] Not running after initial connection, exit\n", m_port); fflush(stdout);
+    return false;
   }
   // Loop that sending sarm every 3s
   thread *m_t2 = new thread(&BasicHNZServer::sendSARMLoop, this);
@@ -123,6 +166,8 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
   // Wait for UA and send UA in response of SARM
   start = time(NULL);
   bool lastFrameWasEmpty = false;
+  // Make sure to always exit this loop with is_running==false, not return
+  // to ensure that m_t2 is joined properly
   while (is_running) {
     if (time(NULL) - start > timeout_s) {
       printf("[HNZ Server][%d] SARM/UA timeout\n", m_port); fflush(stdout);
@@ -134,22 +179,15 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
       // Server is still not connected? restart the server
       server->stop();
       startHNZServer();
-      start = time(NULL);
-      // Wait for the server to finish starting
-      while (!server->isConnected() && is_running) {
-        if (time(NULL) - start > timeout_s) {
-          printf("[HNZ Server][%d] Reconnection timeout\n", m_port); fflush(stdout);
-          return false;
-        }
-        this_thread::sleep_for(chrono::milliseconds(500));
+      if (!waitForTCPConnection(timeout_s)) {
+        is_running = false;
+        break;
       }
-      m_t1->join();
-      delete m_t1;
-      m_t1 = nullptr;
       if (!is_running) {
         printf("[HNZ Server][%d] Not running after reconnection, exit\n", m_port); fflush(stdout);
-        return false;
+        break;
       }
+      start = time(NULL);
       printf("[HNZ Server][%d] Server reconnected!\n", m_port); fflush(stdout);
     }
 
@@ -167,14 +205,20 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
     switch (c) {
       case UA_CODE:
         printf("[HNZ Server][%d] UA received\n", m_port); fflush(stdout);
-        ua_ok = true;
+        {
+          std::lock_guard<std::mutex> guard2(m_sarm_ua_mutex);
+          ua_ok = true;
+        }
         break;
       case SARM_CODE:
         printf("[HNZ Server][%d] SARM received, sending UA\n", m_port); fflush(stdout);
         unsigned char message[1];
         message[0] = 0x63;
         createAndSendFrame(0x07, message, sizeof(message));
-        sarm_ok = true;
+        {
+          std::lock_guard<std::mutex> guard2(m_sarm_ua_mutex);
+          sarm_ok = true;
+        }
         break;
       default:
         printf("[HNZ Server][%d] Neither UA nor SARM: %d\n", m_port, static_cast<int>(c)); fflush(stdout);
@@ -182,6 +226,7 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
     }
     // Store the frame that was received for testing purposes
     onFrameReceived(frReceived);
+    std::lock_guard<std::mutex> guard2(m_sarm_ua_mutex);
     if (ua_ok && sarm_ok) break;
   }
   m_t2->join();

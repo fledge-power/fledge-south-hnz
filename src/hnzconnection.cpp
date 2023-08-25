@@ -18,9 +18,12 @@ HNZConnection::HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge) {
   this->m_hnz_fledge = hnz_fledge;
 
   // Create the path needed
-  m_active_path = new HNZPath(hnz_conf, this, false);
-  if (m_hnz_conf->get_ip_address_B() != "") {
-    m_passive_path = new HNZPath(hnz_conf, this, true);
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    m_active_path = new HNZPath(hnz_conf, this, false);
+    if (m_hnz_conf->get_ip_address_B() != "") {
+      m_passive_path = new HNZPath(hnz_conf, this, true);
+    }
   }
 
   // Set settings for GI
@@ -38,6 +41,7 @@ HNZConnection::~HNZConnection() {
   if (m_is_running) {
     stop();
   }
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   if (m_active_path != nullptr) delete m_active_path;
   if (m_passive_path != nullptr) delete m_passive_path;
 }
@@ -54,8 +58,11 @@ void HNZConnection::stop() {
 
   // Stop the path used (close the TCP connection and stop the threads that
   // manage HNZ connections)
-  if (m_active_path != nullptr) m_active_path->disconnect();
-  if (m_passive_path != nullptr) m_passive_path->disconnect();
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    if (m_active_path != nullptr) m_active_path->disconnect();
+    if (m_passive_path != nullptr) m_passive_path->disconnect();
+  }
 
   // Wait for the end of the thread that manage the messages
   if (m_messages_thread != nullptr) {
@@ -70,6 +77,7 @@ void HNZConnection::stop() {
 }
 
 void HNZConnection::checkGICompleted(bool success) { 
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   // GI is a success
   if (success) {
     m_hnz_fledge->GICompleted(true);
@@ -89,6 +97,7 @@ void HNZConnection::checkGICompleted(bool success) {
 }
 
 void HNZConnection::onGICompleted() { 
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   m_active_path->gi_repeat = 0;
 }
 
@@ -117,8 +126,11 @@ void HNZConnection::m_manageMessages() {
     m_update_current_time();
 
     // Manage repeat/timeout for each path
-    m_check_timer(m_active_path);
-    m_check_timer(m_passive_path);
+    {
+      std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+      m_check_timer(m_active_path);
+      m_check_timer(m_passive_path);
+    }
 
     // GI support
     m_check_GI();
@@ -161,6 +173,7 @@ void HNZConnection::m_check_timer(HNZPath* path) {
 }
 
 void HNZConnection::m_check_GI() {
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   // Check the status of an ongoing GI
   if (m_active_path->gi_repeat != 0) {
     if (m_active_path->gi_start_time + gi_time_max < m_current) {
@@ -190,6 +203,7 @@ void HNZConnection::m_check_GI() {
 }
 
 void HNZConnection::m_check_command_timer() {
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   if (!m_active_path->command_sent.empty()) {
     list<Command_message>::iterator it = m_active_path->command_sent.begin();
     while (it != m_active_path->command_sent.end()) {
@@ -221,7 +235,7 @@ void HNZConnection::m_update_quality_update_timer() {
 void HNZConnection::switchPath() {
   if (m_passive_path != nullptr) {
     HnzUtility::log_warn("Switching active and passive path.");
-
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     // Check the status of the passive path before switching
     // Permute path
     HNZPath* temp = m_active_path;
@@ -246,6 +260,7 @@ void HNZConnection::switchPath() {
 }
 
 void HNZConnection::sendInitialGI() {
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   m_active_path->gi_repeat = 0;
   m_active_path->sendGeneralInterrogation();
 }

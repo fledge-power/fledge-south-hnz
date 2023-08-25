@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <thread>
+#include <mutex>
 
 #include "hnzconf.h"
 
@@ -60,13 +61,28 @@ class HNZConnection {
    * commands).
    * @return the active path
    */
-  HNZPath* getActivePath() { return m_active_path; };
+  HNZPath* getActivePath() {
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    return m_active_path;
+  };
 
   /**
    * Get the path in stand-by.
    * @return the active path
    */
-  HNZPath* getPassivePath() { return m_passive_path; };
+  HNZPath* getPassivePath() {
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    return m_passive_path;
+  };
+
+  /**
+   * Get both active and passive path (with a single lock)
+   * @return a path pair (active_path, passive_path)
+   */
+  std::pair<HNZPath*, HNZPath*> getBothPath() {
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    return std::make_pair(m_active_path, m_passive_path);
+  };
 
   /**
    * Switch between the active path and passive path. Must be called in case of
@@ -101,6 +117,7 @@ class HNZConnection {
  private:
   HNZPath* m_active_path = nullptr;
   HNZPath* m_passive_path = nullptr;
+  std::recursive_mutex m_path_mutex;
   std::thread* m_messages_thread = nullptr;  // Main thread that monitors messages
   std::atomic<bool> m_is_running;  // If false, the connection thread will stop
   uint64_t m_current;         // Store the last time requested

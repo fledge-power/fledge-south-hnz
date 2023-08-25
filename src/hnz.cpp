@@ -43,15 +43,13 @@ void HNZ::start() {
   m_sendAllTMQualityReadings(true, false);
   m_sendAllTSQualityReadings(true, false);
 
-  m_receiving_thread_A =
-      new thread(&HNZ::receive, this, m_hnz_connection->getActivePath());
-
-  this_thread::sleep_for(milliseconds(1000));
-
-  HNZPath *passive_path = m_hnz_connection->getPassivePath();
-  if (passive_path != nullptr) {
+  auto pathPair = m_hnz_connection->getBothPath();
+  m_receiving_thread_A = new thread(&HNZ::receive, this, pathPair.first);
+  if (pathPair.second != nullptr) {
+    // Wait after getting the passive path pointer as connection init of active path may swap path
+    this_thread::sleep_for(milliseconds(1000));
     // Path B is defined in the configuration
-    m_receiving_thread_B = new thread(&HNZ::receive, this, passive_path);
+    m_receiving_thread_B = new thread(&HNZ::receive, this, pathPair.second);
   }
 
   m_hnz_connection->start();

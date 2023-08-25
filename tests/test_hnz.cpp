@@ -1519,6 +1519,7 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
 
   // Send a SARM to put hnz plugin on path A in connection state
   // and don't send UA then to switch on path B
+  debug_print("[HNZ Server] Send SARM on Path A to force switch to Path B");
   server->sendSARM();
 
   // Wait 20s
@@ -1573,6 +1574,7 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Send a SARM to put hnz plugin on path A in connection state
   // and don't send UA then to switch on path B
+  debug_print("[HNZ Server] Send SARM on Path A to force switch to Path B");
   server->sendSARM();
 
   // Wait 30s

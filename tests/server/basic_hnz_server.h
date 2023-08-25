@@ -19,8 +19,8 @@ class BasicHNZServer {
 
   void startHNZServer();
   void stopHNZServer();
-
-  bool HNZServerIsReady();
+  // Timeout = 16 = (5 * 3) + 1 sec = (SARM retries * SARM delay) + 1
+  bool HNZServerIsReady(int timeout_s = 16);
 
   void sendSARM();
 

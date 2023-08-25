@@ -117,3 +117,4 @@ build/**
 
 # Folder with Fledge header
 C/**
+.vscode/

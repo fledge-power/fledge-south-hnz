@@ -8,6 +8,9 @@
  * Author: Justin Facquet
  */
 
+#include <sstream>
+#include <iomanip>
+
 #include "hnzutility.h"
 #include "hnz.h"
 #include "hnzpath.h"
@@ -60,12 +63,15 @@ vector<unsigned char> convertPayloadToVector(unsigned char* data, int size) {
  * Helper method to convert payload into something readable for logs.
  */
 string convert_data_to_str(unsigned char* data, int len) {
-  string s = "";
-  for (int i = 0; i < len; i++) {
-    s += to_string(data[i]);
-    if (i < len - 1) s += " ";
+  if (data == nullptr) {
+    return "";
   }
-  return s;
+  std::stringstream stream;
+  for (int i = 0; i < len; i++) {
+    stream << std::setfill ('0') << std::setw(2) << std::hex << static_cast<unsigned int>(data[i]);
+    if (i < len - 1) stream << " ";
+  }
+  return stream.str();
 }
 
 void HNZPath::connect() {
@@ -96,13 +102,15 @@ void HNZPath::connect() {
       HnzUtility::log_warn(m_name_log +
                                 " Error in connection, retrying in " +
                                 to_string(RETRY_CONN_DELAY) + "s ...");
+      // If connection failed, try to switch path
+      if (m_is_active_path) m_hnz_connection->switchPath();
       this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
     }
   }
 }
 
 void HNZPath::disconnect() {
-  HnzUtility::log_debug(m_name_log + " HNZ Connection stopping...");
+  HnzUtility::log_debug(m_name_log + " HNZ Path stopping...");
   if (m_is_active_path) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
   }
@@ -165,8 +173,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
       if (m_nbr_sarm_sent == m_max_sarm) {
         HnzUtility::log_warn(
             m_name_log + " The maximum number of SARM was reached.");
-        // If the path is the active one, switch to passive path if
-        // available
+        // If the path is the active one, switch to passive path if available
         if (m_is_active_path) m_hnz_connection->switchPath();
         m_nbr_sarm_sent = 0;
       }
@@ -410,9 +417,11 @@ void HNZPath::m_receivedSARM() {
 }
 
 void HNZPath::m_receivedUA() {
-  sarm_ARP_UA = true;
-  if (sarm_PA_received) {
-    m_go_to_connected();
+  if (m_protocol_state == CONNECTION) {
+    sarm_ARP_UA = true;
+    if (sarm_PA_received) {
+      m_go_to_connected();
+    }
   }
 }
 

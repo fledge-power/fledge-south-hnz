@@ -133,12 +133,16 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
     messages = hnz_path_in_use->getData();
 
     if (messages.empty() && !hnz_path_in_use->isConnected()) {
-      HnzUtility::log_warn(path +
-                                " No data available, checking connection ...");
+      HnzUtility::log_warn(path + " Connection lost, reconnecting active path and switching to other path");
+      // If connection lost, try to switch path
+      if (hnz_path_in_use->isActivePath()) m_hnz_connection->switchPath();
       // Try to reconnect, unless thread is stopping
       if (m_is_running) {
         hnz_path_in_use->disconnect();
-        hnz_path_in_use->connect();
+        // Shutdown request may happen while disconnecting, if it does cancel reconnection
+        if (m_is_running) {
+          hnz_path_in_use->connect();
+        }
       }
     } else {
       // Push each message to fledge

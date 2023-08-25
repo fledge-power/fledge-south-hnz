@@ -91,7 +91,7 @@ class HNZPath {
    */
   bool isConnected() { return m_connected && isTCPConnected(); };
 
-    /**
+  /**
    * Is the TCP connection with the PA still alive according to HNZ client?
    * @return true if connected, false otherwise
    */
@@ -149,6 +149,18 @@ class HNZPath {
         "[" + m_path_name + " - " + (active ? "active" : "passive") + "]";
   };
 
+  /**
+   * Gets the state of the path
+   * @return true if active, false if passive
+   */
+  bool isActivePath() { return m_is_active_path; }
+
+  /**
+   * Gets the state of the HNZ protocol (CONNECTION, CONNECTED)
+   * @return CONNECTION if SARM/UA step is not complete, CONNECTED after that
+   */
+  int getProtocolState() { return m_protocol_state; }
+
  private:
   std::unique_ptr<HNZClient> m_hnz_client;  // HNZ Client that manage TCP connection
                                             // (receives/assembles and sends TCP frame)
@@ -166,7 +178,7 @@ class HNZPath {
 
   thread* m_connection_thread = nullptr; // Main thread that maintains the connection
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
-  bool m_connected = false;   // TCP Connection state with the PA
+  atomic<bool> m_connected{false};   // TCP Connection state with the PA
   int m_protocol_state;       // HNZ Protocol connection state
   bool m_is_active_path = false;
 

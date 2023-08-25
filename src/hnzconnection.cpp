@@ -220,29 +220,28 @@ void HNZConnection::m_update_quality_update_timer() {
 
 void HNZConnection::switchPath() {
   if (m_passive_path != nullptr) {
-    if (m_passive_path->isConnected()) {
-      HnzUtility::log_error("Switching active and passive path.");
+    HnzUtility::log_warn("Switching active and passive path.");
 
-      // Check the status of the passive path before switching
-      // Permute path
-      HNZPath* temp = m_active_path;
-      m_active_path = m_passive_path;
-      m_active_path->setActivePath(true);
-      temp->setActivePath(false);
-      m_passive_path = temp;
+    // Check the status of the passive path before switching
+    // Permute path
+    HNZPath* temp = m_active_path;
+    m_active_path = m_passive_path;
+    m_active_path->setActivePath(true);
+    temp->setActivePath(false);
+    m_passive_path = temp;
 
-      HnzUtility::log_error("New active path is " +
-                                 m_active_path->getName());
+    HnzUtility::log_info("New active path is " + m_active_path->getName());
 
-    } else {
-      HnzUtility::log_error(
-          "Impossible to change the path, the TCP connection on the passive "
-          "path is cut.");
+    // When switching path, update connection status accordingly
+    if (m_active_path->getProtocolState() == CONNECTED) {
+      updateConnectionStatus(ConnectionStatus::STARTED);
+    }
+    else {
+      updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
     }
   } else {
     // Redundancy isn't enable, can't switch to the other path
-    HnzUtility::log_error(
-        "Redundancy isn't enable, can't switch to the other path");
+    HnzUtility::log_warn("Redundancy isn't enabled, can't switch to the other path");
   }
 }
 

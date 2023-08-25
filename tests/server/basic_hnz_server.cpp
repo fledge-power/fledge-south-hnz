@@ -95,13 +95,13 @@ void BasicHNZServer::sendSARMLoop() {
   }
 }
 
-bool BasicHNZServer::HNZServerIsReady() {
+bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
   is_running = true;
   long start = time(NULL);
   printf("[HNZ Server][%d] Waiting for initial connection...\n", m_port); fflush(stdout);
   // Wait for the server to finish starting
   while (!server->isConnected() && is_running) {
-    if (time(NULL) - start > 10) {
+    if (time(NULL) - start > timeout_s) {
       printf("[HNZ Server][%d] Connection timeout\n", m_port); fflush(stdout);
       return false;
     }
@@ -124,7 +124,7 @@ bool BasicHNZServer::HNZServerIsReady() {
   start = time(NULL);
   bool lastFrameWasEmpty = false;
   while (is_running) {
-    if (time(NULL) - start > 10) {
+    if (time(NULL) - start > timeout_s) {
       printf("[HNZ Server][%d] SARM/UA timeout\n", m_port); fflush(stdout);
       is_running = false;
       break;
@@ -137,7 +137,7 @@ bool BasicHNZServer::HNZServerIsReady() {
       start = time(NULL);
       // Wait for the server to finish starting
       while (!server->isConnected() && is_running) {
-        if (time(NULL) - start > 10) {
+        if (time(NULL) - start > timeout_s) {
           printf("[HNZ Server][%d] Reconnection timeout\n", m_port); fflush(stdout);
           return false;
         }
@@ -167,12 +167,10 @@ bool BasicHNZServer::HNZServerIsReady() {
     switch (c) {
       case UA_CODE:
         printf("[HNZ Server][%d] UA received\n", m_port); fflush(stdout);
-        start = time(NULL);
         ua_ok = true;
         break;
       case SARM_CODE:
         printf("[HNZ Server][%d] SARM received, sending UA\n", m_port); fflush(stdout);
-        start = time(NULL);
         unsigned char message[1];
         message[0] = 0x63;
         createAndSendFrame(0x07, message, sizeof(message));

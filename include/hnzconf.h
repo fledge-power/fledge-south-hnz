@@ -66,7 +66,6 @@ constexpr long long int DEFAULT_CMD_RECV_TIMEOUT = 100000; // 100ms
 constexpr char DEBUG_LEVEL[] = "debug";
 
 constexpr int RETRY_CONN_DELAY = 5;
-constexpr int RETRY_CONN_NUM = 5;
 
 using namespace rapidjson;
 using namespace std;

@@ -61,7 +61,11 @@ void HNZ::stop() {
   HnzUtility::log_info("Starting shutdown of HNZ plugin");
   m_is_running = false;
 
-  if (m_hnz_connection != nullptr) m_hnz_connection->stop();
+  if (m_hnz_connection != nullptr) {
+    m_hnz_connection->stop();
+    delete m_hnz_connection;
+    m_hnz_connection = nullptr;
+  }
 
   if (m_receiving_thread_A != nullptr) {
     HnzUtility::log_debug("Waiting for the receiving thread (path A)");
@@ -118,10 +122,7 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
   }
 
   // Connect to the server
-  if (!hnz_path_in_use->connect()) {
-    Logger::getLogger()->fatal(path + " Unable to connect to PA, stopping ...");
-    return;
-  }
+  hnz_path_in_use->connect();
 
   HnzUtility::log_warn(path + " Listening for data...");
 
@@ -135,11 +136,9 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
       HnzUtility::log_warn(path +
                                 " No data available, checking connection ...");
       // Try to reconnect
-      if (!hnz_path_in_use->connect()) {
-        Logger::getLogger()->warn(path + " Connection lost");
-        // stop();
-        m_is_running = false;
+      if (m_is_running) {
         hnz_path_in_use->disconnect();
+        hnz_path_in_use->connect();
       }
     } else {
       // Push each message to fledge

@@ -68,12 +68,15 @@ string convert_data_to_str(unsigned char* data, int len) {
   return s;
 }
 
-bool HNZPath::connect() {
-  int i = 1;
-  while (((i <= RETRY_CONN_NUM) or (RETRY_CONN_NUM == -1)) and m_is_running) {
-    Logger::getLogger()->info(
+void HNZPath::connect() {
+  // Reinitialize those variables in case of reconnection
+  m_last_msg_time = time(nullptr);
+  m_is_running = true;
+  // Loop until connected
+  while (m_is_running) {
+    HnzUtility::log_info(
         m_name_log + " Connecting to PA on " + m_ip + " (" + to_string(m_port) +
-        ")... [" + to_string(i) + "/" + to_string(RETRY_CONN_NUM) + "]");
+        ")...");
 
     // Establish TCP connection with the PA
     m_connected = !(m_hnz_client->connect_Server(m_ip.c_str(), m_port, m_timeoutUs));
@@ -81,24 +84,21 @@ bool HNZPath::connect() {
     if (m_connected) {
       HnzUtility::log_info(m_name_log + " Connected to " + m_ip + " (" +
                                 to_string(m_port) + ").");
-
+      go_to_connection();
       if (m_connection_thread == nullptr) {
         // Start the thread that manage the HNZ connection
         m_connection_thread =
             new thread(&HNZPath::m_manageHNZProtocolConnection, this);
       }
-
-      return true;
+      // Connection established, go to main loop
+      return;
     } else {
       HnzUtility::log_warn(m_name_log +
                                 " Error in connection, retrying in " +
                                 to_string(RETRY_CONN_DELAY) + "s ...");
       this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
     }
-    i++;
   }
-
-  return false;
 }
 
 void HNZPath::disconnect() {
@@ -173,11 +173,11 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
       // Send SARM and wait
       m_sendSARM();
       sleep = milliseconds(m_repeat_timeout);
-
     } else {
       // Inactivity timer reached
-      Logger::getLogger()->error(m_name_log + " Inacc timeout !");
-      // DF.GLOB.TS : nothing to do in HNZ
+      HnzUtility::log_error(m_name_log + " Inacc timeout! Reconnecting...");
+      m_connected = false;
+      // Reconnection will be done in HNZ::receive
     }
   } else {
     m_protocol_state = CONNECTED;
@@ -263,6 +263,10 @@ vector<vector<unsigned char>> HNZPath::getData() {
   }
 
   return messages;
+}
+
+bool HNZPath::isTCPConnected() {
+  return m_hnz_client->is_connected();
 }
 
 vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {

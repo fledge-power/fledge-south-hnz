@@ -70,9 +70,8 @@ class HNZPath {
   /**
    * Connect (or re-connect) to the HNZ PA (TCP connection and HNZ connection
    * management if isn't started).
-   * @return true if connection is ok, false if not
    */
-  bool connect();
+  void connect();
 
   /**
    * Disconnect from the HNZ PA (TCP connection and HNZ connection management).
@@ -87,10 +86,16 @@ class HNZPath {
   vector<vector<unsigned char>> getData();
 
   /**
-   * Is the TCP connection with the PA active?
+   * Is the TCP connection with the PA established and still alive?
    * @return true if connected, false otherwise
    */
-  bool isConnected() { return m_connected; };
+  bool isConnected() { return m_connected && isTCPConnected(); };
+
+    /**
+   * Is the TCP connection with the PA still alive according to HNZ client?
+   * @return true if connected, false otherwise
+   */
+  bool isTCPConnected();
 
   /**
    * Returns the number of times the last message was sent.

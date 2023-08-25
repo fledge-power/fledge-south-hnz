@@ -197,6 +197,12 @@ class HNZTest : public testing::Test {
     hnz->start();
   }
 
+  template<class... Args>
+  static void debug_print(std::string format, Args&&... args) {    
+    printf(format.append("\n").c_str(), std::forward<Args>(args)...);
+    fflush(stdout);
+  }
+
   static bool hasChild(Datapoint& dp, string childLabel) {
     DatapointValue& dpv = dp.getData();
 
@@ -259,15 +265,15 @@ class HNZTest : public testing::Test {
   }
 
   static void ingestCallback(void* parameter, Reading reading) {
-    printf("ingestCallback called -> asset: (%s)\n",
+    debug_print("ingestCallback called -> asset: (%s)",
            reading.getAssetName().c_str());
 
     vector<Datapoint*> dataPoints = reading.getReadingData();
 
-    printf("  number of readings: %lu\n", dataPoints.size());
+    debug_print("  number of readings: %lu", dataPoints.size());
 
     // for (Datapoint* sdp : dataPoints) {
-    //     printf("name: %s value: %s\n", sdp->getName().c_str(),
+    //     debug_print("name: %s value: %s", sdp->getName().c_str(),
     //     sdp->getData().toString().c_str());
     // }
     std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
@@ -408,7 +414,7 @@ class HNZTest : public testing::Test {
     int maxWaitTimeMs = 3000; // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000)
     std::string validStr(invalid ? "1" : "0");
     std::string ourdatedStr(outdated ? "1" : "0");
-    printf("[HNZ Server] Waiting for quality update...\n");
+    debug_print("[HNZ Server] Waiting for quality update...");
     waitUntil(dataObjectsReceived, expectedMessages, maxWaitTimeMs);
     ASSERT_EQ(dataObjectsReceived, expectedMessages);
     resetCounters();
@@ -697,7 +703,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   unsigned char msb = static_cast<unsigned char>(ts >> 8);
   unsigned char lsb = static_cast<unsigned char>(ts & 0xFF);
   server->sendFrame({0x0B, 0x33, 0x28, msb, lsb}, false);
-  printf("[HNZ Server] TSCE sent\n");
+  debug_print("[HNZ Server] TSCE sent");
   waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
@@ -723,7 +729,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Send TS1 with invalid flag
   ///////////////////////////////////////
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
-  printf("[HNZ Server] TSCE 2 sent\n");
+  debug_print("[HNZ Server] TSCE 2 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
@@ -752,7 +758,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
   server->sendFrame({0x0F, daySection}, false);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
-  printf("[HNZ Server] TSCE 3 sent\n");
+  debug_print("[HNZ Server] TSCE 3 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
@@ -782,7 +788,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   msb = static_cast<unsigned char>(ts >> 8);
   lsb = static_cast<unsigned char>(ts & 0xFF);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
-  printf("[HNZ Server] TSCE 4 sent\n");
+  debug_print("[HNZ Server] TSCE 4 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
 
   // Check that ingestCallback had been called
@@ -817,12 +823,12 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   ///////////////////////////////////////
 
   hnz->sendCG();
-  printf("[HNZ south plugin] CG request sent\n");
+  debug_print("[HNZ south plugin] CG request sent");
   this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
   int totalCG = 3; // initial CG (1) + gi_repeat_count (2)
   for(int i=0 ; i<totalCG ; i++) {
     // Find the CG frame in the list of frames received by server and validate it
-    printf("Validating CG frame %d\n", i);
+    debug_print("Validating CG frame %d", i);
     validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
     if(HasFatalFailure()) return;
     this_thread::sleep_for(chrono::milliseconds(1000)); // gi_time
@@ -838,7 +844,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Send TS1 + TS2 only, then TS1 + TS2 + TS3 as CG answer
   ///////////////////////////////////////
   hnz->sendCG();
-  printf("[HNZ south plugin] CG request 2 sent\n");
+  debug_print("[HNZ south plugin] CG request 2 sent");
   this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
@@ -847,7 +853,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
 
   // Send only first of the two expected TS
   server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
-  printf("[HNZ Server] TSCG 1 sent\n");
+  debug_print("[HNZ Server] TSCG 1 sent");
   this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
 
   // Only first of the 2 TS CG messages were sent, it contains data for TS1 and TS2 only
@@ -876,7 +882,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
 
   // Send only second of the two expected TS (new CG was sent so the TS received earlier are ignored)
   server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
-  printf("[HNZ Server] TSCG 2 sent\n");
+  debug_print("[HNZ Server] TSCG 2 sent");
   this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
 
   // Only second of the 2 TS CG messages were sent, it contains data for TS3
@@ -902,7 +908,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Send both TS this time (new CG was sent so the TS received earlier are ignored)
   server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
-  printf("[HNZ Server] TSCG 3 sent\n");
+  debug_print("[HNZ Server] TSCG 3 sent");
   this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
 
   // All TS were received so no more CG should be sent automatically any more
@@ -932,7 +938,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Send TS1 + TS2 + TS3 as CG answer with invalid flag for TS3
   ///////////////////////////////////////
   hnz->sendCG();
-  printf("[HNZ south plugin] CG request 3 sent\n");
+  debug_print("[HNZ south plugin] CG request 3 sent");
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
@@ -941,7 +947,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
 
   server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
-  printf("[HNZ Server] TSCG 4 sent\n");
+  debug_print("[HNZ Server] TSCG 4 sent");
   waitUntil(dataObjectsReceived, 3, 1000);
 
   // Check that ingestCallback had been called
@@ -967,7 +973,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Send TS3 only as CG answer
   ///////////////////////////////////////
   hnz->sendCG();
-  printf("[HNZ south plugin] CG request 4 sent\n");
+  debug_print("[HNZ south plugin] CG request 4 sent");
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
@@ -978,7 +984,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   for(int i=0 ; i<2 ; i++) {
     // Send only second of the two expected TS
     server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
-    printf("[HNZ Server] TSCG %d sent\n", (5+i));
+    debug_print("[HNZ Server] TSCG %d sent", (5+i));
     waitUntil(dataObjectsReceived, 1, 1000);
 
     // Check that ingestCallback had been called
@@ -999,7 +1005,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
 
   // Send only second of the two expected TS on the final CG attempt
   server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
-  printf("[HNZ Server] TSCG 7 sent\n");
+  debug_print("[HNZ Server] TSCG 7 sent");
   waitUntil(dataObjectsReceived, 3, 1000);
 
   // Check that ingestCallback had been called
@@ -1039,7 +1045,7 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   unsigned char val2 = static_cast<unsigned char>(values[2]);
   unsigned char val3 = static_cast<unsigned char>(values[3]);
   server->sendFrame({0x02, 0x14, val0, val1, val2, val3}, false);
-  printf("[HNZ Server] TMA sent\n");
+  debug_print("[HNZ Server] TMA sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
@@ -1066,7 +1072,7 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   // Send TMA with invalid flag for the last one
   ///////////////////////////////////////
   server->sendFrame({0x02, 0x14, val0, val1, val2, 0xFF}, false);
-  printf("[HNZ Server] TMA 2 sent\n");
+  debug_print("[HNZ Server] TMA 2 sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
@@ -1107,7 +1113,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   unsigned char val2 = static_cast<unsigned char>(values[2]);
   unsigned char val3 = static_cast<unsigned char>(values[3]);
   server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x80}, false);
-  printf("[HNZ Server] TM8 sent\n");
+  debug_print("[HNZ Server] TM8 sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
@@ -1134,7 +1140,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   // Send TMN 8 bits with invalid flag for the last one
   ///////////////////////////////////////
   server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x88}, false);
-  printf("[HNZ Server] TM8 2 sent\n");
+  debug_print("[HNZ Server] TM8 2 sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
   // Check that ingestCallback had been called 4x time more
@@ -1167,7 +1173,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   unsigned char lsb2 = static_cast<unsigned char>(val12 & 0xFF);
   unsigned char msb2 = static_cast<unsigned char>(val12 >> 8);
   server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x00}, false);
-  printf("[HNZ Server] TM16 sent\n");
+  debug_print("[HNZ Server] TM16 sent");
   waitUntil(dataObjectsReceived, 2, 1000);
 
   // Check that ingestCallback had been called 2x time more
@@ -1201,7 +1207,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   // Send TMN 16 bits with invalid flag for the last one
   ///////////////////////////////////////
   server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x04}, false);
-  printf("[HNZ Server] TM16 2 sent\n");
+  debug_print("[HNZ Server] TM16 2 sent");
   waitUntil(dataObjectsReceived, 2, 1000);
 
   // Check that ingestCallback had been called 2x time more
@@ -1249,7 +1255,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   PLUGIN_PARAMETER paramTC3 = {"value", "1"};
   PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
-  printf("[HNZ south plugin] TC sent\n");
+  debug_print("[HNZ south plugin] TC sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
@@ -1258,7 +1264,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Send TC ACK from server
   server->sendFrame({0x09, 0x0e, 0x49}, false);
-  printf("[HNZ Server] TC ACK sent\n");
+  debug_print("[HNZ Server] TC ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1277,7 +1283,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC1 with negative ack (Critical fault)
   ///////////////////////////////////////
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
-  printf("[HNZ south plugin] TC 2 sent\n");
+  debug_print("[HNZ south plugin] TC 2 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
@@ -1286,7 +1292,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Send TC ACK from server with CR bit = 011b
   server->sendFrame({0x09, 0x0e, 0x4b}, false);
-  printf("[HNZ Server] TC ACK 2 sent\n");
+  debug_print("[HNZ Server] TC ACK 2 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1306,7 +1312,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC1 with negative ack (Non critical fault)
   ///////////////////////////////////////
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
-  printf("[HNZ south plugin] TC 3 sent\n");
+  debug_print("[HNZ south plugin] TC 3 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
@@ -1315,7 +1321,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Send TC ACK from server with CR bit = 101b
   server->sendFrame({0x09, 0x0e, 0x4d}, false);
-  printf("[HNZ Server] TC ACK 3 sent\n");
+  debug_print("[HNZ Server] TC ACK 3 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1334,7 +1340,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC1 with negative ack (Exterior fault)
   ///////////////////////////////////////
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
-  printf("[HNZ south plugin] TC 4 sent\n");
+  debug_print("[HNZ south plugin] TC 4 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
@@ -1343,7 +1349,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Send TC ACK from server with CR bit = 111b
   server->sendFrame({0x09, 0x0e, 0x4f}, false);
-  printf("[HNZ Server] TC ACK 4 sent\n");
+  debug_print("[HNZ Server] TC ACK 4 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1362,7 +1368,7 @@ TEST_F(HNZTest, SendingTCMessages) {
   // Send TC1 with negative ack (Order not allowed)
   ///////////////////////////////////////
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
-  printf("[HNZ south plugin] TC 5 sent\n");
+  debug_print("[HNZ south plugin] TC 5 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
@@ -1371,7 +1377,7 @@ TEST_F(HNZTest, SendingTCMessages) {
 
   // Send TC ACK from server with CR bit = 010b
   server->sendFrame({0x09, 0x0e, 0x4a}, false);
-  printf("[HNZ Server] TC ACK 5 sent\n");
+  debug_print("[HNZ Server] TC ACK 5 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1404,7 +1410,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   PLUGIN_PARAMETER paramTVC3 = {"value", "42"};
   PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
   ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
-  printf("[HNZ south plugin] TVC sent\n");
+  debug_print("[HNZ south plugin] TVC sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
@@ -1413,7 +1419,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
 
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
-  printf("[HNZ Server] TVC ACK sent\n");
+  debug_print("[HNZ Server] TVC ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1433,7 +1439,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   ///////////////////////////////////////
   paramTVC3.value = "-42";
   ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
-  printf("[HNZ south plugin] TVC 2 sent\n");
+  debug_print("[HNZ south plugin] TVC 2 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
@@ -1442,7 +1448,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
 
   // Send TVC ACK from server
   server->sendFrame({0x0a, 0x9f, 0x2a, 0x80}, false);
-  printf("[HNZ Server] TVC 2 ACK sent\n");
+  debug_print("[HNZ Server] TVC 2 ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1461,7 +1467,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
   // Send TVC1 with negative ack
   ///////////////////////////////////////
   ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
-  printf("[HNZ south plugin] TVC 3 sent\n");
+  debug_print("[HNZ south plugin] TVC 3 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
@@ -1470,7 +1476,7 @@ TEST_F(HNZTest, SendingTVCMessages) {
 
   // Send TVC ACK from server with A bit = 1
   server->sendFrame({0x0a, 0xdf, 0x2a, 0x80}, false);
-  printf("[HNZ Server] TVC 3 ACK sent\n");
+  debug_print("[HNZ Server] TVC 3 ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1505,7 +1511,7 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
 
   server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
-  printf("[HNZ Server] TSCE sent on both path\n");
+  debug_print("[HNZ Server] TSCE sent on both path");
   this_thread::sleep_for(chrono::milliseconds(3000));
 
   // Check that ingestCallback had been called only one time
@@ -1520,7 +1526,7 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
   resetCounters();
 
   server2->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
-  printf("[HNZ Server] TSCE sent on path B\n");
+  debug_print("[HNZ Server] TSCE sent on path B");
   this_thread::sleep_for(chrono::milliseconds(3000));
 
   // Check that ingestCallback had been called only one time
@@ -1544,7 +1550,7 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   PLUGIN_PARAMETER paramTC3 = {"value", "1"};
   PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
-  printf("[HNZ south plugin] TC sent\n");
+  debug_print("[HNZ south plugin] TC sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server
@@ -1559,7 +1565,7 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   // Send TC ACK from servers
   server->sendFrame({0x09, 0x0e, 0x49}, false);
   server2->sendFrame({0x09, 0x0e, 0x49}, false);
-  printf("[HNZ Server] TC ACK sent on both path\n");
+  debug_print("[HNZ Server] TC ACK sent on both path");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1575,7 +1581,7 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Send TC1 on path B
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
-  printf("[HNZ south plugin] TC 2 sent\n");
+  debug_print("[HNZ south plugin] TC 2 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server2
@@ -1589,7 +1595,7 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Send TC ACK from server2 only
   server2->sendFrame({0x09, 0x0e, 0x49}, false);
-  printf("[HNZ Server] TC ACK sent on path B\n");
+  debug_print("[HNZ Server] TC ACK sent on path B");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -1604,7 +1610,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   // Send request_connection_status
   std::string operationRCS("request_connection_status");
   ASSERT_TRUE(hnz->operation(operationRCS, 0, nullptr));
-  printf("[HNZ south plugin] request_connection_status sent\n");
+  debug_print("[HNZ south plugin] request_connection_status sent");
 
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
@@ -1619,7 +1625,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
 
   // Wait for connection to be initialized
   wrapperPtr->startHNZPlugin();
-  printf("[HNZ south plugin] waiting for connection established...\n");
+  debug_print("[HNZ south plugin] waiting for connection established...");
   BasicHNZServer* server = wrapperPtr->server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
@@ -1648,7 +1654,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
 
   // Send new CG request
   hnz->sendCG();
-  printf("[HNZ south plugin] CG request sent\n");
+  debug_print("[HNZ south plugin] CG request sent");
   waitUntil(southEventsReceived, 1, 1000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
@@ -1662,7 +1668,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
 
   // Send one TS CG
   server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
-  printf("[HNZ Server] TSCG 1 sent\n");
+  debug_print("[HNZ Server] TSCG 1 sent");
   waitUntil(southEventsReceived, 1, 1000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
@@ -1675,7 +1681,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   if(HasFatalFailure()) return;
 
   // Wait for all CG attempts to expire (gi_time * (gi_repeat_count+1) * 1000)
-  printf("[HNZ south plugin] waiting for full CG timeout...\n");
+  debug_print("[HNZ south plugin] waiting for full CG timeout...");
   waitUntil(southEventsReceived, 1, 3000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
@@ -1689,7 +1695,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
 
   // Send new CG request
   hnz->sendCG();
-  printf("[HNZ south plugin] CG request 2 sent\n");
+  debug_print("[HNZ south plugin] CG request 2 sent");
   waitUntil(southEventsReceived, 1, 1000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
@@ -1704,7 +1710,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   // Complete CG request by sending all expected TS
   server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
-  printf("[HNZ Server] TSCG 2 sent\n");
+  debug_print("[HNZ Server] TSCG 2 sent");
   waitUntil(southEventsReceived, 2, 1000);
   // Check that ingestCallback had been called only for two GI status updates
   ASSERT_EQ(southEventsReceived, 2);
@@ -1721,8 +1727,8 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   if(HasFatalFailure()) return;
 
   // Disconnect server
-  wrapperPtr = nullptr;
-  printf("[HNZ Server] Server disconnected\n");
+  server->stopHNZServer();
+  debug_print("[HNZ Server] Server disconnected");
   waitUntil(southEventsReceived, 1, 30000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
@@ -1734,4 +1740,37 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   });
   if(HasFatalFailure()) return;
 
+  // Wait 1 min (to make sure we can reconnect even after a long time)
+  debug_print("[HNZ south plugin] Wait before reconnect...");
+  this_thread::sleep_for(chrono::minutes(1));
+  
+  // Reconnect server
+  server->startHNZServer();
+  // Wait for connection to be initialized
+  debug_print("[HNZ south plugin] waiting for connection 2 established...");
+  server = wrapperPtr->server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
+  waitUntil(southEventsReceived, 3, 3000);
+  // Check that ingestCallback had been called the expected number of times
+  ASSERT_EQ(southEventsReceived, 3);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "failed"},
+  });
+  if(HasFatalFailure()) return;
 }

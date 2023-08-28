@@ -18,12 +18,16 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
   this->m_hnz_fledge = hnz_fledge;
 
   // Create the path needed
-  {
+  if (m_hnz_conf->get_ip_address_A() != "") {
+    // Parent if is mostly here for scope lock
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    m_active_path = new HNZPath(hnz_conf, this, false);
+    m_active_path = new HNZPath(m_hnz_conf, this, false);
     if (m_hnz_conf->get_ip_address_B() != "") {
-      m_passive_path = new HNZPath(hnz_conf, this, true);
+      m_passive_path = new HNZPath(m_hnz_conf, this, true);
     }
+  }
+  else {
+    HnzUtility::log_fatal("Attempted to start HNZ connection with no IP configured, aborting");
   }
 
   // Set settings for GI
@@ -33,7 +37,7 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
   this->m_gi_schedule_already_sent = false;
 
   // Others settings
-  this->m_repeat_timeout = hnz_conf->get_repeat_timeout();
+  this->m_repeat_timeout = m_hnz_conf->get_repeat_timeout();
   this->m_is_running = true;
 }
 
@@ -58,7 +62,8 @@ void HNZConnection::stop() {
 
   // Stop the path used (close the TCP connection and stop the threads that
   // manage HNZ connections)
-  {
+  if (m_active_path != nullptr || m_passive_path != nullptr) {
+    // Parent if is mostly here for scope lock
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     if (m_active_path != nullptr) m_active_path->disconnect();
     if (m_passive_path != nullptr) m_passive_path->disconnect();
@@ -126,7 +131,8 @@ void HNZConnection::m_manageMessages() {
     m_update_current_time();
 
     // Manage repeat/timeout for each path
-    {
+    if (m_active_path || m_passive_path) {
+      // Parent if is mostly here for scope lock
       std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
       m_check_timer(m_active_path);
       m_check_timer(m_passive_path);

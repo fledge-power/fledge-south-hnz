@@ -17,7 +17,7 @@
 #include "hnzconnection.h"
 #include "hnzpath.h"
 
-HNZ::HNZ() : m_hnz_conf(std::make_shared<HNZConf>()), m_is_running(false) {}
+HNZ::HNZ() {}
 
 HNZ::~HNZ() {
   if (m_is_running) {

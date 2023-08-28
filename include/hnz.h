@@ -148,7 +148,7 @@ class HNZ {
 
 private:
   std::string m_asset;  // Plugin name in fledge
-  std::atomic<bool> m_is_running;
+  std::atomic<bool> m_is_running{false};
   // Receiving threads
   std::unique_ptr<std::thread> m_receiving_thread_A;
   std::unique_ptr<std::thread> m_receiving_thread_B;
@@ -156,8 +156,8 @@ private:
   std::vector<unsigned int> m_gi_addresses_received;  
 
   // Others HNZ related class
-  std::shared_ptr<HNZConf> m_hnz_conf;              // HNZ Configuration
-  std::unique_ptr<HNZConnection> m_hnz_connection;  // HNZ Connection handling
+  std::shared_ptr<HNZConf> m_hnz_conf{std::make_shared<HNZConf>()}; // HNZ Configuration
+  std::unique_ptr<HNZConnection> m_hnz_connection;                  // HNZ Connection handling
 
   // Fledge related
   INGEST_CB m_ingest;  // Callback function used to send data to south service

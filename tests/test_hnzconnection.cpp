@@ -65,8 +65,8 @@ TEST(HNZConnection, OnlyOnePathConfigured) {
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
-  ASSERT_NE(nullptr, hnz_connection->getActivePath());
-  ASSERT_EQ(nullptr, hnz_connection->getPassivePath());
+  ASSERT_NE(nullptr, hnz_connection->getActivePath().get());
+  ASSERT_EQ(nullptr, hnz_connection->getPassivePath().get());
 }
 
 TEST(HNZConnection, TwoPathConfigured) {
@@ -77,6 +77,6 @@ TEST(HNZConnection, TwoPathConfigured) {
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
-  ASSERT_NE(nullptr, hnz_connection->getActivePath());
-  ASSERT_NE(nullptr, hnz_connection->getPassivePath());
+  ASSERT_NE(nullptr, hnz_connection->getActivePath().get());
+  ASSERT_NE(nullptr, hnz_connection->getPassivePath().get());
 }

@@ -57,11 +57,6 @@ void HNZ::stop() {
   HnzUtility::log_info("Starting shutdown of HNZ plugin");
   m_is_running = false;
 
-  if (m_hnz_connection != nullptr) {
-    m_hnz_connection->stop();
-    m_hnz_connection = nullptr;
-  }
-
   if (m_receiving_thread_A != nullptr) {
     HnzUtility::log_debug("Waiting for the receiving thread (path A)");
     m_receiving_thread_A->join();
@@ -71,6 +66,12 @@ void HNZ::stop() {
     HnzUtility::log_debug("Waiting for the receiving thread (path B)");
     m_receiving_thread_B->join();
     m_receiving_thread_B = nullptr;
+  }
+  // Connection must be freed after management threads of both path
+  // as HNZ::m_hnz_connection is used in HNZ::receive running on the threads
+  if (m_hnz_connection != nullptr) {
+    m_hnz_connection->stop();
+    m_hnz_connection = nullptr;
   }
   HnzUtility::log_info("Plugin stopped !");
 }
@@ -107,7 +108,7 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
   return true;
 }
 
-void HNZ::receive(HNZPath *hnz_path_in_use) {
+void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   string path = hnz_path_in_use->getName();
 
   if (!m_hnz_conf->is_complete()) {

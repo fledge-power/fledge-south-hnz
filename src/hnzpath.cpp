@@ -93,8 +93,7 @@ void HNZPath::connect() {
       go_to_connection();
       if (m_connection_thread == nullptr) {
         // Start the thread that manage the HNZ connection
-        m_connection_thread =
-            new thread(&HNZPath::m_manageHNZProtocolConnection, this);
+        m_connection_thread = std::make_shared<std::thread>(&HNZPath::m_manageHNZProtocolConnection, this);
       }
       // Connection established, go to main loop
       return;
@@ -122,12 +121,11 @@ void HNZPath::disconnect() {
   if (m_connection_thread != nullptr) {
     // To avoid to be here at the same time, we put m_connection_thread =
     // nullptr
-    thread* temp = m_connection_thread;
+    std::shared_ptr<std::thread> temp = m_connection_thread;
     m_connection_thread = nullptr;
     HnzUtility::log_debug(m_name_log +
                                " Waiting for the connection thread");
     temp->join();
-    delete temp;
   }
 
   HnzUtility::log_info(m_name_log + " stopped !");

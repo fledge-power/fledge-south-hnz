@@ -176,7 +176,7 @@ class HNZPath {
   int gi_repeat = 0;       // number of time a GI is repeated
   long gi_start_time = 0;  // GI start time
 
-  thread* m_connection_thread = nullptr; // Main thread that maintains the connection
+  std::shared_ptr<std::thread> m_connection_thread; // Main thread that maintains the connection
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
   atomic<bool> m_connected{false};   // TCP Connection state with the PA
   int m_protocol_state;       // HNZ Protocol connection state

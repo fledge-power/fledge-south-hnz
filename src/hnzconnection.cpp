@@ -21,9 +21,9 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
   if (m_hnz_conf->get_ip_address_A() != "") {
     // Parent if is mostly here for scope lock
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    m_active_path = new HNZPath(m_hnz_conf, this, false);
+    m_active_path = std::make_shared<HNZPath>(m_hnz_conf, this, false);
     if (m_hnz_conf->get_ip_address_B() != "") {
-      m_passive_path = new HNZPath(m_hnz_conf, this, true);
+      m_passive_path = std::make_shared<HNZPath>(m_hnz_conf, this, true);
     }
   }
   else {
@@ -45,14 +45,11 @@ HNZConnection::~HNZConnection() {
   if (m_is_running) {
     stop();
   }
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-  if (m_active_path != nullptr) delete m_active_path;
-  if (m_passive_path != nullptr) delete m_passive_path;
 }
 
 void HNZConnection::start() {
   HnzUtility::log_debug("HNZ Connection starting...");
-  m_messages_thread = new thread(&HNZConnection::m_manageMessages, this);
+  m_messages_thread = std::make_shared<std::thread>(&HNZConnection::m_manageMessages, this);
 }
 
 void HNZConnection::stop() {
@@ -71,11 +68,10 @@ void HNZConnection::stop() {
 
   // Wait for the end of the thread that manage the messages
   if (m_messages_thread != nullptr) {
-    thread* temp = m_messages_thread;
+    std::shared_ptr<std::thread> temp = m_messages_thread;
     m_messages_thread = nullptr;
     HnzUtility::log_debug("Waiting for the messages managing thread");
     temp->join();
-    delete temp;
   }
 
   HnzUtility::log_info("HNZ Connection stopped !");
@@ -151,7 +147,7 @@ void HNZConnection::m_manageMessages() {
   } while (m_is_running);
 }
 
-void HNZConnection::m_check_timer(HNZPath* path) {
+void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) {
   if ((path != nullptr) && !path->msg_sent.empty() && path->isConnected()) {
     Message& msg = path->msg_sent.front();
     if (path->last_sent_time + m_repeat_timeout < m_current) {
@@ -242,13 +238,12 @@ void HNZConnection::switchPath() {
   if (m_passive_path != nullptr) {
     HnzUtility::log_warn("Switching active and passive path.");
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    // Check the status of the passive path before switching
     // Permute path
-    HNZPath* temp = m_active_path;
+    std::shared_ptr<HNZPath> temp = m_active_path;
     m_active_path = m_passive_path;
-    m_active_path->setActivePath(true);
-    temp->setActivePath(false);
     m_passive_path = temp;
+    m_active_path->setActivePath(true);
+    m_passive_path->setActivePath(false);
 
     HnzUtility::log_info("New active path is " + m_active_path->getName());
 

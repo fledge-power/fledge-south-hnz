@@ -179,7 +179,7 @@ private:
   /**
    * Waits for new messages and processes them
    */
-  void receive(HNZPath* hnz_path_in_use);
+  void receive(std::shared_ptr<HNZPath> hnz_path_in_use);
 
   /**
    * Handle a message: translate the message and send it to Fledge.

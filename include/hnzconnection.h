@@ -61,7 +61,7 @@ class HNZConnection {
    * commands).
    * @return the active path
    */
-  HNZPath* getActivePath() {
+  std::shared_ptr<HNZPath> getActivePath() {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     return m_active_path;
   };
@@ -70,7 +70,7 @@ class HNZConnection {
    * Get the path in stand-by.
    * @return the active path
    */
-  HNZPath* getPassivePath() {
+  std::shared_ptr<HNZPath> getPassivePath() {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     return m_passive_path;
   };
@@ -79,7 +79,7 @@ class HNZConnection {
    * Get both active and passive path (with a single lock)
    * @return a path pair (active_path, passive_path)
    */
-  std::pair<HNZPath*, HNZPath*> getBothPath() {
+  std::pair<std::shared_ptr<HNZPath>, std::shared_ptr<HNZPath>> getBothPath() {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     return std::make_pair(m_active_path, m_passive_path);
   };
@@ -115,10 +115,10 @@ class HNZConnection {
   GiStatus getGiStatus();
 
  private:
-  HNZPath* m_active_path = nullptr;
-  HNZPath* m_passive_path = nullptr;
+  std::shared_ptr<HNZPath> m_active_path;
+  std::shared_ptr<HNZPath> m_passive_path;
   std::recursive_mutex m_path_mutex;
-  std::thread* m_messages_thread = nullptr;  // Main thread that monitors messages
+  std::shared_ptr<std::thread> m_messages_thread;  // Main thread that monitors messages
   std::atomic<bool> m_is_running;  // If false, the connection thread will stop
   uint64_t m_current;         // Store the last time requested
   uint64_t m_elapsedTimeMs;   // Store elapsed time in milliseconds every time m_current is updated
@@ -148,7 +148,7 @@ class HNZConnection {
    * If a message is not acknowledged, then a retransmission request is sent.
    * @param path the related path
    */
-  void m_check_timer(HNZPath* path);
+  void m_check_timer(std::shared_ptr<HNZPath> path);
 
   /**
    * Check the state of ongoing GI (General Interrogation) and manage scheduled

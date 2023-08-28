@@ -147,7 +147,7 @@ void HNZConnection::m_manageMessages() {
   } while (m_is_running);
 }
 
-void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) {
+void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
   if ((path != nullptr) && !path->msg_sent.empty() && path->isConnected()) {
     Message& msg = path->msg_sent.front();
     if (path->last_sent_time + m_repeat_timeout < m_current) {

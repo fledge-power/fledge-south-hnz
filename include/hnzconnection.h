@@ -148,7 +148,7 @@ class HNZConnection {
    * If a message is not acknowledged, then a retransmission request is sent.
    * @param path the related path
    */
-  void m_check_timer(std::shared_ptr<HNZPath> path);
+  void m_check_timer(std::shared_ptr<HNZPath> path) const;
 
   /**
    * Check the state of ongoing GI (General Interrogation) and manage scheduled

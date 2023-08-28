@@ -62,10 +62,10 @@ class HNZPath {
   // Give access to HNZPath private members for HNZConnection
   friend class HNZConnection;
  public:
-  HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary);
+  HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_connection, bool secondary);
   ~HNZPath();
 
-  string getName() { return m_name_log; };
+  string getName() const { return m_name_log; };
 
   /**
    * Connect (or re-connect) to the HNZ PA (TCP connection and HNZ connection
@@ -100,7 +100,7 @@ class HNZPath {
   /**
    * Returns the number of times the last message was sent.
    */
-  int getRepeat() { return m_repeat; };
+  int getRepeat() const { return m_repeat; };
 
   /**
    * Resend a message that has already been sent but not acknowledged.
@@ -153,13 +153,13 @@ class HNZPath {
    * Gets the state of the path
    * @return true if active, false if passive
    */
-  bool isActivePath() { return m_is_active_path; }
+  bool isActivePath() const { return m_is_active_path; }
 
   /**
    * Gets the state of the HNZ protocol (CONNECTION, CONNECTED)
    * @return CONNECTION if SARM/UA step is not complete, CONNECTED after that
    */
-  int getProtocolState() { return m_protocol_state; }
+  int getProtocolState() const { return m_protocol_state; }
 
  private:
   std::unique_ptr<HNZClient> m_hnz_client;  // HNZ Client that manage TCP connection
@@ -325,12 +325,6 @@ class HNZPath {
   void m_send_time_setting();
 
   void m_go_to_connected();
-
-  // Local definition of make_unique as it is only available since C++14 and right now fledge-south-hnz is built with C++11
-  template<typename T, typename... Args>
-  std::unique_ptr<T> make_unique(Args&&... args) {
-      return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-  }
 };
 
 #endif

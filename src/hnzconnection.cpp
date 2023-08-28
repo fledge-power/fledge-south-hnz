@@ -13,7 +13,7 @@
 #include "hnzpath.h"
 #include "hnzconnection.h"
 
-HNZConnection::HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge) {
+HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge) {
   this->m_hnz_conf = hnz_conf;
   this->m_hnz_fledge = hnz_fledge;
 
@@ -223,7 +223,7 @@ void HNZConnection::m_check_command_timer() {
 void HNZConnection::m_update_current_time() {
   uint64_t prevTimeMs = m_current;
   m_current =
-      duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+      std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
   m_elapsedTimeMs = m_current - prevTimeMs;
 }

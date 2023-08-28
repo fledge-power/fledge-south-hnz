@@ -19,9 +19,6 @@
 
 #include "hnzconf.h"
 
-using namespace std;
-using namespace std::chrono;
-
 class HNZConnection;
 class HNZPath;
 
@@ -50,7 +47,7 @@ class HNZ {
   HNZ();
   ~HNZ();
 
-  void setAssetName(const string& asset) { m_asset = asset; }
+  void setAssetName(const std::string& asset) { m_asset = asset; }
 
   /**
    * Start the HZN south plugin
@@ -68,8 +65,8 @@ class HNZ {
    * @param protocol_conf_json Contain value to configure the protocol
    * @param msg_conf_json Describe the messages that the plugin can received
    */
-  bool setJsonConfig(const string& protocol_conf_json,
-                     const string& msg_configuration);
+  bool setJsonConfig(const std::string& protocol_conf_json,
+                     const std::string& msg_configuration);
 
   /**
    * Save the callback function and its data
@@ -150,16 +147,17 @@ class HNZ {
   void sendInitialGI();
 
 private:
-  string m_asset;  // Plugin name in fledge
-  atomic<bool> m_is_running;
-  thread *m_receiving_thread_A,
-      *m_receiving_thread_B = nullptr;  // Receiving threads
+  std::string m_asset;  // Plugin name in fledge
+  std::atomic<bool> m_is_running;
+  // Receiving threads
+  std::unique_ptr<std::thread> m_receiving_thread_A;
+  std::unique_ptr<std::thread> m_receiving_thread_B;
   // Contains all addressed of the TS received in response to a GI request
-  vector<unsigned int> m_gi_addresses_received;  
+  std::vector<unsigned int> m_gi_addresses_received;  
 
   // Others HNZ related class
-  HNZConf* m_hnz_conf = nullptr;              // HNZ Configuration
-  HNZConnection* m_hnz_connection = nullptr;  // HNZ Connection handling
+  std::shared_ptr<HNZConf> m_hnz_conf;              // HNZ Configuration
+  std::unique_ptr<HNZConnection> m_hnz_connection;  // HNZ Connection handling
 
   // Fledge related
   INGEST_CB m_ingest;  // Callback function used to send data to south service

@@ -418,7 +418,7 @@ class HNZTest : public testing::Test {
     waitUntil(dataObjectsReceived, expectedMessages, maxWaitTimeMs);
     ASSERT_EQ(dataObjectsReceived, expectedMessages);
     resetCounters();
-    unsigned long epochMs = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     // First 7 messages are from init
     // Those messages are expected to be sent before the CG time frame
     std::string timeRangeStr(to_string(epochMs - (maxWaitTimeMs + 10000)) + ";" + to_string(epochMs - maxWaitTimeMs));
@@ -482,7 +482,7 @@ class HNZTest : public testing::Test {
       ASSERT_EQ(dataObjectsReceived, labels.size());
       resetCounters();
     }
-    unsigned long epochMs = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     std::string timeRangeStr(to_string(epochMs - 1000) + ";" + to_string(epochMs));
     std::shared_ptr<Reading> currentReading = nullptr;
     for(const auto& label: labels) {

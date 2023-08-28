@@ -12,7 +12,14 @@
 #define HNZConf_H
 
 #include <map>
+#include <memory>
 #include "rapidjson/document.h"
+
+// Local definition of make_unique as it is only available since C++14 and right now fledge-south-hnz is built with C++11
+template<typename T, typename... Args>
+std::unique_ptr<T> make_unique(Args&&... args) {
+    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
 
 constexpr char JSON_CONF_NAME[] = "protocol_stack";
 constexpr char NAME[] = "name";

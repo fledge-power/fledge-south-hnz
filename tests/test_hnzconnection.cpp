@@ -58,33 +58,25 @@ static string exchanged_data_def = QUOTE({
 });
 
 TEST(HNZConnection, OnlyOnePathConfigured) {
-  HNZConf* conf = new HNZConf();
+  std::shared_ptr<HNZConf> conf = std::make_shared<HNZConf>();
   conf->importConfigJson(protocol_stack_def_one_path);
   conf->importExchangedDataJson(exchanged_data_def);
 
-  HNZ* hnz = new HNZ();
-  HNZConnection* hnz_connection = new HNZConnection(conf, hnz);
+  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
   ASSERT_NE(nullptr, hnz_connection->getActivePath());
   ASSERT_EQ(nullptr, hnz_connection->getPassivePath());
-
-  delete hnz_connection;
-  delete conf;
-  delete hnz;
 }
 
 TEST(HNZConnection, TwoPathConfigured) {
-  HNZConf* conf = new HNZConf();
+  std::shared_ptr<HNZConf> conf = std::make_shared<HNZConf>();
   conf->importConfigJson(protocol_stack_def_two_path);
   conf->importExchangedDataJson(exchanged_data_def);
 
-  HNZ* hnz = new HNZ();
-  HNZConnection* hnz_connection = new HNZConnection(conf, hnz);
+  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
   ASSERT_NE(nullptr, hnz_connection->getActivePath());
   ASSERT_NE(nullptr, hnz_connection->getPassivePath());
-
-  delete hnz_connection;
-  delete conf;
-  delete hnz;
 }

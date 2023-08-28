@@ -29,7 +29,7 @@ enum class GiStatus;
  */
 class HNZConnection {
  public:
-  HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge);
+  HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge);
   ~HNZConnection();
 
   /**
@@ -172,8 +172,8 @@ class HNZConnection {
    */
   void m_update_quality_update_timer();
 
-  HNZConf* m_hnz_conf = nullptr;  // HNZ Configuration
-  HNZ* m_hnz_fledge = nullptr;    // HNZ Fledge
+  std::shared_ptr<HNZConf> m_hnz_conf;  // HNZ Configuration
+  HNZ* m_hnz_fledge = nullptr;          // HNZ Fledge
 };
 
 #endif

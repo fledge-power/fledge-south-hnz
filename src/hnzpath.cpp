@@ -15,7 +15,7 @@
 #include "hnz.h"
 #include "hnzpath.h"
 
-HNZPath::HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
+HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_connection, bool secondary):
                   // Path settings
                   m_hnz_client(make_unique<HNZClient>()),
                   m_hnz_connection(hnz_connection),
@@ -443,7 +443,7 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
 
         // Waiting for other RR, set timer
         if (!msg_sent.empty())
-          last_sent_time = duration_cast<milliseconds>(
+          last_sent_time = std::chrono::duration_cast<milliseconds>(
                                system_clock::now().time_since_epoch())
                                .count();
 
@@ -547,7 +547,7 @@ void HNZPath::m_sendInfoImmediately(Message message) {
   // Set timer if there is not other message sent waiting for confirmation
   if (msg_sent.empty())
     last_sent_time =
-        duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+        std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
             .count();
 
   message.ns = m_ns;
@@ -569,7 +569,7 @@ void HNZPath::sendBackInfo(Message& message) {
                                 sizeof(msgWithNrNs));
 
   last_sent_time =
-      duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+      std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
 }
 
@@ -590,7 +590,7 @@ void HNZPath::m_send_date_setting() {
 void HNZPath::m_send_time_setting() {
   unsigned char msg[5];
   long int ms_since_epoch, mod10m, frac;
-  ms_since_epoch = duration_cast<milliseconds>(
+  ms_since_epoch = std::chrono::duration_cast<milliseconds>(
                        high_resolution_clock::now().time_since_epoch())
                        .count();
   long int ms_today = ms_since_epoch % 86400000;
@@ -618,7 +618,7 @@ void HNZPath::sendGeneralInterrogation() {
     m_hnz_connection->updateGiStatus(GiStatus::STARTED);
   }
   gi_repeat++;
-  gi_start_time = duration_cast<milliseconds>(
+  gi_start_time = std::chrono::duration_cast<milliseconds>(
                       high_resolution_clock::now().time_since_epoch())
                       .count();
 }
@@ -637,7 +637,7 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
-  cmd.timestamp_max = duration_cast<milliseconds>(
+  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
                           high_resolution_clock::now().time_since_epoch())
                           .count() +
                       c_ack_time_max;
@@ -663,7 +663,7 @@ bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
-  cmd.timestamp_max = duration_cast<milliseconds>(
+  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
                           high_resolution_clock::now().time_since_epoch())
                           .count() +
                       c_ack_time_max;

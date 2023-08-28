@@ -17,14 +17,12 @@
 #include "hnzconnection.h"
 #include "hnzpath.h"
 
-HNZ::HNZ() : m_hnz_conf(new HNZConf), m_is_running(false) {}
+HNZ::HNZ() : m_hnz_conf(std::make_shared<HNZConf>()), m_is_running(false) {}
 
 HNZ::~HNZ() {
   if (m_is_running) {
     stop();
   }
-  if (m_hnz_connection != nullptr) delete m_hnz_connection;
-  if (m_hnz_conf != nullptr) delete m_hnz_conf;
 }
 
 void HNZ::start() {
@@ -44,12 +42,12 @@ void HNZ::start() {
   m_sendAllTSQualityReadings(true, false);
 
   auto pathPair = m_hnz_connection->getBothPath();
-  m_receiving_thread_A = new thread(&HNZ::receive, this, pathPair.first);
+  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, pathPair.first);
   if (pathPair.second != nullptr) {
     // Wait after getting the passive path pointer as connection init of active path may swap path
     this_thread::sleep_for(milliseconds(1000));
     // Path B is defined in the configuration
-    m_receiving_thread_B = new thread(&HNZ::receive, this, pathPair.second);
+    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, pathPair.second);
   }
 
   m_hnz_connection->start();
@@ -61,20 +59,17 @@ void HNZ::stop() {
 
   if (m_hnz_connection != nullptr) {
     m_hnz_connection->stop();
-    delete m_hnz_connection;
     m_hnz_connection = nullptr;
   }
 
   if (m_receiving_thread_A != nullptr) {
     HnzUtility::log_debug("Waiting for the receiving thread (path A)");
     m_receiving_thread_A->join();
-    delete m_receiving_thread_A;
     m_receiving_thread_A = nullptr;
   }
   if (m_receiving_thread_B != nullptr) {
     HnzUtility::log_debug("Waiting for the receiving thread (path B)");
     m_receiving_thread_B->join();
-    delete m_receiving_thread_B;
     m_receiving_thread_B = nullptr;
   }
   HnzUtility::log_info("Plugin stopped !");
@@ -103,7 +98,7 @@ bool HNZ::setJsonConfig(const string &protocol_conf_json,
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
-  m_hnz_connection = new HNZConnection(m_hnz_conf, this);
+  m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
 
   if (was_running) {
     HnzUtility::log_warn("Restarting the plugin...");
@@ -137,10 +132,10 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
       // Try to reconnect, unless thread is stopping
       if (m_is_running) {
         hnz_path_in_use->disconnect();
-        // Shutdown request may happen while disconnecting, if it does cancel reconnection
-        if (m_is_running) {
-          hnz_path_in_use->connect();
-        }
+      }
+      // Shutdown request may happen while disconnecting, if it does cancel reconnection
+      if (m_is_running) {
+        hnz_path_in_use->connect();
       }
     } else {
       // Push each message to fledge
@@ -535,9 +530,9 @@ unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::syst
   static const auto oneDay = std::chrono::hours{24};
   // Get the date of the start of the day in epoch milliseconds
   auto days = dateTime - (dateTime.time_since_epoch() % oneDay);
-  unsigned long epochMs = duration_cast<std::chrono::milliseconds>(days.time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(days.time_since_epoch()).count();
   // Add or remove one day if we are at edge of day and day section is on the other day
-  long int ms_today = duration_cast<std::chrono::milliseconds>(dateTime.time_since_epoch()).count() % oneDayMs;
+  long int ms_today = std::chrono::duration_cast<std::chrono::milliseconds>(dateTime.time_since_epoch()).count() % oneDayMs;
   long int hours = (ms_today / oneHourMs) % 24;
   // Remote section of day is after midnight but local clock is before midnight: add one day
   if ((daySection == 0) && (hours == 23)) {
@@ -698,7 +693,7 @@ void HNZ::m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<u
 
 void HNZ::m_sendAllTSQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
   ReadingParameters paramsTemplate;
-  unsigned long epochMs = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   paramsTemplate.msg_code = "TS";
   paramsTemplate.station_addr = m_remote_address;
   paramsTemplate.valid = static_cast<unsigned int>(invalid);

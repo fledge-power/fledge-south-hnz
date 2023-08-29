@@ -7,12 +7,15 @@
  *
  * Author: Justin Facquet
  */
-#include <logger.h>
 
+#include <sstream>
+#include <iomanip>
+
+#include "hnzutility.h"
 #include "hnz.h"
 #include "hnzpath.h"
 
-HNZPath::HNZPath(const HNZConf* hnz_conf, HNZConnection* hnz_connection, bool secondary):
+HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_connection, bool secondary):
                   // Path settings
                   m_hnz_client(make_unique<HNZClient>()),
                   m_hnz_connection(hnz_connection),
@@ -60,49 +63,53 @@ vector<unsigned char> convertPayloadToVector(unsigned char* data, int size) {
  * Helper method to convert payload into something readable for logs.
  */
 string convert_data_to_str(unsigned char* data, int len) {
-  string s = "";
-  for (int i = 0; i < len; i++) {
-    s += to_string(data[i]);
-    if (i < len - 1) s += " ";
+  if (data == nullptr) {
+    return "";
   }
-  return s;
+  std::stringstream stream;
+  for (int i = 0; i < len; i++) {
+    stream << std::setfill ('0') << std::setw(2) << std::hex << static_cast<unsigned int>(data[i]);
+    if (i < len - 1) stream << " ";
+  }
+  return stream.str();
 }
 
-bool HNZPath::connect() {
-  int i = 1;
-  while (((i <= RETRY_CONN_NUM) or (RETRY_CONN_NUM == -1)) and m_is_running) {
-    Logger::getLogger()->info(
+void HNZPath::connect() {
+  // Reinitialize those variables in case of reconnection
+  m_last_msg_time = time(nullptr);
+  m_is_running = true;
+  // Loop until connected
+  while (m_is_running) {
+    HnzUtility::log_info(
         m_name_log + " Connecting to PA on " + m_ip + " (" + to_string(m_port) +
-        ")... [" + to_string(i) + "/" + to_string(RETRY_CONN_NUM) + "]");
+        ")...");
 
     // Establish TCP connection with the PA
     m_connected = !(m_hnz_client->connect_Server(m_ip.c_str(), m_port, m_timeoutUs));
 
     if (m_connected) {
-      Logger::getLogger()->info(m_name_log + "Connected to " + m_ip + " (" +
+      HnzUtility::log_info(m_name_log + " Connected to " + m_ip + " (" +
                                 to_string(m_port) + ").");
-
+      go_to_connection();
       if (m_connection_thread == nullptr) {
         // Start the thread that manage the HNZ connection
-        m_connection_thread =
-            new thread(&HNZPath::m_manageHNZProtocolConnection, this);
+        m_connection_thread = std::make_shared<std::thread>(&HNZPath::m_manageHNZProtocolConnection, this);
       }
-
-      return true;
+      // Connection established, go to main loop
+      return;
     } else {
-      Logger::getLogger()->warn(m_name_log +
-                                "Error in connection, retrying in " +
+      HnzUtility::log_warn(m_name_log +
+                                " Error in connection, retrying in " +
                                 to_string(RETRY_CONN_DELAY) + "s ...");
+      // If connection failed, try to switch path
+      if (m_is_active_path) m_hnz_connection->switchPath();
       this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
     }
-    i++;
   }
-
-  return false;
 }
 
 void HNZPath::disconnect() {
-  Logger::getLogger()->debug(m_name_log + " HNZ Connection stopping...");
+  HnzUtility::log_debug(m_name_log + " HNZ Path stopping...");
   if (m_is_active_path) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
   }
@@ -114,22 +121,21 @@ void HNZPath::disconnect() {
   if (m_connection_thread != nullptr) {
     // To avoid to be here at the same time, we put m_connection_thread =
     // nullptr
-    thread* temp = m_connection_thread;
+    std::shared_ptr<std::thread> temp = m_connection_thread;
     m_connection_thread = nullptr;
-    Logger::getLogger()->debug(m_name_log +
+    HnzUtility::log_debug(m_name_log +
                                " Waiting for the connection thread");
     temp->join();
-    delete temp;
   }
 
-  Logger::getLogger()->info(m_name_log + " stopped !");
+  HnzUtility::log_info(m_name_log + " stopped !");
 }
 
 void HNZPath::m_manageHNZProtocolConnection() {
   auto sleep = milliseconds(1000);
   long now;
 
-  Logger::getLogger()->debug(m_name_log +
+  HnzUtility::log_debug(m_name_log +
                              " HNZ Connection Management thread running");
 
   do {
@@ -143,7 +149,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
         sleep = m_manageHNZProtocolConnected(now);
         break;
       default:
-        Logger::getLogger()->debug(m_name_log + " STOP state");
+        HnzUtility::log_debug(m_name_log + " STOP state");
         m_is_running = false;
         sleep = milliseconds(10);
         break;
@@ -152,7 +158,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
     this_thread::sleep_for(sleep);
   } while (m_is_running);
 
-  Logger::getLogger()->debug(
+  HnzUtility::log_debug(
       m_name_log + " HNZ Connection Management thread is shutting down...");
 }
 
@@ -163,21 +169,20 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
   if (!sarm_ARP_UA || !sarm_PA_received) {
     if (now - m_last_msg_time <= m_inacc_timeout) {
       if (m_nbr_sarm_sent == m_max_sarm) {
-        Logger::getLogger()->warn(
+        HnzUtility::log_warn(
             m_name_log + " The maximum number of SARM was reached.");
-        // If the path is the active one, switch to passive path if
-        // available
+        // If the path is the active one, switch to passive path if available
         if (m_is_active_path) m_hnz_connection->switchPath();
         m_nbr_sarm_sent = 0;
       }
       // Send SARM and wait
       m_sendSARM();
       sleep = milliseconds(m_repeat_timeout);
-
     } else {
       // Inactivity timer reached
-      Logger::getLogger()->error(m_name_log + " Inacc timeout !");
-      // DF.GLOB.TS : nothing to do in HNZ
+      HnzUtility::log_error(m_name_log + " Inacc timeout! Reconnecting...");
+      m_connected = false;
+      // Reconnection will be done in HNZ::receive
     }
   } else {
     m_protocol_state = CONNECTED;
@@ -195,7 +200,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
     m_sendBULLE();
     sleep = milliseconds(10000);
   } else {
-    Logger::getLogger()->warn(
+    HnzUtility::log_warn(
         m_name_log +
         " Inactivity timer reached, a message or a BULLE were not "
         "received on time, back to SARM");
@@ -206,7 +211,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
 }
 
 void HNZPath::go_to_connection() {
-  Logger::getLogger()->warn(
+  HnzUtility::log_warn(
       m_name_log + " Going to HNZ connection state... Waiting for a SARM.");
   m_protocol_state = CONNECTION;
   if (m_is_active_path) {
@@ -239,7 +244,7 @@ void HNZPath::m_go_to_connected() {
   if (m_is_active_path) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
   }
-  Logger::getLogger()->debug(m_name_log + " HNZ Connection initialized !!");
+  HnzUtility::log_debug(m_name_log + " HNZ Connection initialized !!");
 
   if (m_is_active_path) {
     m_send_date_setting();
@@ -258,11 +263,15 @@ vector<vector<unsigned char>> HNZPath::getData() {
     if (m_hnz_client->checkCRC(frReceived)) {
       messages = m_analyze_frame(frReceived);
     } else {
-      Logger::getLogger()->warn(m_name_log + " The CRC does not match");
+      HnzUtility::log_warn(m_name_log + " The CRC does not match");
     }
   }
 
   return messages;
+}
+
+bool HNZPath::isTCPConnected() {
+  return m_hnz_client->is_connected();
 }
 
 vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
@@ -272,17 +281,17 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
   unsigned char address = data[0] >> 2;  // remote address
   unsigned char type = data[1];          // Message type
 
-  Logger::getLogger()->debug(m_name_log + " " +
+  HnzUtility::log_debug(m_name_log + " " +
                              convert_data_to_str(data, size));
 
   if (m_remote_address == address) {
     switch (type) {
       case UA_CODE:
-        Logger::getLogger()->info(m_name_log + " Received UA");
+        HnzUtility::log_info(m_name_log + " Received UA");
         m_receivedUA();
         break;
       case SARM_CODE:
-        Logger::getLogger()->info(m_name_log + " Received SARM");
+        HnzUtility::log_info(m_name_log + " Received SARM");
         m_receivedSARM();
         break;
       default:
@@ -293,7 +302,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
           int nr = (type >> 5) & 0x07;
           if ((type & 0x01) == 0) {
             // Information frame
-            Logger::getLogger()->info(
+            HnzUtility::log_info(
                 m_name_log +
                 " Received an information frame (ns = " + to_string(ns) +
                 ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
@@ -310,7 +319,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
             m_sendRR(pf == 1, ns, nr);
           } else {
             // Supervision frame
-            Logger::getLogger()->warn(m_name_log +
+            HnzUtility::log_warn(m_name_log +
                                       " RR received (f = " + to_string(pf) +
                                       ", nr = " + to_string(nr) + ")");
             m_receivedRR(nr, pf == 1);
@@ -320,7 +329,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
         break;
     }
   } else {
-    Logger::getLogger()->warn(m_name_log +
+    HnzUtility::log_warn(m_name_log +
                               " The address don't match the configuration!");
   }
   return messages;
@@ -334,48 +343,48 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data,
 
   switch (t) {
     case TM4_CODE:
-      Logger::getLogger()->info(m_name_log + " Received TMA");
+      HnzUtility::log_info(m_name_log + " Received TMA");
       len = 6;
       break;
     case TSCE_CODE:
-      Logger::getLogger()->info(m_name_log + " Received TSCE");
+      HnzUtility::log_info(m_name_log + " Received TSCE");
       len = 5;
       break;
     case TSCG_CODE:
-      Logger::getLogger()->info(m_name_log + " Received TSCG");
+      HnzUtility::log_info(m_name_log + " Received TSCG");
       len = 6;
       break;
     case TMN_CODE:
-      Logger::getLogger()->info(m_name_log + " Received TMN");
+      HnzUtility::log_info(m_name_log + " Received TMN");
       len = 7;
       break;
     case MODULO_CODE:
       module10M = (int)data[1];
-      Logger::getLogger()->info(m_name_log + " Received Modulo 10mn");
+      HnzUtility::log_info(m_name_log + " Received Modulo 10mn");
       len = 2;
       break;
     case TCACK_CODE:
-      Logger::getLogger()->info(m_name_log + " Received TC ACK");
+      HnzUtility::log_info(m_name_log + " Received TC ACK");
       len = 3;
       break;
     case TVCACK_CODE:
-      Logger::getLogger()->info(m_name_log + " Received TVC ACK");
+      HnzUtility::log_info(m_name_log + " Received TVC ACK");
       len = 4;
       break;
     default:
       if (t == m_test_msg_receive.first &&
           data[1] == m_test_msg_receive.second) {
-        Logger::getLogger()->info(m_name_log + " Received BULLE");
+        HnzUtility::log_info(m_name_log + " Received BULLE");
         m_receivedBULLE();
         len = 2;
       } else {
-        Logger::getLogger()->info(m_name_log + "Received an unknown type");
+        HnzUtility::log_info(m_name_log + "Received an unknown type");
       }
       break;
   }
 
   if (len != 0) {
-    Logger::getLogger()->debug(m_name_log + " [" +
+    HnzUtility::log_debug(m_name_log + " [" +
                                convert_data_to_str(data, len) + "]");
 
     // Extract the message from unsigned char* to vector<unsigned char>
@@ -406,9 +415,11 @@ void HNZPath::m_receivedSARM() {
 }
 
 void HNZPath::m_receivedUA() {
-  sarm_ARP_UA = true;
-  if (sarm_PA_received) {
-    m_go_to_connected();
+  if (m_protocol_state == CONNECTION) {
+    sarm_ARP_UA = true;
+    if (sarm_PA_received) {
+      m_go_to_connected();
+    }
   }
 }
 
@@ -430,7 +441,7 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
 
         // Waiting for other RR, set timer
         if (!msg_sent.empty())
-          last_sent_time = duration_cast<milliseconds>(
+          last_sent_time = std::chrono::duration_cast<milliseconds>(
                                system_clock::now().time_since_epoch())
                                .count();
 
@@ -441,12 +452,12 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
           msg_waiting.pop_front();
         }
       } else {
-        Logger::getLogger()->warn(
+        HnzUtility::log_warn(
             m_name_log + " Received an unexpected repeated RR, ignoring it");
       }
     } else {
       // invalid NR
-      Logger::getLogger()->warn(
+      HnzUtility::log_warn(
           m_name_log + " Ignoring the RR, NR (=" + to_string(nr) +
           ") is invalid. Current NRR : " + to_string(m_NRR + 1));
     }
@@ -456,7 +467,7 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
 void HNZPath::m_sendSARM() {
   unsigned char msg[1]{SARM_CODE};
   m_hnz_client->createAndSendFr(m_address_ARP, msg, sizeof(msg));
-  Logger::getLogger()->info(m_name_log + " SARM sent [" +
+  HnzUtility::log_info(m_name_log + " SARM sent [" +
                             to_string(m_nbr_sarm_sent + 1) + " / " +
                             to_string(m_max_sarm) + "]");
   m_nbr_sarm_sent++;
@@ -465,13 +476,13 @@ void HNZPath::m_sendSARM() {
 void HNZPath::m_sendUA() {
   unsigned char msg[1]{UA_CODE};
   m_hnz_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
-  Logger::getLogger()->info(m_name_log + " UA sent");
+  HnzUtility::log_info(m_name_log + " UA sent");
 }
 
 void HNZPath::m_sendBULLE() {
   unsigned char msg[2]{m_test_msg_send.first, m_test_msg_send.second};
   m_sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->info(m_name_log + " BULLE sent");
+  HnzUtility::log_info(m_name_log + " BULLE sent");
 }
 
 void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
@@ -485,10 +496,10 @@ void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
     unsigned char msg[1];
     if (repetition) {
       msg[0] = 0x01 + m_nr * 0x20 + 0x10;
-      Logger::getLogger()->info(m_name_log + " RR sent with repeated=1");
+      HnzUtility::log_info(m_name_log + " RR sent with repeated=1");
     } else {
       msg[0] = 0x01 + m_nr * 0x20;
-      Logger::getLogger()->info(m_name_log + " RR sent");
+      HnzUtility::log_info(m_name_log + " RR sent");
     }
 
     m_hnz_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
@@ -498,9 +509,9 @@ void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
       unsigned char msg[1];
       msg[0] = 0x01 + m_nr * 0x20 + 0x10;
       m_hnz_client->createAndSendFr(m_address_PA, msg, sizeof(msg));
-      Logger::getLogger()->info(m_name_log + " Repeat the last RR sent");
+      HnzUtility::log_info(m_name_log + " Repeat the last RR sent");
     } else {
-      Logger::getLogger()->warn(
+      HnzUtility::log_warn(
           m_name_log + " The NS of the received frame is not the expected one");
     }
   }
@@ -534,7 +545,7 @@ void HNZPath::m_sendInfoImmediately(Message message) {
   // Set timer if there is not other message sent waiting for confirmation
   if (msg_sent.empty())
     last_sent_time =
-        duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+        std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
             .count();
 
   message.ns = m_ns;
@@ -556,7 +567,7 @@ void HNZPath::sendBackInfo(Message& message) {
                                 sizeof(msgWithNrNs));
 
   last_sent_time =
-      duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+      std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
 }
 
@@ -569,7 +580,7 @@ void HNZPath::m_send_date_setting() {
   msg[2] = time_struct->tm_mon + 1;
   msg[3] = time_struct->tm_year % 100;
   m_sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->warn(
+  HnzUtility::log_warn(
       m_name_log + " Time setting sent : " + to_string((int)msg[1]) + "/" +
       to_string((int)msg[2]) + "/" + to_string((int)msg[3]));
 }
@@ -577,7 +588,7 @@ void HNZPath::m_send_date_setting() {
 void HNZPath::m_send_time_setting() {
   unsigned char msg[5];
   long int ms_since_epoch, mod10m, frac;
-  ms_since_epoch = duration_cast<milliseconds>(
+  ms_since_epoch = std::chrono::duration_cast<milliseconds>(
                        high_resolution_clock::now().time_since_epoch())
                        .count();
   long int ms_today = ms_since_epoch % 86400000;
@@ -589,7 +600,7 @@ void HNZPath::m_send_time_setting() {
   msg[3] = frac & 0xff;
   msg[4] = 0x00;
   m_sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->warn(
+  HnzUtility::log_warn(
       m_name_log + " Time setting sent : mod10m = " + to_string(mod10m) +
       " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) +
       "h" + to_string((mod10m % 6) * 10) + "m and " + to_string(frac / 100) +
@@ -599,13 +610,13 @@ void HNZPath::m_send_time_setting() {
 void HNZPath::sendGeneralInterrogation() {
   unsigned char msg[2]{0x13, 0x01};
   m_sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->warn(m_name_log +
+  HnzUtility::log_warn(m_name_log +
                             " GI (General Interrogation) request sent");
   if ((gi_repeat == 0) || (m_hnz_connection->getGiStatus() != GiStatus::IN_PROGRESS)) {
     m_hnz_connection->updateGiStatus(GiStatus::STARTED);
   }
   gi_repeat++;
-  gi_start_time = duration_cast<milliseconds>(
+  gi_start_time = std::chrono::duration_cast<milliseconds>(
                       high_resolution_clock::now().time_since_epoch())
                       .count();
 }
@@ -618,13 +629,13 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   msg[3] = (value >= 0) ? 0 : 0x80;
 
   m_sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->warn(m_name_log +
+  HnzUtility::log_warn(m_name_log +
                             " TVC sent (address = " + to_string(address) +
                             ", value = " + to_string(value));
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
-  cmd.timestamp_max = duration_cast<milliseconds>(
+  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
                           high_resolution_clock::now().time_since_epoch())
                           .count() +
                       c_ack_time_max;
@@ -644,13 +655,13 @@ bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 
   m_sendInfo(msg, sizeof(msg));
-  Logger::getLogger()->warn(m_name_log +
+  HnzUtility::log_warn(m_name_log +
                             " TC sent (address = " + to_string(address) +
                             " and value = " + to_string(value));
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
-  cmd.timestamp_max = duration_cast<milliseconds>(
+  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
                           high_resolution_clock::now().time_since_epoch())
                           .count() +
                       c_ack_time_max;

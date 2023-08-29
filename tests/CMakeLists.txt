@@ -124,3 +124,5 @@ if (LIBHNZ-NOTFOUND)
 endif()
 target_link_libraries(${PROJECT_NAME} -L${LIB_HNZ}/src/hnz libhnz)
 target_link_libraries(${PROJECT_NAME} -lpthread -ldl )
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE UNIT_TEST)

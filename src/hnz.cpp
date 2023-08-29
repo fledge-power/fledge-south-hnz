@@ -10,106 +10,105 @@
 
 #include <set>
 
-#include <logger.h>
-
 #include <hnz_server.h>
 
+#include "hnzutility.h"
 #include "hnz.h"
 #include "hnzconnection.h"
 #include "hnzpath.h"
 
-HNZ::HNZ() : m_hnz_conf(new HNZConf), m_is_running(false) {}
+HNZ::HNZ() {}
 
 HNZ::~HNZ() {
   if (m_is_running) {
     stop();
   }
-  if (m_hnz_connection != nullptr) delete m_hnz_connection;
-  if (m_hnz_conf != nullptr) delete m_hnz_conf;
 }
 
 void HNZ::start() {
   Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 
   if (!m_hnz_conf->is_complete()) {
-    Logger::getLogger()->info(
+    HnzUtility::log_info(
         "HNZ south plugin can't start because configuration is incorrect.");
     return;
   }
 
-  Logger::getLogger()->info("Starting HNZ south plugin...");
+  HnzUtility::log_info("Starting HNZ south plugin...");
 
   m_is_running = true;
 
   m_sendAllTMQualityReadings(true, false);
   m_sendAllTSQualityReadings(true, false);
 
-  m_receiving_thread_A =
-      new thread(&HNZ::receive, this, m_hnz_connection->getActivePath());
-
-  this_thread::sleep_for(milliseconds(1000));
-
-  HNZPath *passive_path = m_hnz_connection->getPassivePath();
-  if (passive_path != nullptr) {
+  auto pathPair = m_hnz_connection->getBothPath();
+  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, pathPair.first);
+  if (pathPair.second != nullptr) {
+    // Wait after getting the passive path pointer as connection init of active path may swap path
+    this_thread::sleep_for(milliseconds(1000));
     // Path B is defined in the configuration
-    m_receiving_thread_B = new thread(&HNZ::receive, this, passive_path);
+    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, pathPair.second);
   }
 
   m_hnz_connection->start();
 }
 
 void HNZ::stop() {
-  Logger::getLogger()->info("Starting shutdown of HNZ plugin");
+  HnzUtility::log_info("Starting shutdown of HNZ plugin");
   m_is_running = false;
 
-  if (m_hnz_connection != nullptr) m_hnz_connection->stop();
-
   if (m_receiving_thread_A != nullptr) {
-    Logger::getLogger()->debug("Waiting for the receiving thread (path A)");
+    HnzUtility::log_debug("Waiting for the receiving thread (path A)");
     m_receiving_thread_A->join();
-    delete m_receiving_thread_A;
+    m_receiving_thread_A = nullptr;
   }
   if (m_receiving_thread_B != nullptr) {
-    Logger::getLogger()->debug("Waiting for the receiving thread (path B)");
+    HnzUtility::log_debug("Waiting for the receiving thread (path B)");
     m_receiving_thread_B->join();
-    delete m_receiving_thread_B;
+    m_receiving_thread_B = nullptr;
   }
-  Logger::getLogger()->info("Plugin stopped !");
+  // Connection must be freed after management threads of both path
+  // as HNZ::m_hnz_connection is used in HNZ::receive running on the threads
+  if (m_hnz_connection != nullptr) {
+    m_hnz_connection->stop();
+    m_hnz_connection = nullptr;
+  }
+  HnzUtility::log_info("Plugin stopped !");
 }
 
 bool HNZ::setJsonConfig(const string &protocol_conf_json,
                         const string &msg_conf_json) {
   bool was_running = m_is_running;
   if (m_is_running) {
-    Logger::getLogger()->info(
+    HnzUtility::log_info(
         "Configuration change requested, stopping the plugin");
     stop();
   }
 
-  Logger::getLogger()->info("Reading json config string...");
+  HnzUtility::log_info("Reading json config string...");
 
   m_hnz_conf->importConfigJson(protocol_conf_json);
   m_hnz_conf->importExchangedDataJson(msg_conf_json);
   if (!m_hnz_conf->is_complete()) {
-    Logger::getLogger()->fatal(
+    HnzUtility::log_fatal(
         "Unable to set Plugin configuration due to error with the json conf.");
     return false;
   }
 
-  Logger::getLogger()->info("Json config parsed successsfully.");
+  HnzUtility::log_info("Json config parsed successsfully.");
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
-  m_hnz_connection = new HNZConnection(m_hnz_conf, this);
+  m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
 
   if (was_running) {
-    Logger::getLogger()->warn("Restarting the plugin...");
+    HnzUtility::log_warn("Restarting the plugin...");
     start();
   }
   return true;
 }
 
-void HNZ::receive(HNZPath *hnz_path_in_use) {
+void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   string path = hnz_path_in_use->getName();
 
   if (!m_hnz_conf->is_complete()) {
@@ -117,12 +116,9 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
   }
 
   // Connect to the server
-  if (!hnz_path_in_use->connect()) {
-    Logger::getLogger()->fatal(path + " Unable to connect to PA, stopping ...");
-    return;
-  }
+  hnz_path_in_use->connect();
 
-  Logger::getLogger()->warn(path + " Listening for data...");
+  HnzUtility::log_warn(path + " Listening for data...");
 
   vector<vector<unsigned char>> messages;
 
@@ -131,14 +127,16 @@ void HNZ::receive(HNZPath *hnz_path_in_use) {
     messages = hnz_path_in_use->getData();
 
     if (messages.empty() && !hnz_path_in_use->isConnected()) {
-      Logger::getLogger()->warn(path +
-                                " No data available, checking connection ...");
-      // Try to reconnect
-      if (!hnz_path_in_use->connect()) {
-        Logger::getLogger()->warn(path + " Connection lost");
-        // stop();
-        m_is_running = false;
+      HnzUtility::log_warn(path + " Connection lost, reconnecting active path and switching to other path");
+      // If connection lost, try to switch path
+      if (hnz_path_in_use->isActivePath()) m_hnz_connection->switchPath();
+      // Try to reconnect, unless thread is stopping
+      if (m_is_running) {
         hnz_path_in_use->disconnect();
+      }
+      // Shutdown request may happen while disconnecting, if it does cancel reconnection
+      if (m_is_running) {
+        hnz_path_in_use->connect();
       }
     } else {
       // Push each message to fledge
@@ -156,37 +154,37 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
 
   switch (t) {
     case MODULO_CODE:
-      Logger::getLogger()->info("Received modulo time update");
+      HnzUtility::log_info("Received modulo time update");
       m_handleModuloCode(readings, data);
       break;
     case TM4_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TMA");
+      HnzUtility::log_info("Pushing to Fledge a TMA");
       m_handleTM4(readings, data);
       break;
     case TSCE_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TSCE");
+      HnzUtility::log_info("Pushing to Fledge a TSCE");
       m_handleTSCE(readings, data);
       break;
     case TSCG_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TSCG");
+      HnzUtility::log_info("Pushing to Fledge a TSCG");
       m_handleTSCG(readings, data);
       break;
     case TMN_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TMN");
+      HnzUtility::log_info("Pushing to Fledge a TMN");
       m_handleTMN(readings, data);
       break;
     case TCACK_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TC ACK");
+      HnzUtility::log_info("Pushing to Fledge a TC ACK");
       m_handleATC(readings, data);
       break;
     case TVCACK_CODE:
-      Logger::getLogger()->info("Pushing to Fledge a TVC ACK");
+      HnzUtility::log_info("Pushing to Fledge a TVC ACK");
       m_handleATVC(readings, data);
       break;
     default:
       if (!(t == m_test_msg_receive.first &&
             data[1] == m_test_msg_receive.second)) {
-        Logger::getLogger()->error("Unknown message to push: " + frameToStr(data));
+        HnzUtility::log_error("Unknown message to push: " + frameToStr(data));
       }
       break;
   }
@@ -433,7 +431,7 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
                 ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
   }
 
-  Logger::getLogger()->debug(debugStr);
+  HnzUtility::log_debug(debugStr);
 
   auto *measure_features = new vector<Datapoint *>;
   measure_features->push_back(m_createDatapoint("do_type", params.msg_code));
@@ -486,7 +484,7 @@ void HNZ::registerIngest(void *data, INGEST_CB cb) {
 
 bool HNZ::operation(const std::string &operation, int count,
                     PLUGIN_PARAMETER **params) {
-  Logger::getLogger()->error("Operation %s", operation.c_str());
+  HnzUtility::log_error("Operation %s", operation.c_str());
 
   if (operation.compare("TC") == 0) {
     int address = atoi(params[1]->value.c_str());
@@ -501,12 +499,12 @@ bool HNZ::operation(const std::string &operation, int count,
     m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
     return true;
   } else if (operation.compare("request_connection_status") == 0) {
-    Logger::getLogger()->info("received request_connection_status", operation.c_str());
+    HnzUtility::log_info("received request_connection_status", operation.c_str());
     m_sendConnectionStatus();
     return true;
   }
 
-  Logger::getLogger()->error("Unrecognised operation %s", operation.c_str());
+  HnzUtility::log_error("Unrecognised operation %s", operation.c_str());
   return false;
 }
 
@@ -533,9 +531,9 @@ unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::syst
   static const auto oneDay = std::chrono::hours{24};
   // Get the date of the start of the day in epoch milliseconds
   auto days = dateTime - (dateTime.time_since_epoch() % oneDay);
-  unsigned long epochMs = duration_cast<std::chrono::milliseconds>(days.time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(days.time_since_epoch()).count();
   // Add or remove one day if we are at edge of day and day section is on the other day
-  long int ms_today = duration_cast<std::chrono::milliseconds>(dateTime.time_since_epoch()).count() % oneDayMs;
+  long int ms_today = std::chrono::duration_cast<std::chrono::milliseconds>(dateTime.time_since_epoch()).count() % oneDayMs;
   long int hours = (ms_today / oneHourMs) % 24;
   // Remote section of day is after midnight but local clock is before midnight: add one day
   if ((daySection == 0) && (hours == 23)) {
@@ -669,10 +667,10 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
 void HNZ::GICompleted(bool success) { 
   m_hnz_connection->onGICompleted();
   if (success) {
-    Logger::getLogger()->info("General Interrogation completed.");
+    HnzUtility::log_info("General Interrogation completed.");
     updateGiStatus(GiStatus::FINISHED);
   } else {
-    Logger::getLogger()->error("General Interrogation FAILED !");
+    HnzUtility::log_error("General Interrogation FAILED !");
     m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FAILED);
   }
@@ -696,7 +694,7 @@ void HNZ::m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<u
 
 void HNZ::m_sendAllTSQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
   ReadingParameters paramsTemplate;
-  unsigned long epochMs = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   paramsTemplate.msg_code = "TS";
   paramsTemplate.station_addr = m_remote_address;
   paramsTemplate.valid = static_cast<unsigned int>(invalid);

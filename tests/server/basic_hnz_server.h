@@ -9,26 +9,21 @@ using namespace std;
 class BasicHNZServer {
  public:
   BasicHNZServer(int port, int addr) {
-    this->server = new HNZServer();
     this->addr = addr;
     this->m_port = port;
-    this->is_running = false;
   };
   ~BasicHNZServer() {
     // Stop thread
-    is_running = false;
-    server->stop();
-    if (receiving_thread != nullptr) {
-      receiving_thread->join();
-      delete receiving_thread;
-    }
-
-    delete server;
+    stopHNZServer();
   };
 
   void startHNZServer();
+  void stopHNZServer();
+  bool joinStartThread();
 
-  bool HNZServerIsReady();
+  bool waitForTCPConnection(int timeout_s);
+  // Timeout = 16 = (5 * 3) + 1 sec = (SARM retries * SARM delay) + 1
+  bool HNZServerIsReady(int timeout_s = 16);
 
   void sendSARM();
 
@@ -45,18 +40,25 @@ class BasicHNZServer {
   static std::string frameToStr(std::shared_ptr<MSG_TRAME> frame);
   static std::string framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames);
 
-  HNZServer* server;
-  int addr;
+  HNZServer* server = nullptr;
+  int addr = 0;
 
  private:
-  thread* m_t1 = nullptr;
-  thread* receiving_thread = nullptr;
-  atomic<bool> is_running;
+  std::thread* m_t1 = nullptr;
+  std::mutex m_t1_mutex;
+
+  std::thread* receiving_thread = nullptr;
+  std::mutex m_init_mutex;
+
+  std::atomic<bool> is_running{false};
+
   int m_ns = 0;
   int m_nr = 0;
-  int m_port;
+  int m_port = 0;
+  
   bool ua_ok = false;
   bool sarm_ok = false;
+  std::mutex m_sarm_ua_mutex;
 
   std::vector<std::shared_ptr<MSG_TRAME>> m_last_frames_received;
   std::mutex m_received_mutex;

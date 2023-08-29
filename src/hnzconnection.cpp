@@ -8,20 +8,26 @@
  * Author: Justin Facquet
  */
 
-#include <logger.h>
-
+#include "hnzutility.h"
 #include "hnz.h"
 #include "hnzpath.h"
 #include "hnzconnection.h"
 
-HNZConnection::HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge) {
+HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge) {
   this->m_hnz_conf = hnz_conf;
   this->m_hnz_fledge = hnz_fledge;
 
   // Create the path needed
-  m_active_path = new HNZPath(hnz_conf, this, false);
-  if (m_hnz_conf->get_ip_address_B() != "") {
-    m_passive_path = new HNZPath(hnz_conf, this, true);
+  if (m_hnz_conf->get_ip_address_A() != "") {
+    // Parent if is mostly here for scope lock
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    m_active_path = std::make_shared<HNZPath>(m_hnz_conf, this, false);
+    if (m_hnz_conf->get_ip_address_B() != "") {
+      m_passive_path = std::make_shared<HNZPath>(m_hnz_conf, this, true);
+    }
+  }
+  else {
+    HnzUtility::log_fatal("Attempted to start HNZ connection with no IP configured, aborting");
   }
 
   // Set settings for GI
@@ -31,7 +37,7 @@ HNZConnection::HNZConnection(HNZConf* hnz_conf, HNZ* hnz_fledge) {
   this->m_gi_schedule_already_sent = false;
 
   // Others settings
-  this->m_repeat_timeout = hnz_conf->get_repeat_timeout();
+  this->m_repeat_timeout = m_hnz_conf->get_repeat_timeout();
   this->m_is_running = true;
 }
 
@@ -39,38 +45,40 @@ HNZConnection::~HNZConnection() {
   if (m_is_running) {
     stop();
   }
-  if (m_active_path != nullptr) delete m_active_path;
-  if (m_passive_path != nullptr) delete m_passive_path;
 }
 
 void HNZConnection::start() {
-  Logger::getLogger()->debug("HNZ Connection starting...");
-  m_messages_thread = new thread(&HNZConnection::m_manageMessages, this);
+  HnzUtility::log_debug("HNZ Connection starting...");
+  m_messages_thread = std::make_shared<std::thread>(&HNZConnection::m_manageMessages, this);
 }
 
 void HNZConnection::stop() {
-  Logger::getLogger()->debug("HNZ Connection stopping...");
+  HnzUtility::log_debug("HNZ Connection stopping...");
   // Stop the thread that manage the messages
   m_is_running = false;
 
   // Stop the path used (close the TCP connection and stop the threads that
   // manage HNZ connections)
-  if (m_active_path != nullptr) m_active_path->disconnect();
-  if (m_passive_path != nullptr) m_passive_path->disconnect();
+  if (m_active_path != nullptr || m_passive_path != nullptr) {
+    // Parent if is mostly here for scope lock
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    if (m_active_path != nullptr) m_active_path->disconnect();
+    if (m_passive_path != nullptr) m_passive_path->disconnect();
+  }
 
   // Wait for the end of the thread that manage the messages
   if (m_messages_thread != nullptr) {
-    thread* temp = m_messages_thread;
+    std::shared_ptr<std::thread> temp = m_messages_thread;
     m_messages_thread = nullptr;
-    Logger::getLogger()->debug("Waiting for the messages managing thread");
+    HnzUtility::log_debug("Waiting for the messages managing thread");
     temp->join();
-    delete temp;
   }
 
-  Logger::getLogger()->info("HNZ Connection stopped !");
+  HnzUtility::log_info("HNZ Connection stopped !");
 }
 
 void HNZConnection::checkGICompleted(bool success) { 
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   // GI is a success
   if (success) {
     m_hnz_fledge->GICompleted(true);
@@ -81,7 +89,7 @@ void HNZConnection::checkGICompleted(bool success) {
     // GI failed
     m_hnz_fledge->GICompleted(false);
   } else {
-    Logger::getLogger()->warn("General Interrogation Timeout, repeat GI");
+    HnzUtility::log_warn("General Interrogation Timeout, repeat GI");
     // Clean queue in HNZ class
     m_hnz_fledge->resetGIQueue();
     // Send a new GI
@@ -90,6 +98,7 @@ void HNZConnection::checkGICompleted(bool success) {
 }
 
 void HNZConnection::onGICompleted() { 
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   m_active_path->gi_repeat = 0;
 }
 
@@ -102,15 +111,15 @@ void HNZConnection::m_manageMessages() {
                         ((m_gi_schedule.hour * 60 + m_gi_schedule.min) * 60000);
   if (m_gi_schedule.activate) {
     // If GI schedule is activated, check if time scheduled is outdated
-    Logger::getLogger()->info("GI scheduled is set at " +
+    HnzUtility::log_info("GI scheduled is set at " +
                               to_string(m_gi_schedule.hour) + "h" +
                               to_string(m_gi_schedule.min) + ".");
     if (m_current >= m_gi_scheduled_time) {
-      Logger::getLogger()->info(
+      HnzUtility::log_info(
           "No GI for today because the scheduled time has already passed.");
       m_gi_schedule_already_sent = true;
     } else {
-      Logger::getLogger()->info("GI scheduled is set for today");
+      HnzUtility::log_info("GI scheduled is set for today");
     }
   }
 
@@ -118,8 +127,12 @@ void HNZConnection::m_manageMessages() {
     m_update_current_time();
 
     // Manage repeat/timeout for each path
-    m_check_timer(m_active_path);
-    m_check_timer(m_passive_path);
+    if (m_active_path || m_passive_path) {
+      // Parent if is mostly here for scope lock
+      std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+      m_check_timer(m_active_path);
+      m_check_timer(m_passive_path);
+    }
 
     // GI support
     m_check_GI();
@@ -134,19 +147,19 @@ void HNZConnection::m_manageMessages() {
   } while (m_is_running);
 }
 
-void HNZConnection::m_check_timer(HNZPath* path) {
+void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
   if ((path != nullptr) && !path->msg_sent.empty() && path->isConnected()) {
     Message& msg = path->msg_sent.front();
     if (path->last_sent_time + m_repeat_timeout < m_current) {
       if (path->getRepeat() >= path->repeat_max) {
         // Connection disrupted, back to SARM
-        Logger::getLogger()->warn(path->getName() +
+        HnzUtility::log_warn(path->getName() +
                                   " Connection disrupted, back to SARM");
 
         path->go_to_connection();
       } else {
         // Repeat the message
-        Logger::getLogger()->warn(
+        HnzUtility::log_warn(
             path->getName() +
             " Timeout, sending back first unacknowledged message");
         path->sendBackInfo(msg);
@@ -162,6 +175,7 @@ void HNZConnection::m_check_timer(HNZPath* path) {
 }
 
 void HNZConnection::m_check_GI() {
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   // Check the status of an ongoing GI
   if (m_active_path->gi_repeat != 0) {
     if (m_active_path->gi_start_time + gi_time_max < m_current) {
@@ -183,7 +197,7 @@ void HNZConnection::m_check_GI() {
   // Scheduled GI
   if (m_gi_schedule.activate && !m_gi_schedule_already_sent &&
       (m_gi_scheduled_time <= m_current)) {
-    Logger::getLogger()->warn("It's " + to_string(m_gi_schedule.hour) + "h" +
+    HnzUtility::log_warn("It's " + to_string(m_gi_schedule.hour) + "h" +
                               to_string(m_gi_schedule.min) + ". GI schedule.");
     m_active_path->sendGeneralInterrogation();
     m_gi_schedule_already_sent = true;
@@ -191,11 +205,12 @@ void HNZConnection::m_check_GI() {
 }
 
 void HNZConnection::m_check_command_timer() {
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   if (!m_active_path->command_sent.empty()) {
     list<Command_message>::iterator it = m_active_path->command_sent.begin();
     while (it != m_active_path->command_sent.end()) {
       if (it->timestamp_max < m_current) {
-        Logger::getLogger()->error(
+        HnzUtility::log_error(
             "A remote control was not acknowledged in time !");
         m_active_path->go_to_connection();
         it = m_active_path->command_sent.erase(it);
@@ -210,7 +225,7 @@ void HNZConnection::m_check_command_timer() {
 void HNZConnection::m_update_current_time() {
   uint64_t prevTimeMs = m_current;
   m_current =
-      duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+      std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
   m_elapsedTimeMs = m_current - prevTimeMs;
 }
@@ -221,33 +236,32 @@ void HNZConnection::m_update_quality_update_timer() {
 
 void HNZConnection::switchPath() {
   if (m_passive_path != nullptr) {
-    if (m_passive_path->isConnected()) {
-      Logger::getLogger()->error("Switching active and passive path.");
+    HnzUtility::log_warn("Switching active and passive path.");
+    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    // Permute path
+    std::shared_ptr<HNZPath> temp = m_active_path;
+    m_active_path = m_passive_path;
+    m_passive_path = temp;
+    m_active_path->setActivePath(true);
+    m_passive_path->setActivePath(false);
 
-      // Check the status of the passive path before switching
-      // Permute path
-      HNZPath* temp = m_active_path;
-      m_active_path = m_passive_path;
-      m_active_path->setActivePath(true);
-      temp->setActivePath(false);
-      m_passive_path = temp;
+    HnzUtility::log_info("New active path is " + m_active_path->getName());
 
-      Logger::getLogger()->error("New active path is " +
-                                 m_active_path->getName());
-
-    } else {
-      Logger::getLogger()->error(
-          "Impossible to change the path, the TCP connection on the passive "
-          "path is cut.");
+    // When switching path, update connection status accordingly
+    if (m_active_path->getProtocolState() == CONNECTED) {
+      updateConnectionStatus(ConnectionStatus::STARTED);
+    }
+    else {
+      updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
     }
   } else {
     // Redundancy isn't enable, can't switch to the other path
-    Logger::getLogger()->error(
-        "Redundancy isn't enable, can't switch to the other path");
+    HnzUtility::log_warn("Redundancy isn't enabled, can't switch to the other path");
   }
 }
 
 void HNZConnection::sendInitialGI() {
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   m_active_path->gi_repeat = 0;
   m_active_path->sendGeneralInterrogation();
 }

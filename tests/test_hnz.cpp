@@ -1686,9 +1686,9 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   });
   if(HasFatalFailure()) return;
 
-  // Wait for all CG attempts to expire (gi_time * (gi_repeat_count+1) * 1000)
+  // Wait for all CG attempts to expire (gi_time * (gi_repeat_count + initial CG + 1) * 1000)
   debug_print("[HNZ south plugin] waiting for full CG timeout...");
-  waitUntil(southEventsReceived, 1, 3000);
+  waitUntil(southEventsReceived, 1, 4000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
   resetCounters();

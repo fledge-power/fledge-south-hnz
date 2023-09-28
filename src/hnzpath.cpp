@@ -97,17 +97,17 @@ void HNZPath::connect() {
       }
       // Connection established, go to main loop
       return;
-    } else {
-      HnzUtility::log_warn(m_name_log +
-                                " Error in connection, retrying in " +
-                                to_string(RETRY_CONN_DELAY) + "s ...");
-      if (m_hnz_connection) {
-        // If connection failed, try to switch path
-        std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
-        if (m_is_active_path) m_hnz_connection->switchPath();
-      }
-      this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
     }
+    
+    HnzUtility::log_warn(m_name_log +
+                              " Error in connection, retrying in " +
+                              to_string(RETRY_CONN_DELAY) + "s ...");
+    if (m_hnz_connection) {
+      // If connection failed, try to switch path
+      std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+      if (m_is_active_path) m_hnz_connection->switchPath();
+    }
+    this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
   }
 }
 

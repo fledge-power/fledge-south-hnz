@@ -101,8 +101,11 @@ void HNZPath::connect() {
       HnzUtility::log_warn(m_name_log +
                                 " Error in connection, retrying in " +
                                 to_string(RETRY_CONN_DELAY) + "s ...");
-      // If connection failed, try to switch path
-      if (m_is_active_path) m_hnz_connection->switchPath();
+      if (m_hnz_connection) {
+        // If connection failed, try to switch path
+        std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+        if (m_is_active_path) m_hnz_connection->switchPath();
+      }
       this_thread::sleep_for(std::chrono::seconds(RETRY_CONN_DELAY));
     }
   }
@@ -110,7 +113,8 @@ void HNZPath::connect() {
 
 void HNZPath::disconnect() {
   HnzUtility::log_debug(m_name_log + " HNZ Path stopping...");
-  if (m_is_active_path) {
+  
+  if (!m_isOtherPathHNZConnected()) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
   }
 
@@ -172,6 +176,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
         HnzUtility::log_warn(
             m_name_log + " The maximum number of SARM was reached.");
         // If the path is the active one, switch to passive path if available
+        std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
         if (m_is_active_path) m_hnz_connection->switchPath();
         m_nbr_sarm_sent = 0;
       }
@@ -186,6 +191,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
     }
   } else {
     m_protocol_state = CONNECTED;
+    std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
     if (m_is_active_path) {
       m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
     }
@@ -214,7 +220,7 @@ void HNZPath::go_to_connection() {
   HnzUtility::log_warn(
       m_name_log + " Going to HNZ connection state... Waiting for a SARM.");
   m_protocol_state = CONNECTION;
-  if (m_is_active_path) {
+  if (!m_isOtherPathHNZConnected()) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
   }
 
@@ -240,6 +246,7 @@ void HNZPath::go_to_connection() {
 }
 
 void HNZPath::m_go_to_connected() {
+  std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
   m_protocol_state = CONNECTED;
   if (m_is_active_path) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
@@ -307,6 +314,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
                 " Received an information frame (ns = " + to_string(ns) +
                 ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
 
+            std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
             if (m_is_active_path) {
               // Only the messages on the active path are extracted. The
               // passive path does not need them.
@@ -686,4 +694,24 @@ void HNZPath::receivedCommandACK(string type, int addr) {
       }
     }
   }
+}
+
+
+std::shared_ptr<HNZPath> HNZPath::m_getOtherPath() {
+  std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+  if (m_is_active_path) {
+    return m_hnz_connection->getPassivePath();
+  }
+  else {
+    return m_hnz_connection->getActivePath();
+  }
+}
+
+bool HNZPath::m_isOtherPathHNZConnected() {
+  std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+  auto otherPath = m_getOtherPath();
+  if (otherPath == nullptr) {
+    return false;
+  }
+  return otherPath->isHNZConnected();
 }

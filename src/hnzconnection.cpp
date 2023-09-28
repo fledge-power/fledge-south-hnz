@@ -248,7 +248,7 @@ void HNZConnection::switchPath() {
     HnzUtility::log_info("New active path is " + m_active_path->getName());
 
     // When switching path, update connection status accordingly
-    if (m_active_path->getProtocolState() == CONNECTED) {
+    if (m_active_path->isHNZConnected()) {
       updateConnectionStatus(ConnectionStatus::STARTED);
     }
     else {

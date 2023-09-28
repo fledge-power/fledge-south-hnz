@@ -1735,7 +1735,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   // Disconnect server
   server->stopHNZServer();
   debug_print("[HNZ Server] Server disconnected");
-  waitUntil(southEventsReceived, 1, 30000);
+  waitUntil(southEventsReceived, 1, 1000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
   resetCounters();
@@ -1799,6 +1799,194 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCG 3 sent");
+  waitUntil(southEventsReceived, 2, 1000);
+  // Check that ingestCallback had been called only for two GI status updates
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, ConnectionLossTwoPath) {
+  // Create server but do not start connection to HNZ device
+  std::shared_ptr<ServersWrapper> wrapperPtr = std::make_shared<ServersWrapper>(0x05, getNextPort(), getNextPort(), false);
+  // Initialize configuration only (mandatory for operation processing)
+  wrapperPtr->initHNZPlugin();
+  // Send request_connection_status
+  std::string operationRCS("request_connection_status");
+  ASSERT_TRUE(hnz->operation(operationRCS, 0, nullptr));
+  debug_print("[HNZ south plugin] request_connection_status sent");
+
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate initial states
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+    {"gi_status", "idle"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Wait for connection to be initialized
+  wrapperPtr->startHNZPlugin();
+  debug_print("[HNZ south plugin] waiting for connection established...");
+  BasicHNZServer* server = wrapperPtr->server1().get();
+  BasicHNZServer* server2 = wrapperPtr->server2().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
+  waitUntil(southEventsReceived, 3, 3000);
+  // Check that ingestCallback had been called the expected number of times
+  ASSERT_EQ(southEventsReceived, 3);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "failed"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Disconnect server 1
+  server->stopHNZServer();
+  debug_print("[HNZ Server] Server 1 disconnected");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that ingestCallback had not been called (second path is still connected)
+  ASSERT_EQ(southEventsReceived, 0);
+  // Disconnect server 2
+  server2->stopHNZServer();
+  debug_print("[HNZ Server] Server 2 disconnected");
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Reconnect server
+  server->startHNZServer();
+  server2->startHNZServer();
+  // Wait for connection to be initialized
+  debug_print("[HNZ south plugin] waiting for connection 2 established...");
+  server = wrapperPtr->server1().get();
+  server2 = wrapperPtr->server2().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
+  waitUntil(southEventsReceived, 3, 3000);
+  // Check that ingestCallback had been called the expected number of times
+  ASSERT_EQ(southEventsReceived, 3);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "failed"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Disconnect server 1 and 2 simultaneously
+  server->stopHNZServer();
+  server2->stopHNZServer();
+  debug_print("[HNZ Server] Server 1 & 2 disconnected");
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Reconnect server
+  server->startHNZServer();
+  server2->startHNZServer();
+  // Wait for connection to be initialized
+  debug_print("[HNZ south plugin] waiting for connection 3 established...");
+  server = wrapperPtr->server1().get();
+  server2 = wrapperPtr->server2().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
+  waitUntil(southEventsReceived, 3, 3000);
+  // Check that ingestCallback had been called the expected number of times
+  ASSERT_EQ(southEventsReceived, 3);
+  resetCounters();
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "failed"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Validate that frames can be exchanged on the newly opened connection
+  // Send new CG request
+  hnz->sendCG();
+  debug_print("[HNZ south plugin] CG request sent");
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Complete CG request by sending all expected TS
+  server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] TSCG sent");
   waitUntil(southEventsReceived, 2, 1000);
   // Check that ingestCallback had been called only for two GI status updates
   ASSERT_EQ(southEventsReceived, 2);

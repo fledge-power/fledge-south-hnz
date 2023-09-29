@@ -23,6 +23,7 @@ HNZConf::HNZConf(const string &json_config, const string &json_exchanged_data) {
 HNZConf::~HNZConf() {}
 
 void HNZConf::importConfigJson(const string &json) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::importConfigJson - ";
   m_config_is_complete = false;
 
   bool is_complete = true;
@@ -30,7 +31,7 @@ void HNZConf::importConfigJson(const string &json) {
   Document document;
 
   if (document.Parse(const_cast<char *>(json.c_str())).HasParseError()) {
-    HnzUtility::log_fatal("Parsing error in protocol_stack json, offset " +
+    HnzUtility::log_fatal(beforeLog + "Parsing error in protocol_stack json, offset " +
                                to_string((unsigned)document.GetErrorOffset()) +
                                " " +
                                GetParseError_En(document.GetParseError()));
@@ -60,8 +61,7 @@ void HNZConf::importConfigJson(const string &json) {
         is_complete &= m_retrieve(conn[1], IP_PORT, &m_port_B, DEFAULT_PORT);
       } else {
         string s = IP_ADDR;
-        HnzUtility::log_error(
-            "Bad connections informations (needed one or two " + s + ").");
+        HnzUtility::log_error(beforeLog + "Bad connections informations (needed one or two " + s + ").");
         is_complete = false;
       }
     }
@@ -75,8 +75,7 @@ void HNZConf::importConfigJson(const string &json) {
     is_complete &= m_retrieve(conf, REMOTE_ADDR, &m_remote_station_addr);
     if (m_remote_station_addr > 64) {
       string s = REMOTE_ADDR;
-      HnzUtility::log_error("Error with the field " + s +
-                                 ", the value is not on 6 bits.");
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not on 6 bits.");
       is_complete = false;
     }
 
@@ -129,12 +128,13 @@ void HNZConf::importConfigJson(const string &json) {
 }
 
 void HNZConf::importExchangedDataJson(const string &json) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::importExchangedDataJson - ";
   m_exchange_data_is_complete = false;
   bool is_complete = true;
 
   Document document;
   if (document.Parse(const_cast<char *>(json.c_str())).HasParseError()) {
-    HnzUtility::log_fatal("Parsing error in exchanged_data json, offset " +
+    HnzUtility::log_fatal(beforeLog + "Parsing error in exchanged_data json, offset " +
                                to_string((unsigned)document.GetErrorOffset()) +
                                " " +
                                GetParseError_En(document.GetParseError()));
@@ -197,6 +197,7 @@ void HNZConf::importExchangedDataJson(const string &json) {
 }
 
 string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::getLabel - ";
   string label;
   try {
     label = m_msg_list.at(msg_code).at(m_remote_station_addr).at(msg_address);
@@ -205,7 +206,7 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
     string st_addr = REMOTE_ADDR;
     string msg_addr = MESSAGE_ADDRESS;
     label = "";
-    HnzUtility::log_warn(
+    HnzUtility::log_warn(beforeLog +
         "The message received does not exist in the configuration (" + code +
         " : " + msg_code + ", " + st_addr + " : " +
         to_string(m_remote_station_addr) + " and " + msg_addr + " : " +
@@ -215,13 +216,14 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
 }
 
 unsigned long HNZConf::getNumberCG() const {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::getNumberCG - ";
   unsigned long nb;
   try {
     nb = m_msg_list.at("TS").at(m_remote_station_addr).size();
-    HnzUtility::log_debug(to_string(nb) + " TSCG in the configuration.");
+    HnzUtility::log_debug(beforeLog + to_string(nb) + " TSCG in the configuration.");
   } catch (const std::out_of_range &e) {
     nb = 0;
-    HnzUtility::log_error("Error while retrieving the number of TSCG");
+    HnzUtility::log_error(beforeLog + "Error while retrieving the number of TSCG");
   }
   return nb;
 }
@@ -231,58 +233,54 @@ unsigned int HNZConf::getLastTSAddress() const {
 }
 
 bool HNZConf::m_check_string(const Value &json, const char *key) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_check_string - ";
   if (!json.HasMember(key) || !json[key].IsString()) {
     string s = key;
-    HnzUtility::log_error(
-        "Error with the field " + s +
-        ", the value does not exist or is not a string.");
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value does not exist or is not a string.");
     return false;
   }
   return true;
 }
 
 bool HNZConf::m_check_array(const Value &json, const char *key) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_check_array - ";
   if (!json.HasMember(key) || !json[key].IsArray()) {
     string s = key;
-    HnzUtility::log_error("The array " + s +
-                               " is required but not found.");
+    HnzUtility::log_error(beforeLog + "The array " + s + " is required but not found.");
     return false;
   }
   return true;
 }
 
 bool HNZConf::m_check_object(const Value &json, const char *key) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_check_object - ";
   if (!json.HasMember(key) || !json[key].IsObject()) {
     string s = key;
-    HnzUtility::log_error("The object " + s +
-                               " is required but not found.");
+    HnzUtility::log_error(beforeLog + "The object " + s + " is required but not found.");
     return false;
   }
   return true;
 }
 
-bool HNZConf::m_retrieve(const Value &json, const char *key,
-                         unsigned int *target) {
+bool HNZConf::m_retrieve(const Value &json, const char *key, unsigned int *target) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   if (!json.HasMember(key) || !json[key].IsUint()) {
     string s = key;
-    HnzUtility::log_error(
-        "Error with the field " + s +
-        ", the value does not exist or is not an unsigned integer.");
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value does not exist or is not an unsigned integer.");
     return false;
   }
   *target = json[key].GetUint();
   return true;
 }
 
-bool HNZConf::m_retrieve(const Value &json, const char *key,
-                         unsigned int *target, unsigned int def) {
+bool HNZConf::m_retrieve(const Value &json, const char *key, unsigned int *target, unsigned int def) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   if (!json.HasMember(key)) {
     *target = def;
   } else {
     if (!json[key].IsUint()) {
       string s = key;
-      HnzUtility::log_error("Error with the field " + s +
-                                 ", the value is not an unsigned integer.");
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not an unsigned integer.");
       return false;
     }
     *target = json[key].GetUint();
@@ -291,26 +289,24 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
 }
 
 bool HNZConf::m_retrieve(const Value &json, const char *key, string *target) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   if (!json.HasMember(key) || !json[key].IsString()) {
     string s = key;
-    HnzUtility::log_error(
-        "Error with the field " + s +
-        ", the value does not exist or is not a string.");
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value does not exist or is not a string.");
     return false;
   }
   *target = json[key].GetString();
   return true;
 }
 
-bool HNZConf::m_retrieve(const Value &json, const char *key, string *target,
-                         string def) {
+bool HNZConf::m_retrieve(const Value &json, const char *key, string *target, string def) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   if (!json.HasMember(key)) {
     *target = def;
   } else {
     if (!json[key].IsString()) {
       string s = key;
-      HnzUtility::log_error("Error with the field " + s +
-                                 ", the value is not a string.");
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not a string.");
       return false;
     }
     *target = json[key].GetString();
@@ -318,8 +314,8 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, string *target,
   return true;
 }
 
-bool HNZConf::m_retrieve(const Value &json, const char *key,
-                         BulleFormat *target) {
+bool HNZConf::m_retrieve(const Value &json, const char *key, BulleFormat *target) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   BulleFormat bulle;
   string temp;
   if (!json.HasMember(key)) {
@@ -327,18 +323,14 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
   } else {
     if (!json[key].IsString()) {
       string s = key;
-      HnzUtility::log_error(
-          "Error with the field " + s +
-          ", the value does not exist or is not a string.");
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value does not exist or is not a string.");
       return false;
     }
 
     temp = json[key].GetString();
     if (temp.size() != 4) {
       string s = key;
-      HnzUtility::log_error(
-          "Error with the field " + s +
-          ", the value isn't correct. Must be 4 digits.");
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value isn't correct. Must be 4 digits.");
       return false;
     }
   }
@@ -349,8 +341,8 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
   return true;
 }
 
-bool HNZConf::m_retrieve(const Value &json, const char *key,
-                         GIScheduleFormat *target) {
+bool HNZConf::m_retrieve(const Value &json, const char *key, GIScheduleFormat *target) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   GIScheduleFormat time;
   time.activate = false;
   time.hour = 99;
@@ -358,9 +350,7 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
   if (json.HasMember(key)) {
     if (!json[key].IsString()) {
       string s = key;
-      HnzUtility::log_error(
-          "Error with the field " + s +
-          ", the value does not exist or is not a string.");
+      HnzUtility::log_error(beforeLog +  "Error with the field " + s + ", the value does not exist or is not a string.");
       return false;
     }
 
@@ -369,9 +359,7 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
     if (temp != DEFAULT_GI_SCHEDULE) {
       if (temp.size() != 5 && temp.substr(2, 1) == ":") {
         string s = key;
-        HnzUtility::log_error(
-            "Error with the field " + s +
-            ", the value isn't correct. Format : 'HH:MM'.");
+        HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value isn't correct. Format : 'HH:MM'.");
         return false;
       }
 
@@ -382,10 +370,8 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
         time.activate = true;
       } else {
         string s = key;
-        HnzUtility::log_error(
-            "Error with the field " + s +
-            ", the value isn't correct. Example of correct "
-            "value : 18:00, 07:25, 00:00.");
+        HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value isn't correct. " +
+                                          "Example of correct value : 18:00, 07:25, 00:00.");
         return false;
       }
     }
@@ -395,15 +381,14 @@ bool HNZConf::m_retrieve(const Value &json, const char *key,
   return true;
 }
 
-bool HNZConf::m_retrieve(const Value &json, const char *key,
-                         long long int *target, long long int def) {
+bool HNZConf::m_retrieve(const Value &json, const char *key, long long int *target, long long int def) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   if (!json.HasMember(key)) {
     *target = def;
   } else {
     if (!json[key].IsInt64()) {
       string s = key;
-      HnzUtility::log_error("Error with the field " + s +
-                                 ", the value is not a long long integer.");
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not a long long integer.");
       return false;
     }
     *target = json[key].GetInt64();

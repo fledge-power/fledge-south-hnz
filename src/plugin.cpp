@@ -22,8 +22,6 @@ typedef void (*INGEST_CB)(void *, Reading);
 
 using namespace std;
 
-#define PLUGIN_NAME "hnz"
-
 // PLUGIN DEFAULT PROTOCOL STACK CONF
 #define PROTOCOL_STACK_DEF                            \
   QUOTE({                                             \
@@ -159,13 +157,14 @@ static PLUGIN_INFORMATION info = {
  * Return the information about this plugin
  */
 PLUGIN_INFORMATION *plugin_info() {
-  HnzUtility::log_info("HNZ Config is %s", info.config);
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_info -";
+  HnzUtility::log_info("%s HNZ Config is %s", beforeLog.c_str(), info.config);
   return &info;
 }
 
 PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
 
-  std::string beforeLog = std::string(PLUGIN_NAME) + " -";
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_init -";
   HnzUtility::log_info("%s Initializing the plugin", beforeLog.c_str());
 
   if (config == nullptr) {
@@ -189,7 +188,7 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
 void plugin_start(PLUGIN_HANDLE *handle) {
   if (!handle) return;
   
-  std::string beforeLog = std::string(PLUGIN_NAME) + " -";
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_start -";
   HnzUtility::log_info("%s Starting the plugin...", beforeLog.c_str());
   HNZ *hnz = reinterpret_cast<HNZ *>(handle);
   hnz->start();
@@ -210,7 +209,8 @@ void plugin_register_ingest(PLUGIN_HANDLE *handle, INGEST_CB cb, void *data) {
  * Poll for a plugin reading
  */
 Reading plugin_poll(PLUGIN_HANDLE *handle) {
-  throw runtime_error("HNZ is an async plugin, poll should not be called");
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_poll -";
+  throw runtime_error(beforeLog + "HNZ is an async plugin, poll should not be called");
 }
 
 /**

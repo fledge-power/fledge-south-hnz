@@ -114,6 +114,11 @@ class HNZConnection {
    */
   GiStatus getGiStatus();
 
+  /**
+   * Returns mutex used to protect the active and passive path
+   */
+  std::recursive_mutex& getPathMutex() { return m_path_mutex; }
+
  private:
   std::shared_ptr<HNZPath> m_active_path;
   std::shared_ptr<HNZPath> m_passive_path;

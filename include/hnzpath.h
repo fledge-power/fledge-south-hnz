@@ -86,6 +86,12 @@ class HNZPath {
   vector<vector<unsigned char>> getData();
 
   /**
+   * Is the HNZ connection with the PA established and still alive?
+   * @return true if connected, false otherwise
+   */
+  bool isHNZConnected() { return (m_protocol_state == CONNECTED) && isConnected(); };
+
+  /**
    * Is the TCP connection with the PA established and still alive?
    * @return true if connected, false otherwise
    */
@@ -324,7 +330,22 @@ class HNZPath {
    */
   void m_send_time_setting();
 
+  /**
+   * Go to the CONNECTED statue of the HNZ connection
+   */
   void m_go_to_connected();
+
+  /**
+   * Get the other path if any
+   * @return Second HNZ path, or nullptr if no other path defined
+   */
+  std::shared_ptr<HNZPath> m_getOtherPath();
+
+  /**
+   * Tells if the HNZ connection is fully established and active on the other path
+   * @return True if the connection is established, false if not established or no other path defined
+   */
+  bool m_isOtherPathHNZConnected();
 };
 
 #endif

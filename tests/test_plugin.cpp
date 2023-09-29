@@ -36,13 +36,11 @@ static const char *default_config = QUOTE({
     "readonly" : "true"
   },
 
-  "asset" : {
-    "description" : "Asset name",
-    "type" : "string",
-    "default" : "hnz_test",
-    "displayName" : "Asset Name",
-    "order" : "1",
-    "mandatory" : "true"
+  "enable": {
+      "description": "A switch that can be used to enable or disable execution of the filter.",
+      "displayName": "Enabled",
+      "type": "boolean",
+      "default": "true"
   },
 
   "protocol_stack" : {
@@ -71,7 +69,7 @@ TEST(HNZ, PluginInit) {
 
   ASSERT_NO_THROW(handle = plugin_init(config));
 
-  if (handle != nullptr) plugin_shutdown((PLUGIN_HANDLE *)handle);
+  if (handle != nullptr) ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete config;
 }
@@ -79,11 +77,11 @@ TEST(HNZ, PluginInit) {
 TEST(HNZ, PluginStart) {
   ConfigCategory *emptyConfig = new ConfigCategory();
   PLUGIN_HANDLE handle = nullptr;
-
   ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
-  ASSERT_NO_THROW(plugin_start((PLUGIN_HANDLE *)handle));
+  ASSERT_NE(handle, nullptr);
+  ASSERT_NO_THROW(plugin_start(static_cast<PLUGIN_HANDLE *>(handle)));
 
-  if (handle != nullptr) plugin_shutdown((PLUGIN_HANDLE *)handle);
+  if (handle != nullptr) ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete emptyConfig;
 }
@@ -91,22 +89,23 @@ TEST(HNZ, PluginStart) {
 TEST(HNZ, PluginInitEmptyConfig) {
   ConfigCategory *emptyConfig = new ConfigCategory();
   PLUGIN_HANDLE handle = nullptr;
-
   ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
 
-  if (handle != nullptr) plugin_shutdown((PLUGIN_HANDLE *)handle);
+  if (handle != nullptr) ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete emptyConfig;
 }
 
 TEST(HNZ, PluginRegisterIngest) {
   ConfigCategory *emptyConfig = new ConfigCategory();
-  PLUGIN_HANDLE handle = plugin_init(emptyConfig);
+  PLUGIN_HANDLE handle = nullptr;
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
 
-  ASSERT_NO_THROW(
-      plugin_register_ingest((PLUGIN_HANDLE *)handle, ingestCallback, NULL));
+  ASSERT_NO_THROW(plugin_register_ingest(static_cast<PLUGIN_HANDLE *>(handle), ingestCallback, nullptr));
 
-  plugin_shutdown((PLUGIN_HANDLE *)handle);
+  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete emptyConfig;
 }
@@ -114,18 +113,18 @@ TEST(HNZ, PluginRegisterIngest) {
 TEST(HNZ, PluginRegisterIngestFailed) {
   PLUGIN_HANDLE handle = nullptr;
 
-  ASSERT_THROW(
-      plugin_register_ingest((PLUGIN_HANDLE *)handle, ingestCallback, NULL),
-      exception);
+  ASSERT_THROW(plugin_register_ingest(static_cast<PLUGIN_HANDLE *>(handle), ingestCallback, nullptr), exception);
 }
 
 TEST(HNZ, PluginPoll) {
   ConfigCategory *emptyConfig = new ConfigCategory();
-  PLUGIN_HANDLE handle = plugin_init(emptyConfig);
+  PLUGIN_HANDLE handle = nullptr;
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
 
-  ASSERT_THROW(plugin_poll((PLUGIN_HANDLE *)handle), runtime_error);
+  ASSERT_THROW(plugin_poll(static_cast<PLUGIN_HANDLE *>(handle)), runtime_error);
 
-  plugin_shutdown((PLUGIN_HANDLE *)handle);
+  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete emptyConfig;
 }
@@ -138,13 +137,11 @@ string new_test_conf = QUOTE({
     "readonly" : "true"
   },
 
-  "asset" : {
-    "description" : "Asset name",
-    "type" : "string",
-    "default" : "hnz_test",
-    "displayName" : "Asset Name",
-    "order" : "1",
-    "mandatory" : "true"
+  "enable": {
+      "description": "A switch that can be used to enable or disable execution of the filter.",
+      "displayName": "Enabled",
+      "type": "boolean",
+      "default": "true"
   },
 
   "protocol_stack" : {
@@ -166,51 +163,88 @@ string new_test_conf = QUOTE({
 
 TEST(HNZ, PluginReconfigure) {
   ConfigCategory *emptyConfig = new ConfigCategory();
-  PLUGIN_HANDLE handle = plugin_init(emptyConfig);
-  ASSERT_FALSE(handle == NULL);
-  ASSERT_NO_THROW(plugin_reconfigure((PLUGIN_HANDLE *)&handle, new_test_conf));
+  PLUGIN_HANDLE handle = nullptr;
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
+  ASSERT_NO_THROW(plugin_reconfigure(static_cast<PLUGIN_HANDLE *>(handle), new_test_conf));
 
-  plugin_shutdown((PLUGIN_HANDLE *)handle);
+  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
+
+  handle = nullptr;
+  ASSERT_THROW(plugin_reconfigure(static_cast<PLUGIN_HANDLE *>(handle), new_test_conf), exception);
 
   delete emptyConfig;
 }
 
 TEST(HNZ, PluginWrite) {
   ConfigCategory *emptyConfig = new ConfigCategory();
-  PLUGIN_HANDLE handle = plugin_init(emptyConfig);
+  PLUGIN_HANDLE handle = nullptr;
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
 
   string name("name");
   string value("value");
-  ASSERT_FALSE(plugin_write((PLUGIN_HANDLE *)handle, name, value));
+  ASSERT_FALSE(plugin_write(static_cast<PLUGIN_HANDLE *>(handle), name, value));
 
-  plugin_shutdown((PLUGIN_HANDLE *)handle);
+  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete emptyConfig;
 }
 
 TEST(HNZ, PluginOperation) {
   ConfigCategory *emptyConfig = new ConfigCategory();
-  PLUGIN_HANDLE handle = plugin_init(emptyConfig);
+  PLUGIN_HANDLE handle = nullptr;
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
 
   string operation("operation_test");
-  ASSERT_NO_THROW(
-      plugin_operation((PLUGIN_HANDLE *)handle, operation, 10, NULL));
-  ASSERT_FALSE(plugin_operation((PLUGIN_HANDLE *)handle, operation, 10, NULL));
+  bool res = false;
+  ASSERT_NO_THROW(res = plugin_operation(static_cast<PLUGIN_HANDLE *>(handle), operation, 10, nullptr));
+  ASSERT_FALSE(res);
 
-  plugin_shutdown((PLUGIN_HANDLE *)handle);
+  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   handle = nullptr;
-  ASSERT_THROW(plugin_operation((PLUGIN_HANDLE *)handle, operation, 10, NULL),
-               exception);
+  ASSERT_THROW(plugin_operation(static_cast<PLUGIN_HANDLE *>(handle), operation, 10, nullptr), exception);
 
   delete emptyConfig;
 }
 
 TEST(HNZ, PluginStop) {
   ConfigCategory *emptyConfig = new ConfigCategory();
-  PLUGIN_HANDLE handle = plugin_init(emptyConfig);
+  PLUGIN_HANDLE handle = nullptr;
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
 
-  ASSERT_NO_THROW(plugin_shutdown((PLUGIN_HANDLE *)handle));
+  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
+
+  delete emptyConfig;
+}
+
+string enable_config = QUOTE({
+  "enable": {
+      "value": "true"
+  }
+});
+string disable_config = QUOTE({
+  "enable": {
+      "value": "false"
+  }
+});
+
+TEST(HNZ, PluginEnableDisable) {
+  ConfigCategory *emptyConfig = new ConfigCategory("Test_Config", enable_config);
+  PLUGIN_HANDLE handle = nullptr;
+  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+  ASSERT_NE(handle, nullptr);
+
+  auto hnz = static_cast<HNZ *>(handle);
+  ASSERT_EQ(hnz->isEnabled(), true);
+
+  ASSERT_NO_THROW(plugin_reconfigure(static_cast<PLUGIN_HANDLE *>(handle), disable_config));
+  ASSERT_EQ(hnz->isEnabled(), false);
+
+  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete emptyConfig;
 }

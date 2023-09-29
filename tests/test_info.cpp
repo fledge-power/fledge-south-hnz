@@ -18,6 +18,7 @@ TEST(HNZ, PluginInfo) {
   ASSERT_STREQ(info->name, "hnz");
   ASSERT_EQ(info->options, SP_ASYNC | SP_CONTROL);
   ASSERT_EQ(info->type, PLUGIN_TYPE_SOUTH);
+  ASSERT_STREQ(info->interface, "1.0.0");
 }
 
 TEST(HNZ, PluginInfoConfigParse) {
@@ -28,4 +29,7 @@ TEST(HNZ, PluginInfoConfigParse) {
   ASSERT_EQ(doc.HasParseError(), false);
   ASSERT_EQ(doc.IsObject(), true);
   ASSERT_EQ(doc.HasMember("plugin"), true);
+  ASSERT_EQ(doc.HasMember("enable"), true);
+	ASSERT_EQ(doc.HasMember("exchanged_data"), true);
+  ASSERT_EQ(doc.HasMember("protocol_stack"), true);
 }

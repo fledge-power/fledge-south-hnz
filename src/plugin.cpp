@@ -116,13 +116,11 @@ static const char *default_config = QUOTE({
     "readonly" : "true"
   },
 
-  "asset" : {
-    "description" : "Asset name",
-    "type" : "string",
-    "default" : PLUGIN_NAME,
-    "displayName" : "Asset Name",
-    "order" : "1",
-    "mandatory" : "true"
+  "enable": {
+      "description": "A switch that can be used to enable or disable execution of the filter.",
+      "displayName": "Enabled",
+      "type": "boolean",
+      "default": "true"
   },
 
   "protocol_stack" : {
@@ -165,28 +163,24 @@ PLUGIN_INFORMATION *plugin_info() {
   return &info;
 }
 
-PLUGIN_HANDLE plugin_init(ConfigCategory *config) {
-  HNZ *hnz;
-  HnzUtility::log_info("Initializing the plugin");
+PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
 
-  hnz = new HNZ();
+  std::string beforeLog = std::string(PLUGIN_NAME) + " -";
+  HnzUtility::log_info("%s Initializing the plugin", beforeLog.c_str());
 
-  if (config->itemExists("asset")) {
-    hnz->setAssetName(config->getValue("asset"));
-  } else {
-    hnz->setAssetName(PLUGIN_NAME);
+  if (config == nullptr) {
+      HnzUtility::log_warn("%s No config provided for filter, using default config", beforeLog.c_str());
+      auto info = plugin_info();
+      config = new ConfigCategory("newConfig", info->config);
+      config->setItemsValueFromDefault();
   }
 
-  if (config->itemExists("protocol_stack") &&
-      config->itemExists("exchanged_data")) {
-    if (!hnz->setJsonConfig(config->getValue("protocol_stack"),
-                            config->getValue("exchanged_data")))
-      return nullptr;
-  }
+  auto hnz = new HNZ();
+  hnz->reconfigure(*config);
 
-  HnzUtility::log_info("Pluging initialized");
+  HnzUtility::log_info("%s Pluging initialized", beforeLog.c_str());
 
-  return (PLUGIN_HANDLE)hnz;
+  return static_cast<PLUGIN_HANDLE>(hnz);
 }
 
 /**
@@ -194,10 +188,12 @@ PLUGIN_HANDLE plugin_init(ConfigCategory *config) {
  */
 void plugin_start(PLUGIN_HANDLE *handle) {
   if (!handle) return;
-  HnzUtility::log_info("Starting the plugin");
-  HNZ *hnz = (HNZ *)handle;
+  
+  std::string beforeLog = std::string(PLUGIN_NAME) + " -";
+  HnzUtility::log_info("%s Starting the plugin...", beforeLog.c_str());
+  HNZ *hnz = reinterpret_cast<HNZ *>(handle);
   hnz->start();
-  HnzUtility::log_info("Plugin started");
+  HnzUtility::log_info("%s Plugin started", beforeLog.c_str());
 }
 
 /**
@@ -206,7 +202,7 @@ void plugin_start(PLUGIN_HANDLE *handle) {
 void plugin_register_ingest(PLUGIN_HANDLE *handle, INGEST_CB cb, void *data) {
   if (!handle) throw exception();
 
-  HNZ *hnz = (HNZ *)handle;
+  HNZ *hnz = reinterpret_cast<HNZ *>(handle);
   hnz->registerIngest(data, cb);
 }
 
@@ -221,24 +217,18 @@ Reading plugin_poll(PLUGIN_HANDLE *handle) {
  * Reconfigure the plugin
  */
 void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
-  ConfigCategory config("new", newConfig);
-  auto *hnz = (HNZ *)*handle;
+  if (!handle) throw exception();
 
-  if (config.itemExists("protocol_stack") &&
-      config.itemExists("exchanged_data"))
-    hnz->setJsonConfig(config.getValue("protocol_stack"),
-                       config.getValue("exchanged_data"));
-
-  if (config.itemExists("asset")) {
-    hnz->setAssetName(config.getValue("asset"));
-  }
+  auto *hnz = reinterpret_cast<HNZ *>(handle);
+  ConfigCategory config("newConfig", newConfig);
+  hnz->reconfigure(config);
 }
 
 /**
  * Shutdown the plugin
  */
 void plugin_shutdown(PLUGIN_HANDLE *handle) {
-  auto *hnz = (HNZ *)handle;
+  auto *hnz = reinterpret_cast<HNZ *>(handle);
   delete hnz;
 }
 

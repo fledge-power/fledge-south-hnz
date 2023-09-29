@@ -8,6 +8,7 @@
 #include <vector>
 #include <mutex>
 #include <sstream>
+#include <regex>
 
 #include "hnz.h"
 #include "server/basic_hnz_server.h"
@@ -189,7 +190,22 @@ class HNZTest : public testing::Test {
   }
 
   static void initConfig(int port, int port2) {
-    hnz->setJsonConfig(protocol_stack_generator(port, port2), exchanged_data_def);
+    static const std::string configureTemplate = QUOTE({
+      "enable" : {
+        "value": "true"
+      },
+      "protocol_stack" : {
+        "value": <protocol_stack>
+      },
+      "exchanged_data" : {
+        "value": <exchanged_data>
+      }
+    });
+    const std::string& protocol_stack = protocol_stack_generator(port, port2);
+    std::string configure = std::regex_replace(configureTemplate, std::regex("<protocol_stack>"), protocol_stack);
+    configure = std::regex_replace(configure, std::regex("<exchanged_data>"), exchanged_data_def);
+    auto config = new ConfigCategory("newConfig", configure);
+    hnz->reconfigure(*config);
   }
 
   static void startHNZ(int port, int port2) {

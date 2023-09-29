@@ -169,8 +169,8 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
 
   if (config == nullptr) {
       HnzUtility::log_warn("%s No config provided for filter, using default config", beforeLog.c_str());
-      auto info = plugin_info();
-      config = new ConfigCategory("newConfig", info->config);
+      auto pluginInfo = plugin_info();
+      config = new ConfigCategory("newConfig", pluginInfo->config);
       config->setItemsValueFromDefault();
   }
 
@@ -190,7 +190,7 @@ void plugin_start(PLUGIN_HANDLE *handle) {
   
   std::string beforeLog = HnzUtility::NamePlugin + " - plugin_start -";
   HnzUtility::log_info("%s Starting the plugin...", beforeLog.c_str());
-  HNZ *hnz = reinterpret_cast<HNZ *>(handle);
+  auto hnz = reinterpret_cast<HNZ *>(handle);
   hnz->start();
   HnzUtility::log_info("%s Plugin started", beforeLog.c_str());
 }
@@ -201,7 +201,7 @@ void plugin_start(PLUGIN_HANDLE *handle) {
 void plugin_register_ingest(PLUGIN_HANDLE *handle, INGEST_CB cb, void *data) {
   if (!handle) throw exception();
 
-  HNZ *hnz = reinterpret_cast<HNZ *>(handle);
+  auto hnz = reinterpret_cast<HNZ *>(handle);
   hnz->registerIngest(data, cb);
 }
 
@@ -219,7 +219,7 @@ Reading plugin_poll(PLUGIN_HANDLE *handle) {
 void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
   if (!handle) throw exception();
 
-  auto *hnz = reinterpret_cast<HNZ *>(handle);
+  auto hnz = reinterpret_cast<HNZ *>(handle);
   ConfigCategory config("newConfig", newConfig);
   hnz->reconfigure(config);
 }
@@ -228,7 +228,7 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
  * Shutdown the plugin
  */
 void plugin_shutdown(PLUGIN_HANDLE *handle) {
-  auto *hnz = reinterpret_cast<HNZ *>(handle);
+  auto hnz = reinterpret_cast<HNZ *>(handle);
   delete hnz;
 }
 
@@ -247,7 +247,7 @@ bool plugin_operation(PLUGIN_HANDLE *handle, string &operation, int count,
                       PLUGIN_PARAMETER **params) {
   if (!handle) throw exception();
 
-  auto *hnz = reinterpret_cast<HNZ *>(handle);
+  auto hnz = reinterpret_cast<HNZ *>(handle);
 
   return hnz->operation(operation, count, params);
 }

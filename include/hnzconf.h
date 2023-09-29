@@ -318,7 +318,7 @@ class HNZConf {
   static bool m_retrieve(const Value &json, const char *key, unsigned int *target);
   static bool m_retrieve(const Value &json, const char *key, unsigned int *target, unsigned int def);
   static bool m_retrieve(const Value &json, const char *key, string *target);
-  static bool m_retrieve(const Value &json, const char *key, string *target, string def);
+  static bool m_retrieve(const Value &json, const char *key, string *target, const string& def);
   static bool m_retrieve(const Value &json, const char *key, BulleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, GIScheduleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, long long int *target, long long int def);

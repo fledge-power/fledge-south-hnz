@@ -299,7 +299,7 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, string *target) {
   return true;
 }
 
-bool HNZConf::m_retrieve(const Value &json, const char *key, string *target, string def) {
+bool HNZConf::m_retrieve(const Value &json, const char *key, string *target, const string& def) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   if (!json.HasMember(key)) {
     *target = def;

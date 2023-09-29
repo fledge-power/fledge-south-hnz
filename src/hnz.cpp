@@ -529,14 +529,14 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
   HnzUtility::log_error("%s Operation %s", beforeLog.c_str(), operation.c_str());
 
-  if (operation.compare("TC") == 0) {
+  if (operation.compare("TC") == 0 && count == 3) {
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
     m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
     return true;
   }
-  else if (operation.compare("TVC") == 0) {
+  else if (operation.compare("TVC") == 0 && count == 3) {
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
@@ -549,7 +549,7 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
     return true;
   }
 
-  HnzUtility::log_error("%s Unrecognised operation %s", beforeLog.c_str(), operation.c_str());
+  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters", beforeLog.c_str(), operation.c_str(), count);
   return false;
 }
 

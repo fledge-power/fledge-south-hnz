@@ -514,7 +514,14 @@ void HNZ::m_sendToFledge(vector<Reading>& readings) {
   }
 }
 
-void HNZ::ingest(Reading& reading) { (*m_ingest)(m_data, reading); }
+void HNZ::ingest(Reading& reading) { 
+  if (!m_ingest) {
+    std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::ingest -";
+    HnzUtility::log_error("%s Ingest callback is not defined", beforeLog.c_str());
+    return;
+  }
+  (*m_ingest)(m_data, reading);
+}
 
 void HNZ::registerIngest(void* data, INGEST_CB cb) {
   m_ingest = cb;

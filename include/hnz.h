@@ -174,8 +174,8 @@ private:
   std::unique_ptr<HNZConnection> m_hnz_connection;                        // HNZ Connection handling
 
   // Fledge related
-  INGEST_CB m_ingest;  // Callback function used to send data to south service
-  void* m_data;        // Ingest function data
+  INGEST_CB m_ingest = nullptr;  // Callback function used to send data to south service
+  void* m_data       = nullptr;        // Ingest function data
 
   // Configuration defined variables
   unsigned int m_remote_address;

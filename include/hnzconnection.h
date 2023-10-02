@@ -119,6 +119,11 @@ class HNZConnection {
    */
   std::recursive_mutex& getPathMutex() { return m_path_mutex; }
 
+   /**
+   * Returns the running status of the connection
+   */
+  bool isRunning() { return m_is_running; };
+
  private:
   std::shared_ptr<HNZPath> m_active_path;
   std::shared_ptr<HNZPath> m_passive_path;

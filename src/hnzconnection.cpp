@@ -238,6 +238,10 @@ void HNZConnection::m_update_quality_update_timer() {
 
 void HNZConnection::switchPath() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::switchPath -";
+  // No path switch during shutdown
+  if (!m_is_running) {
+    return;
+  }
   if (m_passive_path != nullptr) {
     HnzUtility::log_warn("%s Switching active and passive path.", beforeLog.c_str());
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);

@@ -64,12 +64,6 @@ class HNZ {
   void reconfigure(const ConfigCategory& config);
 
   /**
-   * Getter for enable state
-   * @return True if the plugin is enabled, else false
-   */
-  bool isEnabled() const { return m_enabled; } 
-
-  /**
    * Set the configuration of the HNZ South Plugin. Two JSON configuration are
    * required.
    * @param protocol_conf_json Contain value to configure the protocol
@@ -168,7 +162,6 @@ class HNZ {
 
 private:
   std::atomic<bool> m_is_running{false};
-  std::atomic<bool> m_enabled{false};
   // Receiving threads
   std::unique_ptr<std::thread> m_receiving_thread_A;
   std::unique_ptr<std::thread> m_receiving_thread_B;

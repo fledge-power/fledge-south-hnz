@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <future>
 
 #include "hnz.h"
 
@@ -13,6 +14,7 @@ using namespace std;
 typedef void (*INGEST_CB)(void *, Reading);
 
 extern "C" {
+PLUGIN_INFORMATION *plugin_info();
 PLUGIN_HANDLE plugin_init(ConfigCategory *config);
 void plugin_register_ingest(PLUGIN_HANDLE *handle, INGEST_CB cb, void *data);
 Reading plugin_poll(PLUGIN_HANDLE *handle);
@@ -34,13 +36,6 @@ static const char *default_config = QUOTE({
     "type" : "string",
     "default" : "TEST_PLUGIN",
     "readonly" : "true"
-  },
-
-  "enable": {
-      "description": "A switch that can be used to enable or disable execution of the filter.",
-      "displayName": "Enabled",
-      "type": "boolean",
-      "default": "true"
   },
 
   "protocol_stack" : {
@@ -137,13 +132,6 @@ string new_test_conf = QUOTE({
     "readonly" : "true"
   },
 
-  "enable": {
-      "description": "A switch that can be used to enable or disable execution of the filter.",
-      "displayName": "Enabled",
-      "type": "boolean",
-      "default": "true"
-  },
-
   "protocol_stack" : {
     "description" : "protocol stack parameters",
     "type" : "JSON",
@@ -221,30 +209,29 @@ TEST(HNZ, PluginStop) {
   delete emptyConfig;
 }
 
-string enable_config = QUOTE({
-  "enable": {
-      "value": "true"
-  }
-});
-string disable_config = QUOTE({
-  "enable": {
-      "value": "false"
-  }
-});
-
-TEST(HNZ, PluginEnableDisable) {
-  ConfigCategory *emptyConfig = new ConfigCategory("Test_Config", enable_config);
+TEST(HNZ, PluginStopDuringConnect) {
+  PLUGIN_INFORMATION *info = nullptr;
+  ASSERT_NO_THROW(info = plugin_info());
+  ConfigCategory *config = new ConfigCategory("default_config", info->config);
+  config->setItemsValueFromDefault();
   PLUGIN_HANDLE handle = nullptr;
-  ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
+
+  ASSERT_NO_THROW(handle = plugin_init(config));
   ASSERT_NE(handle, nullptr);
 
-  auto hnz = static_cast<HNZ *>(handle);
-  ASSERT_EQ(hnz->isEnabled(), true);
+  ASSERT_NO_THROW(plugin_start(static_cast<PLUGIN_HANDLE *>(handle)));
 
-  ASSERT_NO_THROW(plugin_reconfigure(static_cast<PLUGIN_HANDLE *>(handle), disable_config));
-  ASSERT_EQ(hnz->isEnabled(), false);
+  // Wait for plugin to enter HNZPath::connect() on both path
+  printf("Waiting for HNZPath::connect()...\n"); fflush(stdout);
+  this_thread::sleep_for(chrono::seconds(10));
 
-  ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
+  // Make sure that shutdown does not hang forever on "hnz - HNZ::stop - Waiting for the receiving thread"
+  printf("Waiting for plugin_shutdown() to complete...\n"); fflush(stdout);
+  auto future = std::async(std::launch::async, &plugin_shutdown, static_cast<PLUGIN_HANDLE *>(handle));
+  if (future.wait_for(std::chrono::seconds(60)) == std::future_status::timeout) {
+    // some thread did not join in time
+    FAIL() << "Shutdown did not complete in time, it's probably hanging on a thread join()";
+  }
 
-  delete emptyConfig;
+  delete config;
 }

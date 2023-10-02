@@ -114,13 +114,6 @@ static const char *default_config = QUOTE({
     "readonly" : "true"
   },
 
-  "enable": {
-      "description": "A switch that can be used to enable or disable execution of the filter.",
-      "displayName": "Enabled",
-      "type": "boolean",
-      "default": "true"
-  },
-
   "protocol_stack" : {
     "description" : "protocol stack parameters",
     "type" : "JSON",
@@ -218,6 +211,8 @@ Reading plugin_poll(PLUGIN_HANDLE *handle) {
  */
 void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
   if (!handle) throw exception();
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_reconfigure -";
+  HnzUtility::log_info("%s New config: %s", beforeLog.c_str(), newConfig.c_str());
 
   auto hnz = reinterpret_cast<HNZ *>(handle);
   ConfigCategory config("newConfig", newConfig);
@@ -228,6 +223,8 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
  * Shutdown the plugin
  */
 void plugin_shutdown(PLUGIN_HANDLE *handle) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_shutdown -";
+  HnzUtility::log_info("%s Shutting down the plugin...", beforeLog.c_str());
   auto hnz = reinterpret_cast<HNZ *>(handle);
   delete hnz;
 }

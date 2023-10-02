@@ -34,10 +34,6 @@ void HNZ::start() {
     HnzUtility::log_info("%s HNZ south plugin can't start because configuration is incorrect.", beforeLog.c_str());
     return;
   }
-  if (!isEnabled()) {
-    HnzUtility::log_info("%s HNZ south plugin can't start because plugin is disabled.", beforeLog.c_str());
-    return;
-  }
 
   HnzUtility::log_info("%s Starting HNZ south plugin...", beforeLog.c_str());
 
@@ -63,6 +59,11 @@ void HNZ::stop() {
   HnzUtility::log_info("%s Starting shutdown of HNZ plugin", beforeLog.c_str());
   m_is_running = false;
 
+  // Connection must be stopped before management threads of both path
+  // or join on both receive threads will hang forever
+  if (m_hnz_connection != nullptr) {
+    m_hnz_connection->stop();
+  }
   if (m_receiving_thread_A != nullptr) {
     HnzUtility::log_debug("%s Waiting for the receiving thread (path A)", beforeLog.c_str());
     m_receiving_thread_A->join();
@@ -74,9 +75,9 @@ void HNZ::stop() {
     m_receiving_thread_B = nullptr;
   }
   // Connection must be freed after management threads of both path
-  // as HNZ::m_hnz_connection is used in HNZ::receive running on the threads
+  // as HNZ::m_hnz_connection, HNZConnection::m_active_path and HNZConnection::m_passive_path
+  // are used in HNZ::receive running on the threads
   if (m_hnz_connection != nullptr) {
-    m_hnz_connection->stop();
     m_hnz_connection = nullptr;
   }
   HnzUtility::log_info("%s Plugin stopped !", beforeLog.c_str());
@@ -84,11 +85,6 @@ void HNZ::stop() {
 
 void HNZ::reconfigure(const ConfigCategory& config) {
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
-  if (config.itemExists("enable")) {
-      m_enabled = config.getValue("enable").compare("true") == 0 ||
-                  config.getValue("enable").compare("True") == 0;
-  }
-
   std::string protocol_conf_json;
   if (config.itemExists("protocol_stack")) {
     protocol_conf_json = config.getValue("protocol_stack");
@@ -105,7 +101,7 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::setJsonConfig -";
   // If no new json configuration and the plugin is already in the correct running state, nothing to do
-  if (protocol_conf_json.empty() && msg_conf_json.empty() && (m_is_running == isEnabled())) {
+  if (protocol_conf_json.empty() && msg_conf_json.empty()) {
     HnzUtility::log_info("%s No new configuration provided to reconfigure, skipping", beforeLog.c_str());
     return;
   }
@@ -134,7 +130,7 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
   m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
 
-  if (was_running && isEnabled()) {
+  if (was_running) {
     HnzUtility::log_warn("%s Restarting the plugin...", beforeLog.c_str());
     start();
   }
@@ -144,7 +140,7 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   if (m_hnz_conf) {
     // Parent if used only for scope lock
     std::lock_guard<std::recursive_mutex> guard(m_configMutex);
-    if (!m_hnz_conf->is_complete() || !isEnabled()) {
+    if (!m_hnz_conf->is_complete()) {
       return;
     }
   }

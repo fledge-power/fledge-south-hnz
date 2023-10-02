@@ -79,8 +79,8 @@ void HNZPath::connect() {
   // Reinitialize those variables in case of reconnection
   m_last_msg_time = time(nullptr);
   m_is_running = true;
-  // Loop until connected
-  while (m_is_running) {
+  // Loop until connected (make sure we exit if connection is shutting down)
+  while (m_is_running && m_hnz_connection->isRunning()) {
     HnzUtility::log_info(beforeLog + " Connecting to PA on " + m_ip + " (" + to_string(m_port) + ")...");
 
     // Establish TCP connection with the PA
@@ -156,7 +156,8 @@ void HNZPath::m_manageHNZProtocolConnection() {
     }
 
     this_thread::sleep_for(sleep);
-  } while (m_is_running);
+    // Make sure we exit if connection is shutting down
+  } while (m_is_running && m_hnz_connection->isRunning());
 
   HnzUtility::log_debug(beforeLog + " HNZ Connection Management thread is shutting down...");
 }

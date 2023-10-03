@@ -86,6 +86,11 @@ void HNZPath::connect() {
     // Establish TCP connection with the PA
     m_connected = !(m_hnz_client->connect_Server(m_ip.c_str(), m_port, m_timeoutUs));
 
+    // If shutdown started while waiting for connection, exit
+    if(!m_is_running || !m_hnz_connection->isRunning()) {
+      HnzUtility::log_info(beforeLog + " Connection shutting down, abort connect");
+      return;
+    }
     if (m_connected) {
       HnzUtility::log_info(beforeLog + " Connected to " + m_ip + " (" + to_string(m_port) + ").");
       go_to_connection();

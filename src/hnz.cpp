@@ -151,6 +151,12 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   // Connect to the server
   hnz_path_in_use->connect();
 
+  // Exit early if connection shutting down
+  if(!m_is_running) {
+    HnzUtility::log_info("%s Connection shutting down, exit", beforeLog.c_str());
+    return;
+  }
+
   HnzUtility::log_warn("%s Listening for data...", beforeLog.c_str());
 
   vector<vector<unsigned char>> messages;

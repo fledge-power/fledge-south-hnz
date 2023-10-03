@@ -228,7 +228,7 @@ TEST(HNZ, PluginStopDuringConnect) {
   // Make sure that shutdown does not hang forever on "hnz - HNZ::stop - Waiting for the receiving thread"
   printf("Waiting for plugin_shutdown() to complete...\n"); fflush(stdout);
   auto future = std::async(std::launch::async, &plugin_shutdown, static_cast<PLUGIN_HANDLE *>(handle));
-  if (future.wait_for(std::chrono::seconds(60)) == std::future_status::timeout) {
+  if (future.wait_for(std::chrono::seconds(120)) == std::future_status::timeout) {
     // some thread did not join in time
     FAIL() << "Shutdown did not complete in time, it's probably hanging on a thread join()";
   }

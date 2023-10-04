@@ -122,7 +122,7 @@ class HNZConnection {
    /**
    * Returns the running status of the connection
    */
-  bool isRunning() { return m_is_running; };
+  bool isRunning() const { return m_is_running; };
 
  private:
   std::shared_ptr<HNZPath> m_active_path;

@@ -81,8 +81,8 @@ using namespace std;
  * @brief Structure containing the 2 bytes of a BULLE
  */
 struct BulleFormat {
-  unsigned char first;
-  unsigned char second;
+  unsigned char first = 0;
+  unsigned char second = 0;
 } typedef BulleFormat;
 
 /**
@@ -90,9 +90,9 @@ struct BulleFormat {
  */
 struct GIScheduleFormat {
   /// indicate if GI is enable
-  bool activate;
-  int hour;
-  int min;
+  bool activate = false;
+  int hour = 0;
+  int min = 0;
 } typedef GIScheduleFormat;
 
 /**
@@ -100,9 +100,8 @@ struct GIScheduleFormat {
  */
 class HNZConf {
  public:
-  HNZConf();
+  HNZConf() = default;
   HNZConf(const string &json_config, const string &json_exchanged_data);
-  ~HNZConf();
 
   /**
    * Import the HNZ Protocol stack configuration JSON. If errors are detected
@@ -287,29 +286,30 @@ class HNZConf {
 
  private:
   string m_ip_A, m_ip_B = "";
-  unsigned int m_port_A, m_port_B;
-  unsigned int m_remote_station_addr;
-  unsigned int m_inacc_timeout;
-  unsigned int m_max_sarm;
-  unsigned int m_repeat_path_A;
-  unsigned int m_repeat_path_B;
-  unsigned int m_repeat_timeout;
-  unsigned int m_anticipation_ratio;
+  unsigned int m_port_A = 0;
+  unsigned int m_port_B = 0;
+  unsigned int m_remote_station_addr = 0;
+  unsigned int m_inacc_timeout = 0;
+  unsigned int m_max_sarm = 0;
+  unsigned int m_repeat_path_A = 0;
+  unsigned int m_repeat_path_B = 0;
+  unsigned int m_repeat_timeout = 0;
+  unsigned int m_anticipation_ratio = 0;
   BulleFormat m_test_msg_send;
   BulleFormat m_test_msg_receive;
   GIScheduleFormat m_gi_schedule;
-  unsigned int m_gi_repeat_count;
-  unsigned int m_gi_time;
-  unsigned int m_c_ack_time;
-  long long int m_cmd_recv_timeout;
+  unsigned int m_gi_repeat_count = 0;
+  unsigned int m_gi_time = 0;
+  unsigned int m_c_ack_time = 0;
+  long long int m_cmd_recv_timeout = 0;
 
   std::string m_connx_status = "";
   unsigned int m_lastTSAddr = 0;
   // Nested map of msg_code, remote_station_addr and msg_address
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 
-  bool m_config_is_complete;
-  bool m_exchange_data_is_complete;
+  bool m_config_is_complete = false;
+  bool m_exchange_data_is_complete = false;
 
   static bool m_check_string(const Value &json, const char *key);
   static bool m_check_array(const Value &json, const char *key);

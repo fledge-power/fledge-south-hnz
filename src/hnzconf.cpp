@@ -12,15 +12,10 @@
 #include "hnzconf.h"
 #include "rapidjson/error/en.h"
 
-HNZConf::HNZConf()
-    : m_config_is_complete(false), m_exchange_data_is_complete(false) {}
-
 HNZConf::HNZConf(const string &json_config, const string &json_exchanged_data) {
   importConfigJson(json_config);
   importExchangedDataJson(json_exchanged_data);
 }
-
-HNZConf::~HNZConf() {}
 
 void HNZConf::importConfigJson(const string &json) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::importConfigJson - ";
@@ -52,13 +47,25 @@ void HNZConf::importConfigJson(const string &json) {
     if (m_check_array(transport, CONNECTIONS)) {
       const Value &conn = transport[CONNECTIONS];
       if (conn.Size() == 1) {
-        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
-        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
+        if (!conn[0].IsObject()) {
+          HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
+          is_complete = false;
+        }
+        else {
+          is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
+          is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
+        }
       } else if (conn.Size() == 2) {
-        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
-        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
-        is_complete &= m_retrieve(conn[1], IP_ADDR, &m_ip_B);
-        is_complete &= m_retrieve(conn[1], IP_PORT, &m_port_B, DEFAULT_PORT);
+        if (!conn[0].IsObject() || !conn[1].IsObject()) {
+          HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
+          is_complete = false;
+        }
+        else {
+          is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
+          is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
+          is_complete &= m_retrieve(conn[1], IP_ADDR, &m_ip_B);
+          is_complete &= m_retrieve(conn[1], IP_PORT, &m_port_B, DEFAULT_PORT);
+        }
       } else {
         string s = IP_ADDR;
         HnzUtility::log_error(beforeLog + "Bad connections informations (needed one or two " + s + ").");
@@ -178,7 +185,13 @@ void HNZConf::importExchangedDataJson(const string &json) {
       is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address);
       is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code);
       
-      unsigned long tmp = std::stoul(address);
+      unsigned long tmp = 0;
+      try {
+        tmp = std::stoul(address);
+      } catch (const std::exception &e) {
+        HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + e.what());
+        is_complete = false;
+      }
       unsigned int msg_address = 0;
       // Check if number is in range for unsigned int
       if (tmp > static_cast<unsigned int>(-1)) {

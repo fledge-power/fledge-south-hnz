@@ -280,18 +280,27 @@ class HNZTest : public testing::Test {
     return nullptr;
   }
 
+  static std::string readingToJson(const Reading& reading) {
+    std::vector<Datapoint*> dataPoints = reading.getReadingData();
+    std::string out = "[";
+    static const std::string readingTemplate = QUOTE({"<name>":<reading>});
+    for (Datapoint* sdp : dataPoints) {
+      std::string reading = std::regex_replace(readingTemplate, std::regex("<name>"), sdp->getName());
+      reading = std::regex_replace(reading, std::regex("<reading>"), sdp->getData().toString());
+      if(out.size() > 1) {
+        out += ", ";
+      }
+      out += reading;
+    }
+    out += "]";
+    return out;
+  }
+
   static void ingestCallback(void* parameter, Reading reading) {
     debug_print("ingestCallback called -> asset: (%s)",
            reading.getAssetName().c_str());
+    debug_print(readingToJson(reading));
 
-    vector<Datapoint*> dataPoints = reading.getReadingData();
-
-    debug_print("  number of readings: %lu", dataPoints.size());
-
-    // for (Datapoint* sdp : dataPoints) {
-    //     debug_print("name: %s value: %s", sdp->getName().c_str(),
-    //     sdp->getData().toString().c_str());
-    // }
     std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
     storedReadings.push(std::make_shared<Reading>(reading));
 
@@ -424,10 +433,11 @@ class HNZTest : public testing::Test {
     }
   }
 
-  static void validateAllTIQualityUpdate(bool invalid, bool outdated) {
+  static void validateAllTIQualityUpdate(bool invalid, bool outdated, bool noCG = false) {
     // We only expect invalid messages at init, and during init we will also receive 3 extra messages for the failed CG request
-    int expectedMessages = invalid ? 10 : 7;
-    int maxWaitTimeMs = 3000; // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000)
+    int waitCG = invalid && !noCG;
+    int expectedMessages = waitCG ? 10 : 7;
+    int maxWaitTimeMs = waitCG ? 3000 : 0; // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000)
     std::string validStr(invalid ? "1" : "0");
     std::string ourdatedStr(outdated ? "1" : "0");
     debug_print("[HNZ Server] Waiting for quality update...");
@@ -552,6 +562,13 @@ class HNZTest : public testing::Test {
     }
 
     return foundReading;
+  }
+
+  static void clearReadings() {
+    std::lock_guard<std::recursive_mutex> guard(storedReadingsMutex);
+    if (!storedReadings.empty()) {
+      storedReadings.pop();
+    }
   }
 
   static void waitUntil(int& counter, int expectedCount, int timeoutMs) {
@@ -1626,9 +1643,9 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
 TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   // Create server but do not start connection to HNZ device
-  std::shared_ptr<ServersWrapper> wrapperPtr = std::make_shared<ServersWrapper>(0x05, getNextPort(), 0, false);
+  ServersWrapper wrapper(0x05, getNextPort(), 0, false);
   // Initialize configuration only (mandatory for operation processing)
-  wrapperPtr->initHNZPlugin();
+  wrapper.initHNZPlugin();
   // Send request_connection_status
   std::string operationRCS("request_connection_status");
   ASSERT_TRUE(hnz->operation(operationRCS, 0, nullptr));
@@ -1646,9 +1663,9 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   if(HasFatalFailure()) return;
 
   // Wait for connection to be initialized
-  wrapperPtr->startHNZPlugin();
+  wrapper.startHNZPlugin();
   debug_print("[HNZ south plugin] waiting for connection established...");
-  BasicHNZServer* server = wrapperPtr->server1().get();
+  BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
   waitUntil(southEventsReceived, 3, 3000);
@@ -1770,7 +1787,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   server->startHNZServer();
   // Wait for connection to be initialized
   debug_print("[HNZ south plugin] waiting for connection 2 established...");
-  server = wrapperPtr->server1().get();
+  server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
   // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
   waitUntil(southEventsReceived, 3, 3000);
@@ -1833,9 +1850,9 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
 
 TEST_F(HNZTest, ConnectionLossTwoPath) {
   // Create server but do not start connection to HNZ device
-  std::shared_ptr<ServersWrapper> wrapperPtr = std::make_shared<ServersWrapper>(0x05, getNextPort(), getNextPort(), false);
+  ServersWrapper wrapper(0x05, getNextPort(), getNextPort(), false);
   // Initialize configuration only (mandatory for operation processing)
-  wrapperPtr->initHNZPlugin();
+  wrapper.initHNZPlugin();
   // Send request_connection_status
   std::string operationRCS("request_connection_status");
   ASSERT_TRUE(hnz->operation(operationRCS, 0, nullptr));
@@ -1853,10 +1870,10 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   if(HasFatalFailure()) return;
 
   // Wait for connection to be initialized
-  wrapperPtr->startHNZPlugin();
+  wrapper.startHNZPlugin();
   debug_print("[HNZ south plugin] waiting for connection established...");
-  BasicHNZServer* server = wrapperPtr->server1().get();
-  BasicHNZServer* server2 = wrapperPtr->server2().get();
+  BasicHNZServer* server = wrapper.server1().get();
+  BasicHNZServer* server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
   // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
@@ -1908,8 +1925,8 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   server2->startHNZServer();
   // Wait for connection to be initialized
   debug_print("[HNZ south plugin] waiting for connection 2 established...");
-  server = wrapperPtr->server1().get();
-  server2 = wrapperPtr->server2().get();
+  server = wrapper.server1().get();
+  server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
   // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
@@ -1956,8 +1973,8 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   server2->startHNZServer();
   // Wait for connection to be initialized
   debug_print("[HNZ south plugin] waiting for connection 3 established...");
-  server = wrapperPtr->server1().get();
-  server2 = wrapperPtr->server2().get();
+  server = wrapper.server1().get();
+  server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
   // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
@@ -2018,3 +2035,152 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   });
   if(HasFatalFailure()) return;
 }
+
+TEST_F(HNZTest, ReconfigureWhileConnectionActive) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // This calls HNZ::reconfigure() again, causing a reconnect of the client
+  debug_print("[HNZ south plugin] Reconfigure plugin");
+  clearReadings();
+  wrapper.initHNZPlugin();
+
+  // Check that connection was lost
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  // Validate new connection state
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Check that connection attempt to reopen on client side
+  validateAllTIQualityUpdate(true, false, true);
+  if(HasFatalFailure()) return;
+
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop...");
+  server->stopHNZServer();
+  debug_print("[HNZ south plugin] Waiting for outdated TI emission...");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  validateAllTIQualityUpdate(false, true);
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  // Wait for initial CG request
+  waitUntil(southEventsReceived, 2, 1000);
+  // Check that ingestCallback had been called only for two GI status updates
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+  // Validate reconnection
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Complete CG request by sending all expected TS
+  server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] TSCG sent");
+  waitUntil(southEventsReceived, 2, 1000);
+  // Check that ingestCallback had been called only for two GI status updates
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, UnknownMessage) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Send an unknown message
+  server->sendFrame({0x00}, false);
+  debug_print("[HNZ Server] Unknown message sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an unknown TSCE
+  server->sendFrame({0x0B, 0xff, 0x28, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] Unknown TSCE sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an unknown TSCG
+  server->sendFrame({0x16, 0xff, 0x10, 0x00, 0x04, 0x00}, false);
+  debug_print("[HNZ Server] Unknown TSCG sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an unknown TMA
+  server->sendFrame({0x02, 0xff, 0x00, 0x00, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] Unknown TMA sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an unknown TM8
+  server->sendFrame({0x0c, 0xff, 0x00, 0x00, 0x00, 0x00, 0x80}, false);
+  debug_print("[HNZ Server] Unknown TM8 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an unknown TM16
+  server->sendFrame({0x0c, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] Unknown TM16 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an unknown TC ACK
+  server->sendFrame({0x09, 0x00, 0x49}, false);
+  debug_print("[HNZ Server] Unknown TC ACK sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an unknown TVC ACK
+  server->sendFrame({0x0a, 0x00, 0x2a, 0x00}, false);
+  debug_print("[HNZ Server] Unknown TVC ACK sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+}
+
+TEST_F(HNZTest, FrameToStr) {
+  ASSERT_STREQ(hnz->frameToStr({}).c_str(), "\n[]");
+  ASSERT_STREQ(hnz->frameToStr({0x42}).c_str(), "\n[0x42]");
+  ASSERT_STREQ(hnz->frameToStr({0x00, 0xab, 0xcd, 0xff}).c_str(), "\n[0x00, 0xab, 0xcd, 0xff]");
+}
+
+

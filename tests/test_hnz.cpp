@@ -149,7 +149,7 @@ string protocol_stack_generator(int port, int port2) {
          ((port2 != 0) ? ",{ \"srv_ip\" : \"0.0.0.0\", \"port\" : " +
                              to_string(port2) + "}"
                        : "") +
-         " ] } , \"application_layer\" : { "
+         " ] } , \"application_layer\" : { \"repeat_timeout\" : 3000, \"repeat_path_A\" : 3,"
          "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2 },"
          "\"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
 }
@@ -387,6 +387,17 @@ class HNZTest : public testing::Test {
     std::shared_ptr<MSG_TRAME> frameFound = nullptr;
     for(auto frame: frames) {
       if((frame->usLgBuffer > 2) && (frame->aubTrame[2] == frameId)) {
+        frameFound = frame;
+        break;
+      }
+    }
+    return frameFound;
+  }
+
+  static std::shared_ptr<MSG_TRAME> findProtocolFrameWithId(const std::vector<std::shared_ptr<MSG_TRAME>>& frames, unsigned char frameId) {
+    std::shared_ptr<MSG_TRAME> frameFound = nullptr;
+    for(auto frame: frames) {
+      if((frame->usLgBuffer > 1) && (frame->aubTrame[1] == frameId)) {
         frameFound = frame;
         break;
       }
@@ -2183,4 +2194,35 @@ TEST_F(HNZTest, FrameToStr) {
   ASSERT_STREQ(hnz->frameToStr({0x00, 0xab, 0xcd, 0xff}).c_str(), "\n[0x00, 0xab, 0xcd, 0xff]");
 }
 
+TEST_F(HNZTest, BackToSARM) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 
+  // Stop sending automatic ack in response to messages from south plugin
+  server->disableAcks(true);
+
+  // Send 2 TCs so that south plugin has something to send to HNZ server
+  // and we have more than one message waiting in the list
+  std::string operationTC("TC");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"address", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"value", "1"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TCs sent");
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+  // Wait (repeat_timeout * repeat_path_A) + 1 ((3 * 3) + 1 = 10s)
+  this_thread::sleep_for(chrono::seconds(10));
+  
+  // Find the SARM frame in the list of frames received by server
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
+}

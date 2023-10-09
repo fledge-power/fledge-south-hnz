@@ -97,7 +97,9 @@ void BasicHNZServer::receiving_loop() {
                 static_cast<unsigned char>((m_nr << 5) + 1 + 0x10 * f);
 
             unsigned char message[1]{num};
-            createAndSendFrame(data[0], message, sizeof(message));
+            if (!ack_disabled) {
+              createAndSendFrame(data[0], message, sizeof(message));
+            }
           }
         }
       } else {

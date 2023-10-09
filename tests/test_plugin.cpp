@@ -63,10 +63,20 @@ TEST(HNZ, PluginInit) {
   PLUGIN_HANDLE handle = nullptr;
 
   ASSERT_NO_THROW(handle = plugin_init(config));
+  ASSERT_NE(handle, nullptr);
 
   if (handle != nullptr) ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete config;
+}
+
+TEST(HNZ, PluginInitNoConfig) {
+  PLUGIN_HANDLE handle = nullptr;
+
+  ASSERT_NO_THROW(handle = plugin_init(nullptr));
+  ASSERT_NE(handle, nullptr);
+
+  if (handle != nullptr) ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 }
 
 TEST(HNZ, PluginStart) {

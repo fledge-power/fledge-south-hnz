@@ -182,8 +182,8 @@ void HNZConf::importExchangedDataJson(const string &json) {
       std::string address;
       std::string msg_code;
 
-      is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address);
-      is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code);
+      is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address, "");
+      is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code, "");
       
       unsigned long tmp = 0;
       try {
@@ -331,24 +331,29 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, BulleFormat *target
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
   BulleFormat bulle;
   string temp;
+  string s = key;
   if (!json.HasMember(key)) {
     temp = DEFAULT_TST_MSG;
   } else {
     if (!json[key].IsString()) {
-      string s = key;
       HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value does not exist or is not a string.");
       return false;
     }
 
     temp = json[key].GetString();
     if (temp.size() != 4) {
-      string s = key;
       HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value isn't correct. Must be 4 digits.");
       return false;
     }
   }
-  bulle.first = stoul(temp.substr(0, 2), nullptr, 16);
-  bulle.second = stoul(temp.substr(2), nullptr, 16);
+  
+  try {
+    bulle.first = stoul(temp.substr(0, 2), nullptr, 16);
+    bulle.second = stoul(temp.substr(2), nullptr, 16);
+  } catch (const std::exception &e) {
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", cannot convert hex string to int: " + e.what());
+    return false;
+  }
 
   *target = bulle;
   return true;
@@ -370,14 +375,19 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, GIScheduleFormat *t
     string temp = json[key].GetString();
 
     if (temp != DEFAULT_GI_SCHEDULE) {
-      if (temp.size() != 5 && temp.substr(2, 1) == ":") {
+      if ((temp.size() != 5) || (temp.substr(2, 1) != ":")) {
         string s = key;
         HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value isn't correct. Format : 'HH:MM'.");
         return false;
       }
 
-      time.hour = stoi(temp.substr(0, 2));
-      time.min = stoi(temp.substr(3));
+      try {
+        time.hour = stoi(temp.substr(0, 2));
+        time.min = stoi(temp.substr(3));
+      } catch (const std::exception &e) {
+        HnzUtility::log_error(beforeLog + "Cannot convert time '" + temp + "' to integers: " + e.what());
+        return false;
+      }
 
       if (time.hour >= 0 && time.hour < 24 && time.min >= 0 && time.min < 60) {
         time.activate = true;

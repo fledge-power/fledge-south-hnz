@@ -129,22 +129,22 @@ class HNZConnection {
   std::shared_ptr<HNZPath> m_passive_path;
   std::recursive_mutex m_path_mutex;
   std::shared_ptr<std::thread> m_messages_thread;  // Main thread that monitors messages
-  std::atomic<bool> m_is_running;  // If false, the connection thread will stop
-  uint64_t m_current;         // Store the last time requested
-  uint64_t m_elapsedTimeMs;   // Store elapsed time in milliseconds every time m_current is updated
-  uint64_t m_days_since_epoch;
+  std::atomic<bool> m_is_running{false};  // If false, the connection thread will stop
+  uint64_t m_current = 0;         // Store the last time requested
+  uint64_t m_elapsedTimeMs = 0;   // Store elapsed time in milliseconds every time m_current is updated
+  uint64_t m_days_since_epoch = 0;
 
   // Plugin configuration
-  int gi_repeat_count_max;  // time to wait for GI completion
-  int gi_time_max;          // repeat GI for this number of times in case it is
+  int gi_repeat_count_max = 0;  // time to wait for GI completion
+  int gi_time_max = 0;          // repeat GI for this number of times in case it is
                             // incomplete
   GIScheduleFormat m_gi_schedule;
 
-  int m_repeat_timeout;  // time allowed for the receiver to acknowledge a frame
+  int m_repeat_timeout = 0;  // time allowed for the receiver to acknowledge a frame
 
-  bool m_gi_schedule_already_sent;  // True if scheduled GI was already
+  bool m_gi_schedule_already_sent = false;  // True if scheduled GI was already
                                     // performed today
-  long m_gi_scheduled_time;  // Time of scheduled GI (in ms from midnight)
+  long m_gi_scheduled_time = 0;  // Time of scheduled GI (in ms from midnight)
 
   /**
    * Manage the timers. Checks that : messages are acknowledged, command are

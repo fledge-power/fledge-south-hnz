@@ -560,6 +560,223 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
   hnz_conf->importConfigJson(configApplicationLayerWrongContentType);
   ASSERT_FALSE(hnz_conf->is_complete());
 
+  std::string configInvalidBulleFormat = QUOTE({
+    "protocol_stack": {
+      "name": "test",
+      "version": "1",
+      "transport_layer": {
+        "connections": [{
+          "srv_ip": "0.0.0.0",
+          "port": 42
+        }]
+      },
+      "application_layer": {
+        "remote_station_addr": 12,
+        "inacc_timeout": 200,
+        "max_sarm": 40,
+        "repeat_path_A": 5,
+        "repeat_path_B": 2,
+        "repeat_timeout": 2000,
+        "anticipation_ratio": 5,
+        "test_msg_send": "42",
+        "test_msg_receive": "zzzz",
+        "gi_schedule": "1805",
+        "gi_repeat_count": 5,
+        "gi_time": 300,
+        "c_ack_time": 20,
+        "cmd_recv_timeout": 200000
+      }
+    }
+  });
+  hnz_conf->importConfigJson(configInvalidBulleFormat);
+  ASSERT_FALSE(hnz_conf->is_complete());
+
+  std::string configInvalidGiScheduleFormat = QUOTE({
+    "protocol_stack": {
+      "name": "test",
+      "version": "1",
+      "transport_layer": {
+        "connections": [{
+          "srv_ip": "0.0.0.0",
+          "port": 42
+        }]
+      },
+      "application_layer": {
+        "remote_station_addr": 12,
+        "inacc_timeout": 200,
+        "max_sarm": 40,
+        "repeat_path_A": 5,
+        "repeat_path_B": 2,
+        "repeat_timeout": 2000,
+        "anticipation_ratio": 5,
+        "test_msg_send": "1305",
+        "test_msg_receive": "1306",
+        "gi_schedule": "18?05",
+        "gi_repeat_count": 5,
+        "gi_time": 300,
+        "c_ack_time": 20,
+        "cmd_recv_timeout": 200000
+      }
+    }
+  });
+  hnz_conf->importConfigJson(configInvalidGiScheduleFormat);
+  ASSERT_FALSE(hnz_conf->is_complete());
+
+  std::string configInvalidGiScheduleFormat2 = QUOTE({
+    "protocol_stack": {
+      "name": "test",
+      "version": "1",
+      "transport_layer": {
+        "connections": [{
+          "srv_ip": "0.0.0.0",
+          "port": 42
+        }]
+      },
+      "application_layer": {
+        "remote_station_addr": 12,
+        "inacc_timeout": 200,
+        "max_sarm": 40,
+        "repeat_path_A": 5,
+        "repeat_path_B": 2,
+        "repeat_timeout": 2000,
+        "anticipation_ratio": 5,
+        "test_msg_send": "1305",
+        "test_msg_receive": "1306",
+        "gi_schedule": "zz:zz",
+        "gi_repeat_count": 5,
+        "gi_time": 300,
+        "c_ack_time": 20,
+        "cmd_recv_timeout": 200000
+      }
+    }
+  });
+  hnz_conf->importConfigJson(configInvalidGiScheduleFormat2);
+  ASSERT_FALSE(hnz_conf->is_complete());
+
+  std::string configGiScheduleOutOfBounds = QUOTE({
+    "protocol_stack": {
+      "name": "test",
+      "version": "1",
+      "transport_layer": {
+        "connections": [{
+          "srv_ip": "0.0.0.0",
+          "port": 42
+        }]
+      },
+      "application_layer": {
+        "remote_station_addr": 12,
+        "inacc_timeout": 200,
+        "max_sarm": 40,
+        "repeat_path_A": 5,
+        "repeat_path_B": 2,
+        "repeat_timeout": 2000,
+        "anticipation_ratio": 5,
+        "test_msg_send": "1305",
+        "test_msg_receive": "1306",
+        "gi_schedule": "-1:00",
+        "gi_repeat_count": 5,
+        "gi_time": 300,
+        "c_ack_time": 20,
+        "cmd_recv_timeout": 200000
+      }
+    }
+  });
+  hnz_conf->importConfigJson(configGiScheduleOutOfBounds);
+  ASSERT_FALSE(hnz_conf->is_complete());
+
+  std::string configGiScheduleOutOfBounds2 = QUOTE({
+    "protocol_stack": {
+      "name": "test",
+      "version": "1",
+      "transport_layer": {
+        "connections": [{
+          "srv_ip": "0.0.0.0",
+          "port": 42
+        }]
+      },
+      "application_layer": {
+        "remote_station_addr": 12,
+        "inacc_timeout": 200,
+        "max_sarm": 40,
+        "repeat_path_A": 5,
+        "repeat_path_B": 2,
+        "repeat_timeout": 2000,
+        "anticipation_ratio": 5,
+        "test_msg_send": "1305",
+        "test_msg_receive": "1306",
+        "gi_schedule": "80:00",
+        "gi_repeat_count": 5,
+        "gi_time": 300,
+        "c_ack_time": 20,
+        "cmd_recv_timeout": 200000
+      }
+    }
+  });
+  hnz_conf->importConfigJson(configGiScheduleOutOfBounds2);
+  ASSERT_FALSE(hnz_conf->is_complete());
+
+  std::string configGiScheduleOutOfBounds3 = QUOTE({
+    "protocol_stack": {
+      "name": "test",
+      "version": "1",
+      "transport_layer": {
+        "connections": [{
+          "srv_ip": "0.0.0.0",
+          "port": 42
+        }]
+      },
+      "application_layer": {
+        "remote_station_addr": 12,
+        "inacc_timeout": 200,
+        "max_sarm": 40,
+        "repeat_path_A": 5,
+        "repeat_path_B": 2,
+        "repeat_timeout": 2000,
+        "anticipation_ratio": 5,
+        "test_msg_send": "1305",
+        "test_msg_receive": "1306",
+        "gi_schedule": "00:-1",
+        "gi_repeat_count": 5,
+        "gi_time": 300,
+        "c_ack_time": 20,
+        "cmd_recv_timeout": 200000
+      }
+    }
+  });
+  hnz_conf->importConfigJson(configGiScheduleOutOfBounds3);
+  ASSERT_FALSE(hnz_conf->is_complete());
+
+  std::string configGiScheduleOutOfBounds4 = QUOTE({
+    "protocol_stack": {
+      "name": "test",
+      "version": "1",
+      "transport_layer": {
+        "connections": [{
+          "srv_ip": "0.0.0.0",
+          "port": 42
+        }]
+      },
+      "application_layer": {
+        "remote_station_addr": 12,
+        "inacc_timeout": 200,
+        "max_sarm": 40,
+        "repeat_path_A": 5,
+        "repeat_path_B": 2,
+        "repeat_timeout": 2000,
+        "anticipation_ratio": 5,
+        "test_msg_send": "1305",
+        "test_msg_receive": "1306",
+        "gi_schedule": "00:80",
+        "gi_repeat_count": 5,
+        "gi_time": 300,
+        "c_ack_time": 20,
+        "cmd_recv_timeout": 200000
+      }
+    }
+  });
+  hnz_conf->importConfigJson(configGiScheduleOutOfBounds4);
+  ASSERT_FALSE(hnz_conf->is_complete());
+
   // "south_monitoring" is optional, so all configs below are considered valid
   std::string configSouthMonitoringNotObject = QUOTE({
     "protocol_stack": {

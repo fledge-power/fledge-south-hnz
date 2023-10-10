@@ -244,8 +244,8 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
   ASSERT_NE(nullptr, hnz_path.get());
 
   // Start connecting on a thread and wait a little to let it enter the main connection loop
-  //std::unique_ptr<std::thread> connection_thread = make_unique<std::thread>(&HNZPath::connect, hnz_path.get());
-  auto connection_thread = make_unique<std::future<void>>(std::async(std::launch::async, &HNZPath::connect, hnz_path.get()));
+  //auto connection_thread = make_unique<std::future<void>>(std::async(std::launch::async, &HNZPath::connect, hnz_path.get()));
+  std::unique_ptr<std::thread> connection_thread = make_unique<std::thread>(&HNZPath::connect, hnz_path.get());
   this_thread::sleep_for(chrono::milliseconds(100));
 
   // Destroy path object while connecting
@@ -253,6 +253,9 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
 
   // Check that the thread can now be joined as HNZPath::disconnect() was called in destructor
   // (destructor of the std::future joins the thread running the async function)
-  //connection_thread.join();
-  ASSERT_NE(connection_thread->wait_for(std::chrono::seconds(60)), std::future_status::timeout);
+  //ASSERT_NE(connection_thread->wait_for(std::chrono::seconds(60)), std::future_status::timeout);
+  // std::future always timeout when run on GitHub CI, so use regular std::thread instead,
+  // this may result in unit test hanging if the join never terminate
+  printf("[TEST HNZConnection] Waiting for connection thread to join..."); fflush(stdout);
+  ASSERT_NO_THROW(connection_thread->join());
 }

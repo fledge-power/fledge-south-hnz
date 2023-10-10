@@ -83,7 +83,7 @@ using namespace std;
 struct BulleFormat {
   unsigned char first = 0;
   unsigned char second = 0;
-} typedef BulleFormat;
+};
 
 /**
  * @brief Structure containing the time for General Interrogation
@@ -93,7 +93,7 @@ struct GIScheduleFormat {
   bool activate = false;
   int hour = 0;
   int min = 0;
-} typedef GIScheduleFormat;
+};
 
 /**
  * @brief Class used to manage the HNZ configuration.
@@ -106,30 +106,36 @@ class HNZConf {
   /**
    * Import the HNZ Protocol stack configuration JSON. If errors are detected
    * they are reported in the fledge logger.
+   * @param json json string containing the protocol_stack to import
    */
   void importConfigJson(const string &json);
 
   /**
    * Import the Exchanged data configuration JSON. If errors are detected
    * they are reported in the fledge logger.
+   * @param json json string containing the exchanged_data to import
    */
   void importExchangedDataJson(const string &json);
 
   /**
    * Allows you to know if the configuration was successful.
+   * @return True if the configuration contains all required information, else false
    */
   bool is_complete() const {
     return m_config_is_complete && m_exchange_data_is_complete;
   }
 
   /**
-   * Get the label related to a message. If this message is not defined in the
-   * configuration, then the returned label is empty.
+   * Get the label related to a message.
+   * @param msg_code message code to search in the configuration
+   * @param json message address to search in the configuration
+   * @return Label for the given message code ans address, or empty string if not found
    */
   string getLabel(const string &msg_code, const int msg_address) const;
 
   /**
    * Get the number of CG. Used for the consistency check when GI.
+   * @return Number of TS expected to be received when doing a CG.
    */
   unsigned long getNumberCG() const;
 
@@ -138,6 +144,7 @@ class HNZConf {
    * This adress is the one with the highest value among all addresses configured
    * because, during a CG, TS are always sent in ascending order of their addresses.
    * Used to avoid waiting for full timeout when somme TS are missing during a CG.
+   * @return Address of the last TSCG.
    */
   unsigned int getLastTSAddress() const;
 
@@ -285,6 +292,22 @@ class HNZConf {
   const map<string, map<unsigned int, map<unsigned int, string>>>& get_all_messages() const { return m_msg_list; }
 
  private:
+  /**
+   * Import data from a json value representing the transport_layer
+   * 
+   * @param transport json configuration object
+   * @return True if the import was successful, else false
+   */
+  bool m_importTransportLayer(const Value &transport);
+
+  /**
+   * Import data from a json value representing the application_layer
+   * 
+   * @param conf json configuration object
+   * @return True if the import was successful, else false
+   */
+  bool m_importApplicationLayer(const Value &conf);
+
   string m_ip_A, m_ip_B = "";
   unsigned int m_port_A = 0;
   unsigned int m_port_B = 0;

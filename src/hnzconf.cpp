@@ -43,82 +43,14 @@ void HNZConf::importConfigJson(const string &json) {
 
   if (m_check_object(info, TRANSPORT_LAYER)) {
     const Value &transport = info[TRANSPORT_LAYER];
-
-    if (m_check_array(transport, CONNECTIONS)) {
-      const Value &conn = transport[CONNECTIONS];
-      if (conn.Size() == 1) {
-        if (!conn[0].IsObject()) {
-          HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
-          is_complete = false;
-        }
-        else {
-          is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
-          is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
-        }
-      } else if (conn.Size() == 2) {
-        if (!conn[0].IsObject() || !conn[1].IsObject()) {
-          HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
-          is_complete = false;
-        }
-        else {
-          is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
-          is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
-          is_complete &= m_retrieve(conn[1], IP_ADDR, &m_ip_B);
-          is_complete &= m_retrieve(conn[1], IP_PORT, &m_port_B, DEFAULT_PORT);
-        }
-      } else {
-        string s = IP_ADDR;
-        HnzUtility::log_error(beforeLog + "Bad connections informations (needed one or two " + s + ").");
-        is_complete = false;
-      }
-    }
+    is_complete &= m_importTransportLayer(transport);
   } else {
     is_complete = false;
   }
 
   if (m_check_object(info, APP_LAYER)) {
     const Value &conf = info[APP_LAYER];
-
-    is_complete &= m_retrieve(conf, REMOTE_ADDR, &m_remote_station_addr);
-    if (m_remote_station_addr > 64) {
-      string s = REMOTE_ADDR;
-      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not on 6 bits.");
-      is_complete = false;
-    }
-
-    is_complete &= m_retrieve(conf, INACC_TIMEOUT, &m_inacc_timeout,
-                              DEFAULT_INACC_TIMEOUT);
-
-    is_complete &= m_retrieve(conf, MAX_SARM, &m_max_sarm, DEFAULT_MAX_SARM);
-
-    is_complete &=
-        m_retrieve(conf, REPEAT_PATH_A, &m_repeat_path_A, DEFAULT_REPEAT_PATH);
-
-    is_complete &=
-        m_retrieve(conf, REPEAT_PATH_B, &m_repeat_path_B, DEFAULT_REPEAT_PATH);
-
-    is_complete &= m_retrieve(conf, REPEAT_TIMEOUT, &m_repeat_timeout,
-                              DEFAULT_REPEAT_TIMEOUT);
-
-    is_complete &= m_retrieve(conf, ANTICIPATION_RATIO, &m_anticipation_ratio,
-                              DEFAULT_ANTICIPATION_RATIO);
-
-    is_complete &= m_retrieve(conf, TST_MSG_SEND, &m_test_msg_send);
-
-    is_complete &= m_retrieve(conf, TST_MSG_RECEIVE, &m_test_msg_receive);
-
-    is_complete &= m_retrieve(conf, GI_SCHEDULE, &m_gi_schedule);
-
-    is_complete &= m_retrieve(conf, GI_REPEAT_COUNT, &m_gi_repeat_count,
-                              DEFAULT_GI_REPEAT_COUNT);
-
-    is_complete &= m_retrieve(conf, GI_TIME, &m_gi_time, DEFAULT_GI_TIME);
-
-    is_complete &=
-        m_retrieve(conf, C_ACK_TIME, &m_c_ack_time, DEFAULT_C_ACK_TIME);
-
-    is_complete &=
-        m_retrieve(conf, CMD_RECV_TIMEOUT, &m_cmd_recv_timeout, DEFAULT_CMD_RECV_TIMEOUT);
+    is_complete &= m_importApplicationLayer(conf);
   } else {
     is_complete = false;
   }
@@ -132,6 +64,87 @@ void HNZConf::importConfigJson(const string &json) {
   }
 
   m_config_is_complete = is_complete;
+}
+
+bool HNZConf::m_importTransportLayer(const Value &transport) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_importTransportLayer - ";
+  bool is_complete = true;
+  if (m_check_array(transport, CONNECTIONS)) {
+    const Value &conn = transport[CONNECTIONS];
+    if (conn.Size() == 1) {
+      if (!conn[0].IsObject()) {
+        HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
+        is_complete = false;
+      }
+      else {
+        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
+        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
+      }
+    } else if (conn.Size() == 2) {
+      if (!conn[0].IsObject() || !conn[1].IsObject()) {
+        HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
+        is_complete = false;
+      }
+      else {
+        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
+        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
+        is_complete &= m_retrieve(conn[1], IP_ADDR, &m_ip_B);
+        is_complete &= m_retrieve(conn[1], IP_PORT, &m_port_B, DEFAULT_PORT);
+      }
+    } else {
+      string s = IP_ADDR;
+      HnzUtility::log_error(beforeLog + "Bad connections informations (needed one or two " + s + ").");
+      is_complete = false;
+    }
+  }
+  return is_complete;
+}
+
+
+bool HNZConf::m_importApplicationLayer(const Value &conf) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_importApplicationLayer - ";
+  bool is_complete = true;
+  is_complete &= m_retrieve(conf, REMOTE_ADDR, &m_remote_station_addr);
+  if (m_remote_station_addr > 64) {
+    string s = REMOTE_ADDR;
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not on 6 bits.");
+    is_complete = false;
+  }
+
+  is_complete &= m_retrieve(conf, INACC_TIMEOUT, &m_inacc_timeout,
+                            DEFAULT_INACC_TIMEOUT);
+
+  is_complete &= m_retrieve(conf, MAX_SARM, &m_max_sarm, DEFAULT_MAX_SARM);
+
+  is_complete &=
+      m_retrieve(conf, REPEAT_PATH_A, &m_repeat_path_A, DEFAULT_REPEAT_PATH);
+
+  is_complete &=
+      m_retrieve(conf, REPEAT_PATH_B, &m_repeat_path_B, DEFAULT_REPEAT_PATH);
+
+  is_complete &= m_retrieve(conf, REPEAT_TIMEOUT, &m_repeat_timeout,
+                            DEFAULT_REPEAT_TIMEOUT);
+
+  is_complete &= m_retrieve(conf, ANTICIPATION_RATIO, &m_anticipation_ratio,
+                            DEFAULT_ANTICIPATION_RATIO);
+
+  is_complete &= m_retrieve(conf, TST_MSG_SEND, &m_test_msg_send);
+
+  is_complete &= m_retrieve(conf, TST_MSG_RECEIVE, &m_test_msg_receive);
+
+  is_complete &= m_retrieve(conf, GI_SCHEDULE, &m_gi_schedule);
+
+  is_complete &= m_retrieve(conf, GI_REPEAT_COUNT, &m_gi_repeat_count,
+                            DEFAULT_GI_REPEAT_COUNT);
+
+  is_complete &= m_retrieve(conf, GI_TIME, &m_gi_time, DEFAULT_GI_TIME);
+
+  is_complete &=
+      m_retrieve(conf, C_ACK_TIME, &m_c_ack_time, DEFAULT_C_ACK_TIME);
+
+  is_complete &=
+      m_retrieve(conf, CMD_RECV_TIMEOUT, &m_cmd_recv_timeout, DEFAULT_CMD_RECV_TIMEOUT);
+  return is_complete;
 }
 
 void HNZConf::importExchangedDataJson(const string &json) {

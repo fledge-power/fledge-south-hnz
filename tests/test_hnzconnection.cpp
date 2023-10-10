@@ -5,10 +5,12 @@
 #include <string>
 #include <sstream>
 #include <regex>
+#include <future>
 
 #include "hnz.h"
 #include "hnzconf.h"
 #include "hnzconnection.h"
+#include "hnzpath.h"
 
 using namespace std;
 
@@ -228,4 +230,29 @@ TEST(HNZConnection, GIScheduleActiveFuture) {
   // Wait for scheduled GI
   this_thread::sleep_for(chrono::minutes(delayMin));
   ASSERT_EQ(hnz_connection->getGiStatus(), GiStatus::STARTED);
+}
+
+TEST(HNZConnection, DisconnectPathInDestructor) {
+  std::shared_ptr<HNZConf> conf = std::make_shared<HNZConf>();
+  conf->importConfigJson(protocol_stack_def);
+  conf->importExchangedDataJson(exchanged_data_def);
+  ASSERT_TRUE(conf->is_complete());
+
+  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
+  std::shared_ptr<HNZPath> hnz_path = std::make_shared<HNZPath>(conf, hnz_connection.get(), false);
+  ASSERT_NE(nullptr, hnz_path.get());
+
+  // Start connecting on a thread and wait a little to let it enter the main connection loop
+  //std::unique_ptr<std::thread> connection_thread = make_unique<std::thread>(&HNZPath::connect, hnz_path.get());
+  auto connection_thread = make_unique<std::future<void>>(std::async(std::launch::async, &HNZPath::connect, hnz_path.get()));
+  this_thread::sleep_for(chrono::milliseconds(100));
+
+  // Destroy path object while connecting
+  ASSERT_NO_THROW(hnz_path = nullptr);
+
+  // Check that the thread can now be joined as HNZPath::disconnect() was called in destructor
+  // (destructor of the std::future joins the thread running the async function)
+  //connection_thread.join();
+  ASSERT_NE(connection_thread->wait_for(std::chrono::seconds(60)), std::future_status::timeout);
 }

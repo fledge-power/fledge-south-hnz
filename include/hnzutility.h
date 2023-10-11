@@ -15,7 +15,12 @@
 #include <string>
 #include <logger.h>
 
+#define PLUGIN_NAME "hnz"
+
 namespace HnzUtility {
+    
+    static const std::string NamePlugin = PLUGIN_NAME;
+
     /*
      * Log helper function that will log both in the Fledge syslog file and in stdout for unit tests
      */

@@ -26,15 +26,16 @@ HNZ::~HNZ() {
 }
 
 void HNZ::start() {
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::start -";
   Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 
   if (!m_hnz_conf->is_complete()) {
-    HnzUtility::log_info(
-        "HNZ south plugin can't start because configuration is incorrect.");
+    HnzUtility::log_info("%s HNZ south plugin can't start because configuration is incorrect.", beforeLog.c_str());
     return;
   }
 
-  HnzUtility::log_info("Starting HNZ south plugin...");
+  HnzUtility::log_info("%s Starting HNZ south plugin...", beforeLog.c_str());
 
   m_is_running = true;
 
@@ -54,71 +55,109 @@ void HNZ::start() {
 }
 
 void HNZ::stop() {
-  HnzUtility::log_info("Starting shutdown of HNZ plugin");
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::stop -";
+  HnzUtility::log_info("%s Starting shutdown of HNZ plugin", beforeLog.c_str());
   m_is_running = false;
 
+  // Connection must be stopped before management threads of both path
+  // or join on both receive threads will hang forever
+  if (m_hnz_connection != nullptr) {
+    m_hnz_connection->stop();
+  }
   if (m_receiving_thread_A != nullptr) {
-    HnzUtility::log_debug("Waiting for the receiving thread (path A)");
+    HnzUtility::log_debug("%s Waiting for the receiving thread (path A)", beforeLog.c_str());
     m_receiving_thread_A->join();
     m_receiving_thread_A = nullptr;
   }
   if (m_receiving_thread_B != nullptr) {
-    HnzUtility::log_debug("Waiting for the receiving thread (path B)");
+    HnzUtility::log_debug("%s Waiting for the receiving thread (path B)", beforeLog.c_str());
     m_receiving_thread_B->join();
     m_receiving_thread_B = nullptr;
   }
   // Connection must be freed after management threads of both path
-  // as HNZ::m_hnz_connection is used in HNZ::receive running on the threads
+  // as HNZ::m_hnz_connection, HNZConnection::m_active_path and HNZConnection::m_passive_path
+  // are used in HNZ::receive running on the threads
   if (m_hnz_connection != nullptr) {
-    m_hnz_connection->stop();
     m_hnz_connection = nullptr;
   }
-  HnzUtility::log_info("Plugin stopped !");
+  HnzUtility::log_info("%s Plugin stopped !", beforeLog.c_str());
 }
 
-bool HNZ::setJsonConfig(const string &protocol_conf_json,
-                        const string &msg_conf_json) {
+void HNZ::reconfigure(const ConfigCategory& config) {
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
+  std::string protocol_conf_json;
+  if (config.itemExists("protocol_stack")) {
+    protocol_conf_json = config.getValue("protocol_stack");
+  }
+  std::string msg_conf_json;
+  if (config.itemExists("exchanged_data")) {
+    msg_conf_json = config.getValue("exchanged_data");
+  }
+
+  setJsonConfig(protocol_conf_json, msg_conf_json);
+}
+
+void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf_json) {
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::setJsonConfig -";
+  // If no new json configuration and the plugin is already in the correct running state, nothing to do
+  if (protocol_conf_json.empty() && msg_conf_json.empty()) {
+    HnzUtility::log_info("%s No new configuration provided to reconfigure, skipping", beforeLog.c_str());
+    return;
+  }
   bool was_running = m_is_running;
   if (m_is_running) {
-    HnzUtility::log_info(
-        "Configuration change requested, stopping the plugin");
+    HnzUtility::log_info("%s Configuration change requested, stopping the plugin", beforeLog.c_str());
     stop();
   }
 
-  HnzUtility::log_info("Reading json config string...");
+  HnzUtility::log_info("%s Reading json config string...", beforeLog.c_str());
 
-  m_hnz_conf->importConfigJson(protocol_conf_json);
-  m_hnz_conf->importExchangedDataJson(msg_conf_json);
+  if (!protocol_conf_json.empty()) {
+    m_hnz_conf->importConfigJson(protocol_conf_json);
+  }
+  if (!msg_conf_json.empty()) {
+    m_hnz_conf->importExchangedDataJson(msg_conf_json);
+  }
   if (!m_hnz_conf->is_complete()) {
-    HnzUtility::log_fatal(
-        "Unable to set Plugin configuration due to error with the json conf.");
-    return false;
+    HnzUtility::log_fatal("%s Unable to set Plugin configuration due to error with the json conf.", beforeLog.c_str());
+    return;
   }
 
-  HnzUtility::log_info("Json config parsed successsfully.");
+  HnzUtility::log_info("%s Json config parsed successsfully.", beforeLog.c_str());
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
   m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
 
   if (was_running) {
-    HnzUtility::log_warn("Restarting the plugin...");
+    HnzUtility::log_warn("%s Restarting the plugin...", beforeLog.c_str());
     start();
   }
-  return true;
 }
 
 void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
-  string path = hnz_path_in_use->getName();
-
-  if (!m_hnz_conf->is_complete()) {
-    return;
+  if (m_hnz_conf) {
+    // Parent if used only for scope lock
+    std::lock_guard<std::recursive_mutex> guard(m_configMutex);
+    if (!m_hnz_conf->is_complete()) {
+      return;
+    }
   }
+
+  string path = hnz_path_in_use->getName();
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::receive - " + path;
 
   // Connect to the server
   hnz_path_in_use->connect();
 
-  HnzUtility::log_warn(path + " Listening for data...");
+  // Exit early if connection shutting down
+  if(!m_is_running) {
+    HnzUtility::log_info("%s Connection shutting down, exit", beforeLog.c_str());
+    return;
+  }
+
+  HnzUtility::log_warn("%s Listening for data...", beforeLog.c_str());
 
   vector<vector<unsigned char>> messages;
 
@@ -127,7 +166,7 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
     messages = hnz_path_in_use->getData();
 
     if (messages.empty() && !hnz_path_in_use->isConnected()) {
-      HnzUtility::log_warn(path + " Connection lost, reconnecting active path and switching to other path");
+      HnzUtility::log_warn("%s Connection lost, reconnecting active path and switching to other path", beforeLog.c_str());
       // If connection lost, try to switch path
       if (hnz_path_in_use->isActivePath()) m_hnz_connection->switchPath();
       // Try to reconnect, unless thread is stopping
@@ -138,9 +177,10 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
       if (m_is_running) {
         hnz_path_in_use->connect();
       }
-    } else {
+    }
+    else {
       // Push each message to fledge
-      for (auto &msg : messages) {
+      for (auto& msg : messages) {
         m_handle_message(msg);
       }
     }
@@ -149,44 +189,46 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
 }
 
 void HNZ::m_handle_message(const vector<unsigned char>& data) {
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handle_message -";
   unsigned char t = data[0];  // Payload type
   vector<Reading> readings;   // Contains data object to push to fledge
 
   switch (t) {
-    case MODULO_CODE:
-      HnzUtility::log_info("Received modulo time update");
-      m_handleModuloCode(readings, data);
-      break;
-    case TM4_CODE:
-      HnzUtility::log_info("Pushing to Fledge a TMA");
-      m_handleTM4(readings, data);
-      break;
-    case TSCE_CODE:
-      HnzUtility::log_info("Pushing to Fledge a TSCE");
-      m_handleTSCE(readings, data);
-      break;
-    case TSCG_CODE:
-      HnzUtility::log_info("Pushing to Fledge a TSCG");
-      m_handleTSCG(readings, data);
-      break;
-    case TMN_CODE:
-      HnzUtility::log_info("Pushing to Fledge a TMN");
-      m_handleTMN(readings, data);
-      break;
-    case TCACK_CODE:
-      HnzUtility::log_info("Pushing to Fledge a TC ACK");
-      m_handleATC(readings, data);
-      break;
-    case TVCACK_CODE:
-      HnzUtility::log_info("Pushing to Fledge a TVC ACK");
-      m_handleATVC(readings, data);
-      break;
-    default:
-      if (!(t == m_test_msg_receive.first &&
-            data[1] == m_test_msg_receive.second)) {
-        HnzUtility::log_error("Unknown message to push: " + frameToStr(data));
-      }
-      break;
+  case MODULO_CODE:
+    HnzUtility::log_info("%s Received modulo time update");
+    m_handleModuloCode(readings, data);
+    break;
+  case TM4_CODE:
+    HnzUtility::log_info("%s Pushing to Fledge a TMA", beforeLog.c_str());
+    m_handleTM4(readings, data);
+    break;
+  case TSCE_CODE:
+    HnzUtility::log_info("%s Pushing to Fledge a TSCE", beforeLog.c_str());
+    m_handleTSCE(readings, data);
+    break;
+  case TSCG_CODE:
+    HnzUtility::log_info("%s Pushing to Fledge a TSCG", beforeLog.c_str());
+    m_handleTSCG(readings, data);
+    break;
+  case TMN_CODE:
+    HnzUtility::log_info("%s Pushing to Fledge a TMN", beforeLog.c_str());
+    m_handleTMN(readings, data);
+    break;
+  case TCACK_CODE:
+    HnzUtility::log_info("%s Pushing to Fledge a TC ACK", beforeLog.c_str());
+    m_handleATC(readings, data);
+    break;
+  case TVCACK_CODE:
+    HnzUtility::log_info("%s Pushing to Fledge a TVC ACK", beforeLog.c_str());
+    m_handleATVC(readings, data);
+    break;
+  default:
+    if (!(t == m_test_msg_receive.first &&
+      data[1] == m_test_msg_receive.second)) {
+      HnzUtility::log_error("%s Unknown message to push: %s", beforeLog.c_str(), frameToStr(data).c_str());
+    }
+    break;
   }
 
   if (!readings.empty()) {
@@ -197,8 +239,9 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
     // All expected TS received: GI succeeded
     if (m_gi_addresses_received.size() == m_hnz_conf->getNumberCG()) {
       m_hnz_connection->checkGICompleted(true);
-    // Last expected TS received but some other TS were missing: GI failed
-    } else if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {
+      // Last expected TS received but some other TS were missing: GI failed
+    }
+    else if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {
       m_hnz_connection->checkGICompleted(false);
     }
   }
@@ -211,7 +254,7 @@ void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned ch
   m_daySection = data[1];
 }
 
-void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& data) const {
+void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& data) const {
   string msg_code = "TM";
   for (int i = 0; i < 4; i++) {
     // 4 TM inside a TM cyclique
@@ -223,7 +266,7 @@ void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& da
 
     int noctet = 2 + i;
     long int value = data[noctet]; // VALTMi
-    if((data[noctet] & 0x80) > 0) { // Ones' complement
+    if ((data[noctet] & 0x80) > 0) { // Ones' complement
       value = -(value ^ 0xFF);
     }
     unsigned int valid = (data[noctet] == 0xFF);  // Invalid if VALTMi = 0xFF
@@ -240,16 +283,16 @@ void HNZ::m_handleTM4(vector<Reading> &readings, const vector<unsigned char>& da
   }
 }
 
-void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& data) const {
+void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const {
   string msg_code = "TS";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
-                                  to_string((int)(data[2] >> 5)));  // AD0 + ADB
+    to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
   if (label.empty()) {
     return;
   }
-  
+
   long int value = (data[2] >> 3) & 0x1;  // E bit
   unsigned int valid = (data[2] >> 4) & 0x1;  // V bit
 
@@ -274,13 +317,13 @@ void HNZ::m_handleTSCE(vector<Reading> &readings, const vector<unsigned char>& d
   readings.push_back(m_prepare_reading(params));
 }
 
-void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& data) {
+void HNZ::m_handleTSCG(vector<Reading>& readings, const vector<unsigned char>& data) {
   string msg_code = "TS";
   for (size_t i = 0; i < 16; i++) {
     // 16 TS inside a TSCG
     unsigned int msg_address = stoi(
-        to_string((int)data[1] + (int)i / 8) +
-        to_string(i % 8));  // AD0 + i%8 for first 8, (AD0+1) + i%8 for others
+      to_string((int)data[1] + (int)i / 8) +
+      to_string(i % 8));  // AD0 + i%8 for first 8, (AD0+1) + i%8 for others
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
     if (label.empty()) {
       continue;
@@ -307,20 +350,20 @@ void HNZ::m_handleTSCG(vector<Reading> &readings, const vector<unsigned char>& d
   }
 }
 
-void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& data) const {
+void HNZ::m_handleTMN(vector<Reading>& readings, const vector<unsigned char>& data) const {
   string msg_code = "TM";
   // If TMN can contain either 4 TMs of 8bits (TM8) or 2 TMs of 16bits (TM16)
   bool isTM8 = ((data[6] >> 7) == 1);
   unsigned int nbrTM = isTM8 ? 4 : 2;
   for (int i = 0; i < nbrTM; i++) {
     // 2 or 4 TM inside a TMn
-    auto addressOffset = static_cast<unsigned char>(isTM8 ? i : i*2); // For TM16 contains TMs with ADR+0 and ADR+2
+    auto addressOffset = static_cast<unsigned char>(isTM8 ? i : i * 2); // For TM16 contains TMs with ADR+0 and ADR+2
     unsigned int msg_address = data[1] + addressOffset;
     string label = m_hnz_conf->getLabel(msg_code, msg_address);
     if (label.empty()) {
       continue;
     }
-    
+
     long int value;
     unsigned int valid;
 
@@ -329,7 +372,8 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
 
       value = (data[noctet]);        // Vi
       valid = (data[6] >> i) & 0x1;  // Ii
-    } else {
+    }
+    else {
       int noctet = 2 + (i * 2);
 
       value = (data[noctet + 1] << 8 | data[noctet]); // Concat V1/V2 and V3/V4
@@ -353,7 +397,7 @@ void HNZ::m_handleTMN(vector<Reading> &readings, const vector<unsigned char>& da
   }
 }
 
-void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& data) const {
+void HNZ::m_handleATVC(vector<Reading>& readings, const vector<unsigned char>& data) const {
   string msg_code = "TVC";
 
   unsigned int msg_address = data[1] & 0x1F;  // AD0
@@ -381,11 +425,11 @@ void HNZ::m_handleATVC(vector<Reading> &readings, const vector<unsigned char>& d
   readings.push_back(m_prepare_reading(params));
 }
 
-void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& data) const {
+void HNZ::m_handleATC(vector<Reading>& readings, const vector<unsigned char>& data) const {
   string msg_code = "TC";
 
   unsigned int msg_address = stoi(to_string((int)data[1]) +
-                                  to_string((int)(data[2] >> 5)));  // AD0 + ADB
+    to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
   m_hnz_connection->getActivePath()->receivedCommandACK("TC", msg_address);
 
@@ -409,31 +453,32 @@ void HNZ::m_handleATC(vector<Reading> &readings, const vector<unsigned char>& da
 }
 
 Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_prepare_reading - ";
   bool isTS = (params.msg_code == "TS");
   bool isTSCE = isTS && !params.cg;
   bool isTM = (params.msg_code == "TM");
-  std::string debugStr = "Send to fledge " + params.msg_code +
-      " with station address = " + to_string(params.station_addr) +
-      ", message address = " + to_string(params.msg_address) +
-      ", value = " + to_string(params.value) + ", valid = " + to_string(params.valid);
-  if(isTS) {
+  std::string debugStr = beforeLog + "Send to fledge " + params.msg_code +
+    " with station address = " + to_string(params.station_addr) +
+    ", message address = " + to_string(params.msg_address) +
+    ", value = " + to_string(params.value) + ", valid = " + to_string(params.valid);
+  if (isTS) {
     debugStr += ", cg= " + to_string(params.cg);
   }
-  if(isTM) {
+  if (isTM) {
     debugStr += ", an= " + params.an;
   }
-  if(isTM || isTS) {
+  if (isTM || isTS) {
     debugStr += ", outdated= " + to_string(params.outdated);
     debugStr += ", qualityUpdate= " + to_string(params.qualityUpdate);
   }
-  if(isTSCE) {
+  if (isTSCE) {
     debugStr += ", ts = " + to_string(params.ts) + ", iv = " + to_string(params.ts_iv) +
-                ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
+      ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
   }
 
   HnzUtility::log_debug(debugStr);
 
-  auto *measure_features = new vector<Datapoint *>;
+  auto* measure_features = new vector<Datapoint*>;
   measure_features->push_back(m_createDatapoint("do_type", params.msg_code));
   measure_features->push_back(m_createDatapoint("do_station", static_cast<long int>(params.station_addr)));
   measure_features->push_back(m_createDatapoint("do_addr", static_cast<long int>(params.msg_address)));
@@ -443,14 +488,14 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   }
   measure_features->push_back(m_createDatapoint("do_valid", static_cast<long int>(params.valid)));
 
-  if(isTM) {
+  if (isTM) {
     measure_features->push_back(m_createDatapoint("do_an", params.an));
   }
-  if(isTS) {
+  if (isTS) {
     // Casting "bool" to "long int" result in true => 1 / false => 0
     measure_features->push_back(m_createDatapoint("do_cg", static_cast<long int>(params.cg)));
   }
-  if(isTM || isTS) {
+  if (isTM || isTS) {
     // Casting "bool" to "long int" result in true => 1 / false => 0
     measure_features->push_back(m_createDatapoint("do_outdated", static_cast<long int>(params.outdated)));
   }
@@ -464,54 +509,63 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
 
   DatapointValue dpv(measure_features, true);
 
-  Datapoint *dp = new Datapoint("data_object", dpv);
+  Datapoint* dp = new Datapoint("data_object", dpv);
 
   return Reading(params.label, dp);
 }
 
-void HNZ::m_sendToFledge(vector<Reading> &readings) {
-  for (Reading &reading : readings) {
+void HNZ::m_sendToFledge(vector<Reading>& readings) {
+  for (Reading& reading : readings) {
     ingest(reading);
   }
 }
 
-void HNZ::ingest(Reading &reading) { (*m_ingest)(m_data, reading); }
+void HNZ::ingest(Reading& reading) { 
+  if (!m_ingest) {
+    std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::ingest -";
+    HnzUtility::log_error("%s Ingest callback is not defined", beforeLog.c_str());
+    return;
+  }
+  (*m_ingest)(m_data, reading);
+}
 
-void HNZ::registerIngest(void *data, INGEST_CB cb) {
+void HNZ::registerIngest(void* data, INGEST_CB cb) {
   m_ingest = cb;
   m_data = data;
 }
 
-bool HNZ::operation(const std::string &operation, int count,
-                    PLUGIN_PARAMETER **params) {
-  HnzUtility::log_error("Operation %s", operation.c_str());
+bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** params) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
+  HnzUtility::log_error("%s Operation %s", beforeLog.c_str(), operation.c_str());
 
-  if (operation.compare("TC") == 0) {
+  if (operation.compare("TC") == 0 && count == 3) {
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
     m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
     return true;
-  } else if (operation.compare("TVC") == 0) {
+  }
+  else if (operation.compare("TVC") == 0 && count == 3) {
     int address = atoi(params[1]->value.c_str());
     int value = atoi(params[2]->value.c_str());
 
     m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
     return true;
-  } else if (operation.compare("request_connection_status") == 0) {
-    HnzUtility::log_info("received request_connection_status", operation.c_str());
+  }
+  else if (operation.compare("request_connection_status") == 0) {
+    HnzUtility::log_info("%s Received request_connection_status", beforeLog.c_str());
     m_sendConnectionStatus();
     return true;
   }
 
-  HnzUtility::log_error("Unrecognised operation %s", operation.c_str());
+  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters", beforeLog.c_str(), operation.c_str(), count);
   return false;
 }
 
 std::string HNZ::frameToStr(std::vector<unsigned char> frame) {
   std::stringstream stream;
   stream << "\n[";
-  for(int i=0 ; i<frame.size() ; i++) {
+  for (int i = 0; i < frame.size(); i++) {
     if (i > 0) {
       stream << ", ";
     }
@@ -522,13 +576,13 @@ std::string HNZ::frameToStr(std::vector<unsigned char> frame) {
 }
 
 unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
-                                            unsigned char daySection, unsigned int ts)
+  unsigned char daySection, unsigned int ts)
 {
   // Convert timestamp to epoch milliseconds
   static const unsigned long oneHourMs = 3600000; // 60 * 60 * 1000
   static const unsigned long oneDayMs = 86400000; // 24 * 60 * 60 * 1000
   static const unsigned long tenMinMs = 600000;   // 10 * 60 * 1000
-  static const auto oneDay = std::chrono::hours{24};
+  static const auto oneDay = std::chrono::hours{ 24 };
   // Get the date of the start of the day in epoch milliseconds
   auto days = dateTime - (dateTime.time_since_epoch() % oneDay);
   unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(days.time_since_epoch()).count();
@@ -559,10 +613,11 @@ void HNZ::updateConnectionStatus(ConnectionStatus newState) {
   // When connection lost, start timer to update all readings quality
   if (m_connStatus == ConnectionStatus::NOT_CONNECTED) {
     m_qualityUpdateTimer = m_qualityUpdateTimeoutMs;
-  } else {
+  }
+  else {
     m_qualityUpdateTimer = 0;
   }
-  
+
   m_sendSouthMonitoringEvent(true, false);
 }
 
@@ -590,7 +645,7 @@ void HNZ::updateQualityUpdateTimer(long elapsedTimeMs) {
       m_qualityUpdateTimer = 0;
       m_sendAllTMQualityReadings(false, true);
       m_sendAllTSQualityReadings(false, true);
-    } 
+    }
   }
 }
 
@@ -612,13 +667,13 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
 
     switch (m_connStatus)
     {
-      case ConnectionStatus::NOT_CONNECTED:
-        eventDp = m_createDatapoint("connx_status", "not connected");
-        break;
+    case ConnectionStatus::NOT_CONNECTED:
+      eventDp = m_createDatapoint("connx_status", "not connected");
+      break;
 
-      case ConnectionStatus::STARTED:
-        eventDp = m_createDatapoint("connx_status", "started");
-        break;
+    case ConnectionStatus::STARTED:
+      eventDp = m_createDatapoint("connx_status", "started");
+      break;
     }
 
     if (eventDp) {
@@ -629,27 +684,27 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
   if (giStatus) {
     Datapoint* eventDp = nullptr;
 
-    switch(m_giStatus)
+    switch (m_giStatus)
     {
-      case GiStatus::STARTED:
-        eventDp = m_createDatapoint("gi_status", "started");
-        break;
+    case GiStatus::STARTED:
+      eventDp = m_createDatapoint("gi_status", "started");
+      break;
 
-      case GiStatus::IN_PROGRESS:
-        eventDp = m_createDatapoint("gi_status", "in progress");
-        break;
+    case GiStatus::IN_PROGRESS:
+      eventDp = m_createDatapoint("gi_status", "in progress");
+      break;
 
-      case GiStatus::FAILED:
-        eventDp = m_createDatapoint("gi_status", "failed");
-        break;
+    case GiStatus::FAILED:
+      eventDp = m_createDatapoint("gi_status", "failed");
+      break;
 
-      case GiStatus::FINISHED:
-        eventDp = m_createDatapoint("gi_status", "finished");
-        break;
+    case GiStatus::FINISHED:
+      eventDp = m_createDatapoint("gi_status", "finished");
+      break;
 
-      case GiStatus::IDLE:
-        eventDp = m_createDatapoint("gi_status", "idle");
-        break;
+    case GiStatus::IDLE:
+      eventDp = m_createDatapoint("gi_status", "idle");
+      break;
     }
 
     if (eventDp) {
@@ -660,17 +715,19 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
   DatapointValue dpv(attributes, true);
 
   auto* southEvent = new Datapoint("south_event", dpv);
-  std::vector<Reading> status_readings = {Reading(asset, southEvent)};
+  std::vector<Reading> status_readings = { Reading(asset, southEvent) };
   m_sendToFledge(status_readings);
 }
 
-void HNZ::GICompleted(bool success) { 
+void HNZ::GICompleted(bool success) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::GICompleted -";
   m_hnz_connection->onGICompleted();
   if (success) {
-    HnzUtility::log_info("General Interrogation completed.");
+    HnzUtility::log_info("%s General Interrogation completed.", beforeLog.c_str());
     updateGiStatus(GiStatus::FINISHED);
-  } else {
-    HnzUtility::log_error("General Interrogation FAILED !");
+  }
+  else {
+    HnzUtility::log_error("%s General Interrogation FAILED !", beforeLog.c_str());
     m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FAILED);
   }
@@ -710,7 +767,7 @@ void HNZ::m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, co
   vector<Reading> readings;
   const auto& allMessages = m_hnz_conf->get_all_messages();
   const auto& allTMs = allMessages.at(paramsTemplate.msg_code).at(paramsTemplate.station_addr);
-  for(auto const& kvp: allTMs) {
+  for (auto const& kvp : allTMs) {
     unsigned int msg_address = kvp.first;
     // Skip messages that are part of the reject filter
     if (hashFilter.count(msg_address) > 0) continue;

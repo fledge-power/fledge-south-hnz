@@ -16,6 +16,7 @@
 
 #include <reading.h>
 #include <plugin_api.h>
+#include <config_category.h>
 
 #include "hnzconf.h"
 
@@ -47,7 +48,29 @@ class HNZ {
   HNZ();
   ~HNZ();
 
-  void setAssetName(const std::string& asset) { m_asset = asset; }
+  /**
+   * Reconfiguration entry point to the filter.
+   *
+   * This method runs holding the configMutex to prevent
+   * ingest using the regex class that may be destroyed by this
+   * call.
+   *
+   * Pass the configuration to the base FilterPlugin class and
+   * then call the private method to handle the filter specific
+   * configuration.
+   *
+   * @param config The ConfigCategory containing the new configuration
+   */
+  void reconfigure(const ConfigCategory& config);
+
+  /**
+   * Set the configuration of the HNZ South Plugin. Two JSON configuration are
+   * required.
+   * @param protocol_conf_json Contain value to configure the protocol
+   * @param msg_conf_json Describe the messages that the plugin can received
+   */
+  void setJsonConfig(const std::string& protocol_conf_json,
+                     const std::string& msg_configuration);
 
   /**
    * Start the HZN south plugin
@@ -58,15 +81,6 @@ class HNZ {
    * Stop the HZN south plugin
    */
   void stop();
-
-  /**
-   * Set the configuration of the HNZ South Plugin. Two JSON configuration are
-   * required.
-   * @param protocol_conf_json Contain value to configure the protocol
-   * @param msg_conf_json Describe the messages that the plugin can received
-   */
-  bool setJsonConfig(const std::string& protocol_conf_json,
-                     const std::string& msg_configuration);
 
   /**
    * Save the callback function and its data
@@ -147,7 +161,6 @@ class HNZ {
   void sendInitialGI();
 
 private:
-  std::string m_asset;  // Plugin name in fledge
   std::atomic<bool> m_is_running{false};
   // Receiving threads
   std::unique_ptr<std::thread> m_receiving_thread_A;
@@ -156,12 +169,13 @@ private:
   std::vector<unsigned int> m_gi_addresses_received;  
 
   // Others HNZ related class
-  std::shared_ptr<HNZConf> m_hnz_conf{std::make_shared<HNZConf>()}; // HNZ Configuration
-  std::unique_ptr<HNZConnection> m_hnz_connection;                  // HNZ Connection handling
+  std::recursive_mutex           m_configMutex;                           // HNZ Configuration mutex
+  std::shared_ptr<HNZConf>       m_hnz_conf{std::make_shared<HNZConf>()}; // HNZ Configuration
+  std::unique_ptr<HNZConnection> m_hnz_connection;                        // HNZ Connection handling
 
   // Fledge related
-  INGEST_CB m_ingest;  // Callback function used to send data to south service
-  void* m_data;        // Ingest function data
+  INGEST_CB m_ingest = nullptr;  // Callback function used to send data to south service
+  void* m_data       = nullptr;        // Ingest function data
 
   // Configuration defined variables
   unsigned int m_remote_address;

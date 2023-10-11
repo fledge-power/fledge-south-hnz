@@ -36,6 +36,8 @@ class BasicHNZServer {
   void onFrameReceived(MSG_TRAME* frame);
   void onFrameSent(MSG_TRAME* frame);
 
+  void disableAcks(bool disabled) { ack_disabled = disabled; }
+
   static std::string toHexStr(unsigned char num);
   static std::string frameToStr(std::shared_ptr<MSG_TRAME> frame);
   static std::string framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames);
@@ -51,6 +53,7 @@ class BasicHNZServer {
   std::mutex m_init_mutex;
 
   std::atomic<bool> is_running{false};
+  std::atomic<bool> ack_disabled{false};
 
   int m_ns = 0;
   int m_nr = 0;

@@ -81,56 +81,61 @@ using namespace std;
  * @brief Structure containing the 2 bytes of a BULLE
  */
 struct BulleFormat {
-  unsigned char first;
-  unsigned char second;
-} typedef BulleFormat;
+  unsigned char first = 0;
+  unsigned char second = 0;
+};
 
 /**
  * @brief Structure containing the time for General Interrogation
  */
 struct GIScheduleFormat {
   /// indicate if GI is enable
-  bool activate;
-  int hour;
-  int min;
-} typedef GIScheduleFormat;
+  bool activate = false;
+  int hour = 0;
+  int min = 0;
+};
 
 /**
  * @brief Class used to manage the HNZ configuration.
  */
 class HNZConf {
  public:
-  HNZConf();
+  HNZConf() = default;
   HNZConf(const string &json_config, const string &json_exchanged_data);
-  ~HNZConf();
 
   /**
    * Import the HNZ Protocol stack configuration JSON. If errors are detected
    * they are reported in the fledge logger.
+   * @param json json string containing the protocol_stack to import
    */
   void importConfigJson(const string &json);
 
   /**
    * Import the Exchanged data configuration JSON. If errors are detected
    * they are reported in the fledge logger.
+   * @param json json string containing the exchanged_data to import
    */
   void importExchangedDataJson(const string &json);
 
   /**
    * Allows you to know if the configuration was successful.
+   * @return True if the configuration contains all required information, else false
    */
   bool is_complete() const {
     return m_config_is_complete && m_exchange_data_is_complete;
   }
 
   /**
-   * Get the label related to a message. If this message is not defined in the
-   * configuration, then the returned label is empty.
+   * Get the label related to a message.
+   * @param msg_code message code to search in the configuration
+   * @param json message address to search in the configuration
+   * @return Label for the given message code ans address, or empty string if not found
    */
   string getLabel(const string &msg_code, const int msg_address) const;
 
   /**
    * Get the number of CG. Used for the consistency check when GI.
+   * @return Number of TS expected to be received when doing a CG.
    */
   unsigned long getNumberCG() const;
 
@@ -139,6 +144,7 @@ class HNZConf {
    * This adress is the one with the highest value among all addresses configured
    * because, during a CG, TS are always sent in ascending order of their addresses.
    * Used to avoid waiting for full timeout when somme TS are missing during a CG.
+   * @return Address of the last TSCG.
    */
   unsigned int getLastTSAddress() const;
 
@@ -286,30 +292,47 @@ class HNZConf {
   const map<string, map<unsigned int, map<unsigned int, string>>>& get_all_messages() const { return m_msg_list; }
 
  private:
+  /**
+   * Import data from a json value representing the transport_layer
+   * 
+   * @param transport json configuration object
+   * @return True if the import was successful, else false
+   */
+  bool m_importTransportLayer(const Value &transport);
+
+  /**
+   * Import data from a json value representing the application_layer
+   * 
+   * @param conf json configuration object
+   * @return True if the import was successful, else false
+   */
+  bool m_importApplicationLayer(const Value &conf);
+
   string m_ip_A, m_ip_B = "";
-  unsigned int m_port_A, m_port_B;
-  unsigned int m_remote_station_addr;
-  unsigned int m_inacc_timeout;
-  unsigned int m_max_sarm;
-  unsigned int m_repeat_path_A;
-  unsigned int m_repeat_path_B;
-  unsigned int m_repeat_timeout;
-  unsigned int m_anticipation_ratio;
+  unsigned int m_port_A = 0;
+  unsigned int m_port_B = 0;
+  unsigned int m_remote_station_addr = 0;
+  unsigned int m_inacc_timeout = 0;
+  unsigned int m_max_sarm = 0;
+  unsigned int m_repeat_path_A = 0;
+  unsigned int m_repeat_path_B = 0;
+  unsigned int m_repeat_timeout = 0;
+  unsigned int m_anticipation_ratio = 0;
   BulleFormat m_test_msg_send;
   BulleFormat m_test_msg_receive;
   GIScheduleFormat m_gi_schedule;
-  unsigned int m_gi_repeat_count;
-  unsigned int m_gi_time;
-  unsigned int m_c_ack_time;
-  long long int m_cmd_recv_timeout;
+  unsigned int m_gi_repeat_count = 0;
+  unsigned int m_gi_time = 0;
+  unsigned int m_c_ack_time = 0;
+  long long int m_cmd_recv_timeout = 0;
 
   std::string m_connx_status = "";
   unsigned int m_lastTSAddr = 0;
   // Nested map of msg_code, remote_station_addr and msg_address
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 
-  bool m_config_is_complete;
-  bool m_exchange_data_is_complete;
+  bool m_config_is_complete = false;
+  bool m_exchange_data_is_complete = false;
 
   static bool m_check_string(const Value &json, const char *key);
   static bool m_check_array(const Value &json, const char *key);
@@ -318,7 +341,7 @@ class HNZConf {
   static bool m_retrieve(const Value &json, const char *key, unsigned int *target);
   static bool m_retrieve(const Value &json, const char *key, unsigned int *target, unsigned int def);
   static bool m_retrieve(const Value &json, const char *key, string *target);
-  static bool m_retrieve(const Value &json, const char *key, string *target, string def);
+  static bool m_retrieve(const Value &json, const char *key, string *target, const string& def);
   static bool m_retrieve(const Value &json, const char *key, BulleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, GIScheduleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, long long int *target, long long int def);

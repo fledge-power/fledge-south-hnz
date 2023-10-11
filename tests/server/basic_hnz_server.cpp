@@ -38,11 +38,9 @@ void BasicHNZServer::stopHNZServer() {
   // Ensure that m_t1 was joined no matter what
   joinStartThread();
 
-  // Stop HNZ server
+  // Stop HNZ server before joining receiving_thread
   if (server != nullptr) {
     server->stop();
-    delete server;
-    server = nullptr;
   }
 
   // Lock to wait for HNZServerIsReady to complete if it was running
@@ -52,6 +50,13 @@ void BasicHNZServer::stopHNZServer() {
     delete receiving_thread;
     receiving_thread = nullptr;
   }
+  
+  // Free HNZ server after receiving_thread was joined as it uses that object
+  if (server != nullptr) {
+    delete server;
+    server = nullptr;
+  }
+  printf("[HNZ Server][%d] Server stopped!\n", m_port); fflush(stdout);
 }
 
 void BasicHNZServer::receiving_loop() {
@@ -92,17 +97,23 @@ void BasicHNZServer::receiving_loop() {
                 static_cast<unsigned char>((m_nr << 5) + 1 + 0x10 * f);
 
             unsigned char message[1]{num};
-            createAndSendFrame(data[0], message, sizeof(message));
+            if (!ack_disabled) {
+              createAndSendFrame(data[0], message, sizeof(message));
+            }
           }
         }
       } else {
-        printf("The CRC does not match"); fflush(stdout);
+        printf("[HNZ Server][%d] The CRC does not match\n", m_port); fflush(stdout);
       }
       // Store the frame that was received for testing purposes
       onFrameReceived(frReceived);
     }
+    if (!server->isConnected()) {
+      printf("[HNZ Server][%d] TCP Connection lost, exit receiving_loop\n", m_port); fflush(stdout);
+      is_running = false;
+    }
   }
-  // printf("Stopping loop...\n "); fflush(stdout);
+  printf("[HNZ Server][%d] receiving_loop terminated\n", m_port); fflush(stdout);
 }
 
 void BasicHNZServer::sendSARMLoop() {

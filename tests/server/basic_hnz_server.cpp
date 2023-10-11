@@ -2,7 +2,6 @@
 #include <iomanip>
 #include <sstream>
 #include <thread>
-#include <future>
 
 #include "basic_hnz_server.h"
 
@@ -19,10 +18,26 @@ bool BasicHNZServer::joinStartThread() {
   // Lock to prevent multiple joins in parallel
   std::lock_guard<std::mutex> guard(m_t1_mutex);
   if (m_t1 != nullptr) {
-    auto future = std::async(std::launch::async, &std::thread::join, m_t1);
-    if (future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-      // m_t1 did not join in time, abort
+    // m_t1 may never join because it is stuck on an IO operation...
+    // The code below ensure that we can attempt to join and exit this function regardless in a finished time
+    std::atomic<bool> joinSuccess{false};
+    std::thread joinThread([this, &joinSuccess](){
+      m_t1->join();
+      joinSuccess = true;
+    });
+    joinThread.detach();
+    int timeMs = 0;
+    // Wait up to 10s for m_t1 thread to join
+    while (timeMs < 10000) {
+      if (joinSuccess) {
+        break;
+      }
+      this_thread::sleep_for(chrono::milliseconds(100));
+      timeMs += 100;
+    }
+    if (!joinSuccess) {
       printf("[HNZ Server][%d] Could not join m_t1, exiting\n", m_port); fflush(stdout);
+      // Do not delete m_t1 if it was not joined or it will crash immediately, let the rest of the test complete first
       return false;
     }
     delete m_t1;

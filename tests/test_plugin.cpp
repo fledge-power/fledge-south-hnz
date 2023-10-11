@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <future>
+#include <thread>
 
 #include "hnz.h"
 
@@ -237,14 +237,24 @@ TEST(HNZ, PluginStopDuringConnect) {
 
   // Make sure that shutdown does not hang forever on "hnz - HNZ::stop - Waiting for the receiving thread"
   printf("Waiting for plugin_shutdown() to complete...\n"); fflush(stdout);
-  
-  // auto future = std::async(std::launch::async, &plugin_shutdown, static_cast<PLUGIN_HANDLE *>(handle));
-  // if (future.wait_for(std::chrono::seconds(60)) == std::future_status::timeout) {
-  //   // some thread did not join in time
-  //   FAIL() << "Shutdown did not complete in time, it's probably hanging on a thread join()";
+  // plugin_shutdown() never return when run from GitHub CI when called from a sub-thread,
+  // resulting in the test failing, so leave it in the main test thread at the risk of the whole test hanging
+  // std::atomic<bool> shutdownSuccess{false};
+  // std::thread joinThread([&handle, &shutdownSuccess](){
+  //   plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle));
+  //   shutdownSuccess = true;
+  // });
+  // joinThread.detach();
+  // int timeMs = 0;
+  // // Wait up to 60s for plugin_shutdown to complete
+  // while (timeMs < 60000) {
+  //   if (shutdownSuccess) {
+  //     break;
+  //   }
+  //   this_thread::sleep_for(chrono::milliseconds(100));
+  //   timeMs += 100;
   // }
-  // For some reason, the code above works locally but always times out and fails when run by GitHub CI...
-  // So simply call the shutdown function instead (CI may hang because of this)
+  // ASSERT_TRUE(shutdownSuccess) << "Shutdown did not complete in time, it's probably hanging on a thread join()";
   ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   delete config;

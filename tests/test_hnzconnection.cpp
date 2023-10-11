@@ -5,7 +5,7 @@
 #include <string>
 #include <sstream>
 #include <regex>
-#include <future>
+#include <thread>
 
 #include "hnz.h"
 #include "hnzconf.h"
@@ -244,7 +244,6 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
   ASSERT_NE(nullptr, hnz_path.get());
 
   // Start connecting on a thread and wait a little to let it enter the main connection loop
-  //auto connection_thread = make_unique<std::future<void>>(std::async(std::launch::async, &HNZPath::connect, hnz_path.get()));
   std::unique_ptr<std::thread> connection_thread = make_unique<std::thread>(&HNZPath::connect, hnz_path.get());
   this_thread::sleep_for(chrono::milliseconds(100));
 
@@ -252,10 +251,24 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
   ASSERT_NO_THROW(hnz_path = nullptr);
 
   // Check that the thread can now be joined as HNZPath::disconnect() was called in destructor
-  // (destructor of the std::future joins the thread running the async function)
-  //ASSERT_NE(connection_thread->wait_for(std::chrono::seconds(60)), std::future_status::timeout);
-  // std::future always timeout when run on GitHub CI, so use regular std::thread instead,
-  // this may result in unit test hanging if the join never terminate
   printf("[TEST HNZConnection] Waiting for connection thread to join..."); fflush(stdout);
+  // connection_thread->join() never return when run from GitHub CI when called from a sub-thread,
+  // resulting in the test failing, so leave it in the main test thread at the risk of the whole test hanging
+  // std::atomic<bool> joinSuccess{false};
+  // std::thread joinThread([&connection_thread, &joinSuccess](){
+  //   connection_thread->join();
+  //   joinSuccess = true;
+  // });
+  // joinThread.detach();
+  // int timeMs = 0;
+  // // Wait up to 60s for connection_thread thread to join
+  // while (timeMs < 60000) {
+  //   if (joinSuccess) {
+  //     break;
+  //   }
+  //   this_thread::sleep_for(chrono::milliseconds(100));
+  //   timeMs += 100;
+  // }
+  // ASSERT_TRUE(joinSuccess);
   ASSERT_NO_THROW(connection_thread->join());
 }

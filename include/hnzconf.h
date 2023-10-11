@@ -308,6 +308,14 @@ class HNZConf {
    */
   bool m_importApplicationLayer(const Value &conf);
 
+  /**
+   * Import data from a json value representing an exchanged_data datapoint
+   * 
+   * @param msg json configuration object
+   * @return True if the import was successful, else false
+   */
+  bool m_importDatapoint(const Value &msg);
+
   string m_ip_A, m_ip_B = "";
   unsigned int m_port_A = 0;
   unsigned int m_port_B = 0;

@@ -173,53 +173,64 @@ void HNZConf::importExchangedDataJson(const string &json) {
 
   m_lastTSAddr = 0;
   for (const Value &msg : info[DATAPOINTS].GetArray()) {
-    if (!msg.IsObject()) return;
-
-    string label;
-
-    is_complete &= m_retrieve(msg, LABEL, &label);
-    is_complete &= m_check_string(msg, PIVOT_ID);
-    is_complete &= m_check_string(msg, PIVOT_TYPE);
-
-    if (!m_check_array(msg, PROTOCOLS)) continue;
-  
-    for (const Value &protocol : msg[PROTOCOLS].GetArray()) {
-      if (!protocol.IsObject()) return;
-
-      string protocol_name;
-
-      is_complete &= m_retrieve(protocol, NAME, &protocol_name);
-
-      if (protocol_name != HNZ_NAME) continue;
-
-      std::string address;
-      std::string msg_code;
-
-      is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address, "");
-      is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code, "");
-      
-      unsigned long tmp = 0;
-      try {
-        tmp = std::stoul(address);
-      } catch (const std::exception &e) {
-        HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + e.what());
-        is_complete = false;
-      }
-      unsigned int msg_address = 0;
-      // Check if number is in range for unsigned int
-      if (tmp > static_cast<unsigned int>(-1)) {
-        is_complete = false;
-      } else {
-        msg_address = static_cast<unsigned int>(tmp);
-      }
-      m_msg_list[msg_code][m_remote_station_addr][msg_address] = label;
-      if (msg_address > m_lastTSAddr) {
-        m_lastTSAddr = msg_address;
-      }
-    }
+    is_complete &= m_importDatapoint(msg);
   }
 
   m_exchange_data_is_complete = is_complete;
+}
+
+bool HNZConf::m_importDatapoint(const Value &msg) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_importDatapoint - ";
+
+  if (!msg.IsObject()) return false;
+
+  string label;
+
+  bool is_complete = true;
+  is_complete &= m_retrieve(msg, LABEL, &label);
+  is_complete &= m_check_string(msg, PIVOT_ID);
+  is_complete &= m_check_string(msg, PIVOT_TYPE);
+
+  if (!m_check_array(msg, PROTOCOLS)) return false;
+
+  for (const Value &protocol : msg[PROTOCOLS].GetArray()) {
+    if (!protocol.IsObject()) return false;
+
+    string protocol_name;
+
+    is_complete &= m_retrieve(protocol, NAME, &protocol_name);
+
+    if (protocol_name != HNZ_NAME) continue;
+
+    std::string address;
+    std::string msg_code;
+
+    is_complete &= m_retrieve(protocol, MESSAGE_ADDRESS, &address, "");
+    is_complete &= m_retrieve(protocol, MESSAGE_CODE, &msg_code, "");
+    
+    unsigned long tmp = 0;
+    try {
+      tmp = std::stoul(address);
+    } catch (const std::invalid_argument &e) {
+      HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + e.what());
+      is_complete = false;
+    } catch (const std::out_of_range &e) {
+      HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + e.what());
+      is_complete = false;
+    }
+    unsigned int msg_address = 0;
+    // Check if number is in range for unsigned int
+    if (tmp > static_cast<unsigned int>(-1)) {
+      is_complete = false;
+    } else {
+      msg_address = static_cast<unsigned int>(tmp);
+    }
+    m_msg_list[msg_code][m_remote_station_addr][msg_address] = label;
+    if (msg_address > m_lastTSAddr) {
+      m_lastTSAddr = msg_address;
+    }
+  }
+  return is_complete;
 }
 
 string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
@@ -363,7 +374,10 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, BulleFormat *target
   try {
     bulle.first = stoul(temp.substr(0, 2), nullptr, 16);
     bulle.second = stoul(temp.substr(2), nullptr, 16);
-  } catch (const std::exception &e) {
+  } catch (const std::invalid_argument &e) {
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", cannot convert hex string to int: " + e.what());
+    return false;
+  } catch (const std::out_of_range &e) {
     HnzUtility::log_error(beforeLog + "Error with the field " + s + ", cannot convert hex string to int: " + e.what());
     return false;
   }
@@ -397,7 +411,10 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, GIScheduleFormat *t
       try {
         time.hour = stoi(temp.substr(0, 2));
         time.min = stoi(temp.substr(3));
-      } catch (const std::exception &e) {
+      } catch (const std::invalid_argument &e) {
+        HnzUtility::log_error(beforeLog + "Cannot convert time '" + temp + "' to integers: " + e.what());
+        return false;
+      } catch (const std::out_of_range &e) {
         HnzUtility::log_error(beforeLog + "Cannot convert time '" + temp + "' to integers: " + e.what());
         return false;
       }

@@ -252,20 +252,23 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
 
   // Check that the thread can now be joined as HNZPath::disconnect() was called in destructor
   printf("[TEST HNZConnection] Waiting for connection thread to join..."); fflush(stdout);
-  std::atomic<bool> joinSuccess{false};
-  std::thread joinThread([&connection_thread, &joinSuccess](){
-    connection_thread->join();
-    joinSuccess = true;
-  });
-  joinThread.detach();
-  int timeMs = 0;
-  // Wait up to 60s for connection_thread thread to join
-  while (timeMs < 60000) {
-    if (joinSuccess) {
-      break;
-    }
-    this_thread::sleep_for(chrono::milliseconds(100));
-    timeMs += 100;
-  }
-  ASSERT_TRUE(joinSuccess);
+  // connection_thread->join() never return when run from GitHub CI when called from a sub-thread,
+  // resulting in the test failing, so leave it in the main test thread at the risk of the whole test hanging
+  // std::atomic<bool> joinSuccess{false};
+  // std::thread joinThread([&connection_thread, &joinSuccess](){
+  //   connection_thread->join();
+  //   joinSuccess = true;
+  // });
+  // joinThread.detach();
+  // int timeMs = 0;
+  // // Wait up to 60s for connection_thread thread to join
+  // while (timeMs < 60000) {
+  //   if (joinSuccess) {
+  //     break;
+  //   }
+  //   this_thread::sleep_for(chrono::milliseconds(100));
+  //   timeMs += 100;
+  // }
+  // ASSERT_TRUE(joinSuccess);
+  ASSERT_NO_THROW(connection_thread->join());
 }

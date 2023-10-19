@@ -170,7 +170,7 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
   auto hnz = new HNZ();
   hnz->reconfigure(*config);
 
-  HnzUtility::log_info("%s Pluging initialized", beforeLog.c_str());
+  HnzUtility::log_info("%s Plugin initialized", beforeLog.c_str());
 
   return static_cast<PLUGIN_HANDLE>(hnz);
 }

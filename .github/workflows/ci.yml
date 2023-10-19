@@ -12,7 +12,7 @@ on:
       libhnz_branch:
         description: 'Branch to use for libhnz'
         required: true
-        default: 'develop'
+        default: 'main'
   
 jobs:
   build:
@@ -75,7 +75,7 @@ jobs:
       - name: Download and install libhnz
         env:
           LIBHNZ_REPO_URL: "https://github.com/fledge-power/libhnz.git" 
-          LIBHNZ_BRANCH: ${{ github.event.inputs.libhnz_branch || 'develop' }}
+          LIBHNZ_BRANCH: ${{ github.event.inputs.libhnz_branch || 'main' }}
         run: |
           cd $HOME
           git clone ${{ env.LIBHNZ_REPO_URL }}

@@ -13,7 +13,41 @@ message("fledge root : ${FLEDGE_ROOT}")
 # If no -D options are given and FLEDGE_ROOT environment variable is set
 # then Fledge libraries and header files are pulled from FLEDGE_ROOT path.
 
-set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+if (${CMAKE_BUILD_TYPE} STREQUAL Coverage)
+  message("Coverage is going to be generated")
+  enable_testing()
+  add_subdirectory(tests)
+  include(CodeCoverage)
+  append_coverage_compiler_flags()
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -O3 --coverage")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 --coverage")
+  set(GCOVR_ADDITIONAL_ARGS "--exclude-unreachable-branches" "--exclude-throw-branches" )
+
+  setup_target_for_coverage_gcovr_sonar(NAME "${PROJECT_NAME}_coverage_sonar"
+                                      EXECUTABLE RunTests
+                                      DEPENDENCIES RunTests
+                                      BASE_DIRECTORY "${PROJECT_SOURCE_DIR}"
+                                      EXCLUDE "tests/*"
+  )    
+  
+  setup_target_for_coverage_gcovr_html(NAME "${PROJECT_NAME}_coverage_html"
+                                       EXECUTABLE RunTests
+                                       DEPENDENCIES RunTests
+                                       BASE_DIRECTORY "${PROJECT_SOURCE_DIR}"
+                                       EXCLUDE "tests/*"
+  )
+  message(STATUS "Using Fledge dev package includes2 " ${FLEDGE_INCLUDE})
+else()
+  message("Build without Coverage") 
+  set(CMAKE_CXX_FLAGS "-O3")
+endif()
+
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -ggdb")
 
 # Generation version header file
 set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
@@ -33,7 +67,7 @@ set(PLUGIN_TYPE "south")
 set(NEEDED_FLEDGE_LIBS common-lib)
 
 # Find source files
-file(GLOB SOURCES plugin.cpp src/*.cpp)
+file(GLOB SOURCES src/*.cpp)
 
 # Find Fledge includes and libs, by including FindFledge.cmake file
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})

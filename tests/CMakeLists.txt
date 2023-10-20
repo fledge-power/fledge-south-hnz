@@ -16,13 +16,23 @@ set(CMAKE_CXX_FLAGS "-std=c++11 -O3")
 # Generation version header file
 set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
 
-add_custom_command(
-  OUTPUT version.h
-  DEPENDS ${CMAKE_SOURCE_DIR}/../VERSION
-  COMMAND ${CMAKE_SOURCE_DIR}/../mkversion ${CMAKE_SOURCE_DIR}/..
-  COMMENT "Generating version header"
-  VERBATIM
-)
+if (${CMAKE_BUILD_TYPE} STREQUAL Coverage)
+	add_custom_command(
+	  OUTPUT version.h
+	  DEPENDS ${CMAKE_SOURCE_DIR}/VERSION
+	  COMMAND ${CMAKE_SOURCE_DIR}/mkversion ${CMAKE_SOURCE_DIR}
+	  COMMENT "Generating version header"
+	  VERBATIM
+	)
+else()
+	add_custom_command(
+	  OUTPUT version.h
+	  DEPENDS ${CMAKE_SOURCE_DIR}/../VERSION
+	  COMMAND ${CMAKE_SOURCE_DIR}/../mkversion ${CMAKE_SOURCE_DIR}/..
+	  COMMENT "Generating version header"
+	  VERBATIM
+	)
+endif()
 
 include_directories(${CMAKE_BINARY_DIR})
 
@@ -38,7 +48,7 @@ find_package(Boost 1.53.0 COMPONENTS ${BOOST_COMPONENTS} REQUIRED)
 include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
 # Find source files
-file(GLOB SOURCES ../plugin.cpp ../src/*.cpp ./server/*.cpp)
+file(GLOB SOURCES ../src/*.cpp ./server/*.cpp)
 file(GLOB unittests *.cpp)
 
 # Find Fledge includes and libs, by including FindFledge.cmak file
@@ -114,3 +124,5 @@ if (LIBHNZ-NOTFOUND)
 endif()
 target_link_libraries(${PROJECT_NAME} -L${LIB_HNZ}/src/hnz libhnz)
 target_link_libraries(${PROJECT_NAME} -lpthread -ldl )
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE UNIT_TEST)

@@ -8,11 +8,16 @@ on:
     
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      libhnz_branch:
+        description: 'Branch to use for libhnz'
+        required: true
+        default: 'main'
   
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     env:
       SONAR_SCANNER_VERSION: 4.6.1.2450 # Find the latest version in the "Windows" link on this page:
                                         # https://docs.sonarqube.org/latest/analysis/scan/sonarscanner/
@@ -46,7 +51,7 @@ jobs:
         run: |
           curl -sSLo $HOME/.sonar/build-wrapper-linux-x86.zip ${{ env.BUILD_WRAPPER_DOWNLOAD_URL }}
           unzip -o $HOME/.sonar/build-wrapper-linux-x86.zip -d $HOME/.sonar/
-          echo "$HOME/.sonar/build-wrapper-linux-x86" >> $GITHUB_PATH     
+          echo "$HOME/.sonar/build-wrapper-linux-x86" >> $GITHUB_PATH
       - name: Download and install Fledge
         env:
           FLEDGE_REPO_URL: "https://github.com/fledge-iot/fledge/archive/refs/heads/develop.zip" 
@@ -70,9 +75,12 @@ jobs:
       - name: Download and install libhnz
         env:
           LIBHNZ_REPO_URL: "https://github.com/fledge-power/libhnz.git" 
+          LIBHNZ_BRANCH: ${{ github.event.inputs.libhnz_branch || 'main' }}
         run: |
           cd $HOME
           git clone ${{ env.LIBHNZ_REPO_URL }}
+          cd $HOME/libhnz
+          git checkout ${{ env.LIBHNZ_BRANCH }}
           cd $HOME/libhnz/src/hnz
           ./compilation.sh
       - name: Download and install Google Unit Test framework
@@ -101,4 +109,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          sonar-scanner --define sonar.host.url="${{ env.SONAR_SERVER_URL }}" --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}" --define sonar.organization="fledge-power" --define sonar.projectKey="fledge-power_fledge-south-hnz" --define sonar.inclusions="**/plugin.cpp,**/hnz.cpp,**/include/hnz.h" --define sonar.coverageReportPaths="build/hnz_coverage_sonar-sonarqube.xml"
+          sonar-scanner --define sonar.host.url="${{ env.SONAR_SERVER_URL }}" --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}" --define sonar.organization="fledge-power" --define sonar.projectKey="fledge-power_fledge-south-hnz" --define sonar.inclusions="src/*,include/*" --define sonar.coverageReportPaths="build/hnz_coverage_sonar-sonarqube.xml"

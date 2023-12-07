@@ -541,7 +541,7 @@ std::string paramsToStr(PLUGIN_PARAMETER** params, int count) {
     if (i > 0) {
       out += ", ";
     }
-    out += "{\"name\": \"" + params[i]->name + "\", \"value\": \"" + params[i]->value + "\"}";
+    out += R"({"name": ")" + params[i]->name + R"(", "value": ")" + params[i]->value + R"("})";
   }
   out += "]";
   return out;
@@ -552,70 +552,9 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
   HnzUtility::log_info("%s Operation %s", beforeLog.c_str(), operation.c_str());
 
   if (operation == "HNZCommand") {
-    std::map<std::string, std::string> commandParams = {
-      {"co_type", ""},
-      {"co_addr", ""},
-      {"co_value", ""},
-    };
-
-    for (int i=0 ; i<count ; i++) {
-      const std::string& paramName = params[i]->name;
-      const std::string& paramValue = params[i]->value;
-      if (commandParams.count(paramName) > 0) {
-        commandParams[paramName] = paramValue;
-      }
-      else {
-        HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());
-      }
-    }
-
-    bool allParamsFound = true;
-    for (const auto &kvp : commandParams) {
-      if (kvp.second == "") {
-        HnzUtility::log_error("%s Received HNZCommand with missing '%s' parameter", beforeLog.c_str(), kvp.first.c_str());
-        allParamsFound = false;
-      }
-    }
-
-    if (allParamsFound) {
-      const std::string& type = commandParams["co_type"];
-      const std::string& addrStr = commandParams["co_addr"];
-      const std::string& valStr = commandParams["co_value"];
-      int address = 0;
-      int value = 0;
-      bool allParamsConverted = true;
-      try {
-        address = std::stoi(addrStr);
-      } catch (const std::invalid_argument &e) {
-        HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
-        allParamsConverted = false;
-      } catch (const std::out_of_range &e) {
-        HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
-        allParamsConverted = false;
-      }
-      try {
-        value = std::stoi(valStr);
-      } catch (const std::invalid_argument &e) {
-        HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
-        allParamsConverted = false;
-      } catch (const std::out_of_range &e) {
-        HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
-        allParamsConverted = false;
-      }
-
-      if (allParamsConverted) {
-        if (type == "TC") {
-          m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
-          return true;
-        }
-        else if (type == "TVC") {
-          m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
-          return true;
-        }
-        else {
-          HnzUtility::log_error("%s Unknown co_type '%s' in HNZCommand", beforeLog.c_str(), type.c_str());
-        }
-      }
+    if(processCommandOperation(count, params)) {
+      // Only return on success so that all parameters are displayed by final error log in case of error
+      return true;
     }
   }
   else if (operation == "request_connection_status") {
@@ -625,6 +564,71 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
   }
 
   HnzUtility::log_error("%s Unrecognised operation %s with %d parameters: %s", beforeLog.c_str(), operation.c_str(), count, paramsToStr(params, count).c_str());
+  return false;
+}
+
+bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::processCommandOperation -";
+  
+  std::map<std::string, std::string> commandParams = {
+    {"co_type", ""},
+    {"co_addr", ""},
+    {"co_value", ""},
+  };
+
+  for (int i=0 ; i<count ; i++) {
+    const std::string& paramName = params[i]->name;
+    const std::string& paramValue = params[i]->value;
+    if (commandParams.count(paramName) > 0) {
+      commandParams[paramName] = paramValue;
+    }
+    else {
+      HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());
+    }
+  }
+
+  for (const auto &kvp : commandParams) {
+    if (kvp.second == "") {
+      HnzUtility::log_error("%s Received HNZCommand with missing '%s' parameter", beforeLog.c_str(), kvp.first.c_str());
+      return false;
+    }
+  }
+
+  const std::string& type = commandParams["co_type"];
+  const std::string& addrStr = commandParams["co_addr"];
+  const std::string& valStr = commandParams["co_value"];
+
+  int address = 0;
+  try {
+    address = std::stoi(addrStr);
+  } catch (const std::invalid_argument &e) {
+    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  } catch (const std::out_of_range &e) {
+    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  }
+
+  int value = 0;
+  try {
+    value = std::stoi(valStr);
+  } catch (const std::invalid_argument &e) {
+    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  } catch (const std::out_of_range &e) {
+    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  }
+
+  if (type == "TC") {
+    return m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
+  }
+  else if (type == "TVC") {
+    return m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
+  }
+  else {
+    HnzUtility::log_error("%s Unknown co_type '%s' in HNZCommand", beforeLog.c_str(), type.c_str());
+  }
   return false;
 }
 

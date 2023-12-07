@@ -197,13 +197,13 @@ TEST(HNZ, PluginOperation) {
 
   string operation("operation_test");
   bool res = false;
-  ASSERT_NO_THROW(res = plugin_operation(static_cast<PLUGIN_HANDLE *>(handle), operation, 10, nullptr));
+  ASSERT_NO_THROW(res = plugin_operation(static_cast<PLUGIN_HANDLE *>(handle), operation, 0, nullptr));
   ASSERT_FALSE(res);
 
   ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
   handle = nullptr;
-  ASSERT_THROW(plugin_operation(static_cast<PLUGIN_HANDLE *>(handle), operation, 10, nullptr), exception);
+  ASSERT_THROW(plugin_operation(static_cast<PLUGIN_HANDLE *>(handle), operation, 0, nullptr), exception);
 
   delete emptyConfig;
 }

@@ -1296,11 +1296,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   ///////////////////////////////////////
   // Send TC1
   ///////////////////////////////////////
-  std::string operationTC("TC");
+  std::string operationTC("HNZCommand");
   int nbParamsTC = 3;
-  PLUGIN_PARAMETER paramTC1 = {"type", "TC"};
-  PLUGIN_PARAMETER paramTC2 = {"address", "142"};
-  PLUGIN_PARAMETER paramTC3 = {"value", "1"};
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
   PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
   debug_print("[HNZ south plugin] TC sent");
@@ -1451,11 +1451,11 @@ TEST_F(HNZTest, SendingTVCMessages) {
   ///////////////////////////////////////
   // Send TVC1
   ///////////////////////////////////////
-  std::string operationTVC("TVC");
+  std::string operationTVC("HNZCommand");
   int nbParamsTVC = 3;
-  PLUGIN_PARAMETER paramTVC1 = {"type", "TVC"};
-  PLUGIN_PARAMETER paramTVC2 = {"address", "31"};
-  PLUGIN_PARAMETER paramTVC3 = {"value", "42"};
+  PLUGIN_PARAMETER paramTVC1 = {"co_type", "TVC"};
+  PLUGIN_PARAMETER paramTVC2 = {"co_addr", "31"};
+  PLUGIN_PARAMETER paramTVC3 = {"co_value", "42"};
   PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
   ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
   debug_print("[HNZ south plugin] TVC sent");
@@ -1592,11 +1592,11 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
   if(HasFatalFailure()) return;
 
   // Send TC1
-  std::string operationTC("TC");
+  std::string operationTC("HNZCommand");
   int nbParamsTC = 3;
-  PLUGIN_PARAMETER paramTC1 = {"type", "TC"};
-  PLUGIN_PARAMETER paramTC2 = {"address", "142"};
-  PLUGIN_PARAMETER paramTC3 = {"value", "1"};
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
   PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
   debug_print("[HNZ south plugin] TC sent");
@@ -2188,6 +2188,166 @@ TEST_F(HNZTest, UnknownMessage) {
   ASSERT_EQ(ingestCallbackCalled, 0);
 }
 
+TEST_F(HNZTest, InvalidOperations) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Send invalid operation type
+  ASSERT_FALSE(hnz->operation("INVALID", 0, nullptr));
+  debug_print("[HNZ south plugin] Invalid operation sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send invalid command type
+  std::string operationTC("HNZCommand");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
+  PLUGIN_PARAMETER paramTC1_bad = {"co_type", "test"};
+  PLUGIN_PARAMETER paramTC2_bad = {"co_addr", "test"};
+  PLUGIN_PARAMETER paramTC2_bad2 = {"co_addr", "9999999999"};
+  PLUGIN_PARAMETER paramTC3_bad = {"co_value", "test"};
+  PLUGIN_PARAMETER paramTC3_bad2 = {"co_value", "9999999999"};
+  PLUGIN_PARAMETER paramTC4_bad = {"test", "result"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1_bad, &paramTC2, &paramTC3};
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] Invalid command sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TC with extra parameter
+  nbParamsTC = 4;
+  PLUGIN_PARAMETER* paramsTC2[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3, &paramTC4_bad};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC2));
+  debug_print("[HNZ south plugin] TC with extra param sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TC with missing parameter
+  nbParamsTC = 2;
+  PLUGIN_PARAMETER* paramsTC3[nbParamsTC] = {&paramTC1, &paramTC2};
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC3));
+  debug_print("[HNZ south plugin] TC with missing param sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TC with invalid address
+  nbParamsTC = 3;
+  PLUGIN_PARAMETER* paramsTC4[nbParamsTC] = {&paramTC1, &paramTC2_bad, &paramTC3};
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC4));
+  debug_print("[HNZ south plugin] TC with invalid address sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TC with address out of bounds
+  PLUGIN_PARAMETER* paramsTC5[nbParamsTC] = {&paramTC1, &paramTC2_bad2, &paramTC3};
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC5));
+  debug_print("[HNZ south plugin] TC with address out of bounds sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TC with invalid value
+  PLUGIN_PARAMETER* paramsTC6[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3_bad};
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC6));
+  debug_print("[HNZ south plugin] TC with invalid value sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TC with value out of bounds
+  PLUGIN_PARAMETER* paramsTC7[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3_bad2};
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC7));
+  debug_print("[HNZ south plugin] TC with value out of bounds sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TVC with extra parameter
+  std::string operationTVC("HNZCommand");
+  int nbParamsTVC = 4;
+  PLUGIN_PARAMETER paramTVC1 = {"co_type", "TVC"};
+  PLUGIN_PARAMETER paramTVC2 = {"co_addr", "31"};
+  PLUGIN_PARAMETER paramTVC3 = {"co_value", "42"};
+  PLUGIN_PARAMETER paramTVC1_bad = {"co_type", "test"};
+  PLUGIN_PARAMETER paramTVC2_bad = {"co_addr", "test"};
+  PLUGIN_PARAMETER paramTVC2_bad2 = {"co_addr", "9999999999"};
+  PLUGIN_PARAMETER paramTVC3_bad = {"co_value", "test"};
+  PLUGIN_PARAMETER paramTVC3_bad2 = {"co_value", "9999999999"};
+  PLUGIN_PARAMETER paramTVC4_bad = {"test", "result"};
+  PLUGIN_PARAMETER* paramsTVC2[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3, &paramTVC4_bad};
+  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC2));
+  debug_print("[HNZ south plugin] TVC with extra param sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TVC with missing parameter
+  nbParamsTVC = 2;
+  PLUGIN_PARAMETER* paramsTVC3[nbParamsTVC] = {&paramTVC1, &paramTVC2};
+  ASSERT_FALSE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC3));
+  debug_print("[HNZ south plugin] TVC with missing param sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TVC with invalid address
+  nbParamsTVC = 3;
+  PLUGIN_PARAMETER* paramsTVC4[nbParamsTVC] = {&paramTVC1, &paramTVC2_bad, &paramTVC3};
+  ASSERT_FALSE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC4));
+  debug_print("[HNZ south plugin] TVC with invalid address sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TVC with address out of bounds
+  PLUGIN_PARAMETER* paramsTVC5[nbParamsTVC] = {&paramTVC1, &paramTVC2_bad2, &paramTVC3};
+  ASSERT_FALSE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC5));
+  debug_print("[HNZ south plugin] TVC with address out of bounds sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TVC with invalid value
+  PLUGIN_PARAMETER* paramsTVC6[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3_bad};
+  ASSERT_FALSE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC6));
+  debug_print("[HNZ south plugin] TVC with invalid value sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
+
+  // Send TVC with value out of bounds
+  PLUGIN_PARAMETER* paramsTVC7[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3_bad2};
+  ASSERT_FALSE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC7));
+  debug_print("[HNZ south plugin] TVC with value out of bounds sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
+}
+
 TEST_F(HNZTest, FrameToStr) {
   ASSERT_STREQ(hnz->frameToStr({}).c_str(), "\n[]");
   ASSERT_STREQ(hnz->frameToStr({0x42}).c_str(), "\n[0x42]");
@@ -2206,11 +2366,11 @@ TEST_F(HNZTest, BackToSARM) {
 
   // Send 2 TCs so that south plugin has something to send to HNZ server
   // and we have more than one message waiting in the list
-  std::string operationTC("TC");
+  std::string operationTC("HNZCommand");
   int nbParamsTC = 3;
-  PLUGIN_PARAMETER paramTC1 = {"type", "TC"};
-  PLUGIN_PARAMETER paramTC2 = {"address", "142"};
-  PLUGIN_PARAMETER paramTC3 = {"value", "1"};
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
   PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
@@ -2218,7 +2378,7 @@ TEST_F(HNZTest, BackToSARM) {
 
   // Clear messages received from south plugin
   server->popLastFramesReceived();
-  // Wait (repeat_timeout * repeat_path_A) + 1 ((3 * 3) + 1 = 10s)
+  // Wait (repeat_timeout * repeat_path_A) + 1 = (3 * 3) + 1 = 10s
   this_thread::sleep_for(chrono::seconds(10));
   
   // Find the SARM frame in the list of frames received by server

@@ -534,31 +534,97 @@ void HNZ::registerIngest(void* data, INGEST_CB cb) {
   m_data = data;
 }
 
+/* Utility function used to print an array of PLUGIN_PARAMETER pointers in json format */
+std::string paramsToStr(PLUGIN_PARAMETER** params, int count) {
+  std::string out = "[";
+  for (int i = 0; i < count; i++){
+    if (i > 0) {
+      out += ", ";
+    }
+    out += "{\"name\": \"" + params[i]->name + "\", \"value\": \"" + params[i]->value + "\"}";
+  }
+  out += "]";
+  return out;
+}
+
 bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** params) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
-  HnzUtility::log_error("%s Operation %s", beforeLog.c_str(), operation.c_str());
+  HnzUtility::log_info("%s Operation %s", beforeLog.c_str(), operation.c_str());
 
-  if (operation.compare("TC") == 0 && count == 3) {
-    int address = atoi(params[1]->value.c_str());
-    int value = atoi(params[2]->value.c_str());
+  if (operation == "HNZCommand") {
+    std::map<std::string, std::string> commandParams = {
+      {"co_type", ""},
+      {"co_addr", ""},
+      {"co_value", ""},
+    };
 
-    m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
-    return true;
+    for (int i=0 ; i<count ; i++) {
+      const std::string& paramName = params[i]->name;
+      const std::string& paramValue = params[i]->value;
+      if (commandParams.count(paramName) > 0) {
+        commandParams[paramName] = paramValue;
+      }
+      else {
+        HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());
+      }
+    }
+
+    bool allParamsFound = true;
+    for (const auto &kvp : commandParams) {
+      if (kvp.second == "") {
+        HnzUtility::log_error("%s Received HNZCommand with missing '%s' parameter", beforeLog.c_str(), kvp.first.c_str());
+        allParamsFound = false;
+      }
+    }
+
+    if (allParamsFound) {
+      const std::string& type = commandParams["co_type"];
+      const std::string& addrStr = commandParams["co_addr"];
+      const std::string& valStr = commandParams["co_value"];
+      int address = 0;
+      int value = 0;
+      bool allParamsConverted = true;
+      try {
+        address = std::stoi(addrStr);
+      } catch (const std::invalid_argument &e) {
+        HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+        allParamsConverted = false;
+      } catch (const std::out_of_range &e) {
+        HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+        allParamsConverted = false;
+      }
+      try {
+        value = std::stoi(valStr);
+      } catch (const std::invalid_argument &e) {
+        HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+        allParamsConverted = false;
+      } catch (const std::out_of_range &e) {
+        HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+        allParamsConverted = false;
+      }
+
+      if (allParamsConverted) {
+        if (type == "TC") {
+          m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
+          return true;
+        }
+        else if (type == "TVC") {
+          m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
+          return true;
+        }
+        else {
+          HnzUtility::log_error("%s Unknown co_type '%s' in HNZCommand", beforeLog.c_str(), type.c_str());
+        }
+      }
+    }
   }
-  else if (operation.compare("TVC") == 0 && count == 3) {
-    int address = atoi(params[1]->value.c_str());
-    int value = atoi(params[2]->value.c_str());
-
-    m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
-    return true;
-  }
-  else if (operation.compare("request_connection_status") == 0) {
+  else if (operation == "request_connection_status") {
     HnzUtility::log_info("%s Received request_connection_status", beforeLog.c_str());
     m_sendConnectionStatus();
     return true;
   }
 
-  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters", beforeLog.c_str(), operation.c_str(), count);
+  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters: %s", beforeLog.c_str(), operation.c_str(), count, paramsToStr(params, count).c_str());
   return false;
 }
 

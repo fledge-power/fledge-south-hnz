@@ -651,7 +651,8 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
 
 bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::sendTCCommand - " + m_name_log;
-  string address_str = to_string(address);
+  // Add a 0 in the string version to ensure that there is always 2 digits in the address
+  string address_str = "0" + to_string(address);
   unsigned char msg[3];
   msg[0] = TC_CODE;
   msg[1] = stoi(address_str.substr(0, address_str.length() - 1));

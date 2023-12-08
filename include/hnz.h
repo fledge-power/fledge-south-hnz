@@ -105,6 +105,15 @@ class HNZ {
                  PLUGIN_PARAMETER** params);
 
   /**
+   * Helper function used to parse the parameters of a command operation
+   * and call the appropriate processing function
+   *
+   * @param count Number of parameters
+   * @param params Array of parameters
+   */
+  bool processCommandOperation(int count, PLUGIN_PARAMETER** params);
+
+  /**
    * Utility function used to store the content of a frame as a human readable hex string
    *
    * @param frame The frame to format

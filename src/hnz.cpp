@@ -196,7 +196,7 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
 
   switch (t) {
   case MODULO_CODE:
-    HnzUtility::log_info("%s Received modulo time update");
+    HnzUtility::log_info("%s Received modulo time update", beforeLog.c_str());
     m_handleModuloCode(readings, data);
     break;
   case TM4_CODE:
@@ -547,11 +547,19 @@ std::string paramsToStr(PLUGIN_PARAMETER** params, int count) {
   return out;
 }
 
+/* Utility function used to tell if a string ends with another string */
+static bool endsWith(const std::string& str, const std::string& suffix)
+{
+  return str.size() >= suffix.size() && 0 == str.compare(str.size()-suffix.size(), suffix.size(), suffix);
+}
+
 bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** params) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
   HnzUtility::log_info("%s Operation %s", beforeLog.c_str(), operation.c_str());
 
-  if (operation == "HNZCommand") {
+  // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1239
+  // if (operation == "HNZCommand") {
+  if (endsWith(operation, "Command")) {
     if(processCommandOperation(count, params)) {
       // Only return on success so that all parameters are displayed by final error log in case of error
       return true;
@@ -581,6 +589,10 @@ bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
     const std::string& paramValue = params[i]->value;
     if (commandParams.count(paramName) > 0) {
       commandParams[paramName] = paramValue;
+      // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1240
+      if(paramValue.at(0) == '"'){
+        commandParams[paramName] = paramValue.substr(1,paramValue.length()-2);
+      }
     }
     else {
       HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());

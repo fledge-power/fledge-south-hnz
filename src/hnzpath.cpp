@@ -535,6 +535,7 @@ void HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
 }
 
 void HNZPath::m_sendInfoImmediately(Message message) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfoImmediately - " + m_name_log;
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
 
@@ -554,10 +555,15 @@ void HNZPath::m_sendInfoImmediately(Message message) {
   message.ns = m_ns;
   msg_sent.push_back(message);
 
+  HnzUtility::log_debug(beforeLog + " Sent information frame: " +
+                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1));
+
   m_ns = (m_ns + 1) % 8;
 }
 
 void HNZPath::sendBackInfo(Message& message) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::sendBackInfo - " + m_name_log;
+
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
 
@@ -572,6 +578,10 @@ void HNZPath::sendBackInfo(Message& message) {
   last_sent_time =
       std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
+  
+  HnzUtility::log_debug(beforeLog + " Resent information frame: " +
+                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1));
+
 }
 
 void HNZPath::m_send_date_setting() {
@@ -633,7 +643,7 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   msg[3] = (value >= 0) ? 0 : 0x80;
 
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " TVC sent (address = " + to_string(address) + ", value = " + to_string(value));
+  HnzUtility::log_warn(beforeLog + " TVC sent (address = " + to_string(address) + ", value = " + to_string(value) + ")");
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
@@ -659,7 +669,7 @@ bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " TC sent (address = " + to_string(address) + " and value = " + to_string(value));
+  HnzUtility::log_warn(beforeLog + " TC sent (address = " + to_string(address) + " and value = " + to_string(value) + ")");
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;

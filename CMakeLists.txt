@@ -44,7 +44,7 @@ if (${CMAKE_BUILD_TYPE} STREQUAL Coverage)
   message(STATUS "Using Fledge dev package includes2 " ${FLEDGE_INCLUDE})
 else()
   message("Build without Coverage") 
-  set(CMAKE_CXX_FLAGS "-O3")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -ggdb")

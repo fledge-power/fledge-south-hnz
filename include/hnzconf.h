@@ -70,8 +70,6 @@ constexpr unsigned int DEFAULT_GI_TIME = 255;
 constexpr unsigned int DEFAULT_C_ACK_TIME = 10;
 constexpr long long int DEFAULT_CMD_RECV_TIMEOUT = 100000; // 100ms
 
-constexpr char DEBUG_LEVEL[] = "debug";
-
 constexpr int RETRY_CONN_DELAY = 5;
 
 using namespace rapidjson;

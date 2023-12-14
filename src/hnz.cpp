@@ -28,7 +28,6 @@ HNZ::~HNZ() {
 void HNZ::start() {
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::start -";
-  Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 
   if (!m_hnz_conf->is_complete()) {
     HnzUtility::log_info("%s HNZ south plugin can't start because configuration is incorrect.", beforeLog.c_str());

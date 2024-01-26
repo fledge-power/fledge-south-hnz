@@ -1101,6 +1101,11 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Validate quality update for TS messages that were not sent
   validateMissingTSCGQualityUpdate({"TS3"}, false);
   if(HasFatalFailure()) return;
+
+  // Send a few extra CG requests to trigger the anticipation ratio message
+  hnz->sendCG();
+  hnz->sendCG();
+  hnz->sendCG();
 }
 
 TEST_F(HNZTest, ReceivingTMAMessages) {

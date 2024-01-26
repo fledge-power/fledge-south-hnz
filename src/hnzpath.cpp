@@ -556,7 +556,8 @@ void HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
       waitingMsgStr += "[" + convert_message_to_str(waitingMsg) + "]";
     }
     HnzUtility::log_debug(beforeLog + " Anticipation ratio reached (" + std::to_string(m_anticipation_ratio) + "), message ["
-                        + convert_data_to_str(msg, size) + "] will be delayed. Messages waiting: " + waitingMsgStr);
+                        + convert_data_to_str(msg, static_cast<int>(size)) + "] will be delayed. Messages waiting: "
+                        + waitingMsgStr);
     msg_waiting.push_back(message);
   }
 }

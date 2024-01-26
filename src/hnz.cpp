@@ -882,7 +882,7 @@ void HNZ::m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, co
   }
 }
 
-HNZ::AddressesDiff HNZ::m_getMismatchingTSCGAddresses() {
+HNZ::AddressesDiff HNZ::m_getMismatchingTSCGAddresses() const {
   std::set<unsigned int> missingAddresses;
   std::set<unsigned int> extraAddresses;
   // Fill missingAddresses with all known addresses

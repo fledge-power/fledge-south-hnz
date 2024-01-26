@@ -351,7 +351,7 @@ private:
     std::vector<unsigned int> missingAddresses;
     std::vector<unsigned int> extraAddresses;
   };
-  AddressesDiff m_getMismatchingTSCGAddresses();
+  AddressesDiff m_getMismatchingTSCGAddresses() const;
 
 };
 

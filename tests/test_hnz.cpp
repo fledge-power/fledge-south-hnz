@@ -150,8 +150,8 @@ string protocol_stack_generator(int port, int port2) {
                              to_string(port2) + "}"
                        : "") +
          " ] } , \"application_layer\" : { \"repeat_timeout\" : 3000, \"repeat_path_A\" : 3,"
-         "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2 },"
-         "\"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
+         "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2,"
+         "\"anticipation_ratio\" : 5 }, \"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
 }
 
 class HNZTestComp : public HNZ {
@@ -889,7 +889,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   if(HasFatalFailure()) return;
   
   ///////////////////////////////////////
-  // Send TS1 + TS2 only, then TS1 + TS2 + TS3 as CG answer
+  // Send TS1 + TS2 only, then TS3 only as CG answer
   ///////////////////////////////////////
   hnz->sendCG();
   debug_print("[HNZ south plugin] CG request 2 sent");
@@ -924,17 +924,18 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   }
 
   // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
-  frames = server->popLastFramesReceived();
-  CGframe = findFrameWithId(frames, 0x13);
-  ASSERT_NE(CGframe.get(), nullptr) << "Cound not find CG in frames received: " << BasicHNZServer::framesToStr(frames);
+  validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+  if(HasFatalFailure()) return;
 
   // Send only second of the two expected TS (new CG was sent so the TS received earlier are ignored)
   server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCG 2 sent");
-  this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
+  waitUntil(dataObjectsReceived, 3, 1000);
 
   // Only second of the 2 TS CG messages were sent, it contains data for TS3
-  ASSERT_EQ(dataObjectsReceived, 1);
+  // CG is incomplete, but as last TS was received, it is still considered a finished CG
+  // Then quality update were sent for all missing TS (TS1 + TS2)
+  ASSERT_EQ(dataObjectsReceived, 3);
   resetCounters();
   currentReading = popFrontReadingsUntil("TS3");
   validateReading(currentReading, "TS3", {
@@ -948,10 +949,26 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   });
   if(HasFatalFailure()) return;
 
-  // Extra CG messages should have been sent automatically because some TS are missing and last expected TS was received
+  // Validate quality update for TS messages that were not sent
+  validateMissingTSCGQualityUpdate({"TS1", "TS2"}, false);
+  if(HasFatalFailure()) return;
+
+  // As CG is finished, no more CG should be sent automatically any more
+  this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
   frames = server->popLastFramesReceived();
   CGframe = findFrameWithId(frames, 0x13);
-  ASSERT_NE(CGframe.get(), nullptr) << "Cound not find CG in frames received: " << BasicHNZServer::framesToStr(frames);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after last TS was received, but found: " << BasicHNZServer::frameToStr(CGframe);
+
+  ///////////////////////////////////////
+  // Send TS1 + TS2 + TS3 as CG answer
+  ///////////////////////////////////////
+  hnz->sendCG();
+  debug_print("[HNZ south plugin] CG request 3 sent");
+  this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
+
+  // Find the CG frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+  if(HasFatalFailure()) return;
 
   // Send both TS this time (new CG was sent so the TS received earlier are ignored)
   server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
@@ -986,7 +1003,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Send TS1 + TS2 + TS3 as CG answer with invalid flag for TS3
   ///////////////////////////////////////
   hnz->sendCG();
-  debug_print("[HNZ south plugin] CG request 3 sent");
+  debug_print("[HNZ south plugin] CG request 4 sent");
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
@@ -1018,31 +1035,61 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   }
 
   ///////////////////////////////////////
-  // Send TS3 only as CG answer
+  // Validate missing TS sent as invalid in case all CG attempts failed
   ///////////////////////////////////////
   hnz->sendCG();
-  debug_print("[HNZ south plugin] CG request 4 sent");
+  debug_print("[HNZ south plugin] CG request 6 sent");
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
   validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
   if(HasFatalFailure()) return;
 
-  // Abort the first two of the 3 CG requests by sending the last TS only
+  // Abort the first two of the 3 CG requests by sending the first TS only
   for(int i=0 ; i<2 ; i++) {
-    // Send only second of the two expected TS
-    server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
+    // Send only first of the two expected TS
+    server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
     debug_print("[HNZ Server] TSCG %d sent", (5+i));
-    waitUntil(dataObjectsReceived, 1, 1000);
+    this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
 
-    // Check that ingestCallback had been called
-    ASSERT_EQ(dataObjectsReceived, 1);
+    // Check that ingestCallback had been called for TS1 and TS2 only
+    ASSERT_EQ(dataObjectsReceived, 2);
     resetCounters();
-    currentReading = popFrontReadingsUntil("TS3");
-    validateReading(currentReading, "TS3", {
+    for (int j = 0; j < 2; j++) {
+      std::string label("TS" + to_string(j + 1));
+      currentReading = popFrontReadingsUntil(label);
+      validateReading(currentReading, label, {
+        {"do_type", {"string", "TS"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", addrByTS[label]}},
+        {"do_value", {"int64_t", "1"}},
+        {"do_valid", {"int64_t", "0"}},
+        {"do_cg", {"int64_t", "1"}},
+        {"do_outdated", {"int64_t", "0"}},
+      });
+      if(HasFatalFailure()) return;
+    }
+
+    // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
+    validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+    if(HasFatalFailure()) return;
+  }
+
+  // Send only first of the two expected TS on the final CG attempt
+  server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  debug_print("[HNZ Server] TSCG 7 sent");
+  waitUntil(dataObjectsReceived, 3, 1200); // gi_time + 200ms
+
+  // Check that ingestCallback had been called for TS1 and TS2 only
+  ASSERT_EQ(dataObjectsReceived, 3);
+  resetCounters();
+  for (int j = 0; j < 2; j++) {
+    std::string label("TS" + to_string(j + 1));
+    currentReading = popFrontReadingsUntil(label);
+    validateReading(currentReading, label, {
       {"do_type", {"string", "TS"}},
       {"do_station", {"int64_t", "1"}},
-      {"do_addr", {"int64_t", "577"}},
+      {"do_addr", {"int64_t", addrByTS[label]}},
       {"do_value", {"int64_t", "1"}},
       {"do_valid", {"int64_t", "0"}},
       {"do_cg", {"int64_t", "1"}},
@@ -1051,29 +1098,8 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     if(HasFatalFailure()) return;
   }
 
-  // Send only second of the two expected TS on the final CG attempt
-  server->sendFrame({0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
-  debug_print("[HNZ Server] TSCG 7 sent");
-  waitUntil(dataObjectsReceived, 3, 1000);
-
-  // Check that ingestCallback had been called
-  ASSERT_EQ(dataObjectsReceived, 3);
-  resetCounters();
-  // Only TS3 was received, the other two were sent as invalid quality update
-  currentReading = popFrontReadingsUntil("TS3");
-  validateReading(currentReading, "TS3", {
-    {"do_type", {"string", "TS"}},
-    {"do_station", {"int64_t", "1"}},
-    {"do_addr", {"int64_t", "577"}},
-    {"do_value", {"int64_t", "1"}},
-    {"do_valid", {"int64_t", "0"}},
-    {"do_cg", {"int64_t", "1"}},
-    {"do_outdated", {"int64_t", "0"}},
-  });
-  if(HasFatalFailure()) return;
-
   // Validate quality update for TS messages that were not sent
-  validateMissingTSCGQualityUpdate({"TS1", "TS2"}, false);
+  validateMissingTSCGQualityUpdate({"TS3"}, false);
   if(HasFatalFailure()) return;
 }
 

@@ -62,14 +62,31 @@ vector<unsigned char> convertPayloadToVector(unsigned char* data, int size) {
 /**
  * Helper method to convert payload into something readable for logs.
  */
-string convert_data_to_str(unsigned char* data, int len) {
+std::string convert_data_to_str(unsigned char* data, int len) {
   if (data == nullptr) {
     return "";
   }
   std::stringstream stream;
   for (int i = 0; i < len; i++) {
+    if (i > 0) {
+      stream << " ";
+    }
     stream << std::setfill ('0') << std::setw(2) << std::hex << static_cast<unsigned int>(data[i]);
-    if (i < len - 1) stream << " ";
+  }
+  return stream.str();
+}
+
+/**
+ * Helper method to convert message into something readable for logs.
+ */
+std::string convert_message_to_str(const Message& message) {
+  std::stringstream stream;
+  auto len = message.payload.size();
+  for (int i = 0; i < len; i++) {
+    if (i > 0) {
+      stream << " ";
+    }
+    stream << std::setfill ('0') << std::setw(2) << std::hex << static_cast<unsigned int>(message.payload[i]);
   }
   return stream.str();
 }
@@ -524,12 +541,23 @@ void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
 }
 
 void HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfo - " + m_name_log;
   Message message;
   message.payload = vector<unsigned char>(msg, msg + size);
 
   if (msg_sent.size() < m_anticipation_ratio) {
     m_sendInfoImmediately(message);
   } else {
+    std::string waitingMsgStr;
+    for(const Message& waitingMsg: msg_sent) {
+      if (waitingMsgStr.size() > 0){
+        waitingMsgStr += ", ";
+      }
+      waitingMsgStr += "[" + convert_message_to_str(waitingMsg) + "]";
+    }
+    HnzUtility::log_debug(beforeLog + " Anticipation ratio reached (" + std::to_string(m_anticipation_ratio) + "), message ["
+                        + convert_data_to_str(msg, static_cast<int>(size)) + "] will be delayed. Messages waiting: "
+                        + waitingMsgStr);
     msg_waiting.push_back(message);
   }
 }

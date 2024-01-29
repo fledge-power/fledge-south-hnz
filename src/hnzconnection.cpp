@@ -93,6 +93,7 @@ void HNZConnection::checkGICompleted(bool success) {
   // GI not completed in time or last TS received with other missing TS
   if (m_active_path->gi_repeat > gi_repeat_count_max) {
     // GI failed
+    HnzUtility::log_warn("%s Maximum GI repeat reached (%d)", beforeLog.c_str(), gi_repeat_count_max);
     m_hnz_fledge->GICompleted(false);
   } else {
     HnzUtility::log_warn("%s General Interrogation Timeout, repeat GI", beforeLog.c_str());
@@ -182,6 +183,7 @@ void HNZConnection::m_check_GI() {
   // Check the status of an ongoing GI
   if (m_active_path->gi_repeat != 0) {
     if (m_active_path->gi_start_time + gi_time_max < m_current) {
+      HnzUtility::log_warn("%s GI timeout (%d ms)", beforeLog.c_str(), gi_time_max);
       checkGICompleted(false);
     }
   }

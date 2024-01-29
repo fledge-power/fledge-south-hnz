@@ -187,6 +187,19 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   }
 }
 
+/* Helper function used to get a printable version of an address list */
+std::string formatAddresses(const std::vector<unsigned int>& addresses) {
+  std::string out = "[";
+  for(auto address: addresses) {
+    if(out.size() > 1) {
+      out += ", ";
+    }
+    out += std::to_string(address);
+  }
+  out += "]";
+  return out;
+}
+
 void HNZ::m_handle_message(const vector<unsigned char>& data) {
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handle_message -";
@@ -235,13 +248,18 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
   }
   // Check if GI is complete (make sure we only update the end of GI status after creating readings for all TS received)
   if ((t == TSCG_CODE) && !m_gi_addresses_received.empty()) {
-    // All expected TS received: GI succeeded
-    if (m_gi_addresses_received.size() == m_hnz_conf->getNumberCG()) {
+    // Last expected TS received: GI succeeded
+    if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {  
+      auto nbTSCG = m_hnz_conf->getNumberCG();
+      // Mismatch in the number of TS received: Log CG as incomplete
+      if (m_gi_addresses_received.size() != nbTSCG) {
+        AddressesDiff TSAddressesDiff = m_getMismatchingTSCGAddresses();
+        HnzUtility::log_warn("%s Received last TSCG but %lu TS received when %lu were expected: Missing %s, Extra %s",
+                            beforeLog.c_str(), m_gi_addresses_received.size(), nbTSCG,
+                            formatAddresses(TSAddressesDiff.missingAddresses).c_str(),
+                            formatAddresses(TSAddressesDiff.extraAddresses).c_str());
+      }
       m_hnz_connection->checkGICompleted(true);
-      // Last expected TS received but some other TS were missing: GI failed
-    }
-    else if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {
-      m_hnz_connection->checkGICompleted(false);
     }
   }
 }
@@ -554,7 +572,7 @@ static bool endsWith(const std::string& str, const std::string& suffix)
 
 bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** params) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
-  HnzUtility::log_info("%s Operation %s", beforeLog.c_str(), operation.c_str());
+  HnzUtility::log_info("%s Operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str());
 
   // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1239
   // if (operation == "HNZCommand") {
@@ -805,6 +823,7 @@ void HNZ::GICompleted(bool success) {
   m_hnz_connection->onGICompleted();
   if (success) {
     HnzUtility::log_info("%s General Interrogation completed.", beforeLog.c_str());
+    m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FINISHED);
   }
   else {
@@ -861,4 +880,27 @@ void HNZ::m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, co
   if (!readings.empty()) {
     m_sendToFledge(readings);
   }
+}
+
+HNZ::AddressesDiff HNZ::m_getMismatchingTSCGAddresses() const {
+  std::set<unsigned int> missingAddresses;
+  std::set<unsigned int> extraAddresses;
+  // Fill missingAddresses with all known addresses
+  const auto& allMessages = m_hnz_conf->get_all_messages();
+  const auto& allTSs = allMessages.at("TS").at(m_remote_address);
+  for (auto const& kvp : allTSs) {
+    unsigned int msg_address = kvp.first;
+    missingAddresses.insert(msg_address);
+  }
+  // Remove addresses received in missingAddresses / store unknown addresses in extraAddresses
+  for(auto address: m_gi_addresses_received) {
+    if(missingAddresses.count(address) == 0) {
+      extraAddresses.insert(address);
+    } else {
+      missingAddresses.erase(address);
+    }
+  }
+  return AddressesDiff{
+    std::vector<unsigned int>(missingAddresses.begin(), missingAddresses.end()),
+    std::vector<unsigned int>(extraAddresses.begin(), extraAddresses.end())};
 }

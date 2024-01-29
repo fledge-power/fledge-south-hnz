@@ -342,6 +342,17 @@ private:
    */
   void m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, const vector<unsigned int>& rejectFilter = {});
 
+  /**
+   * At the end of a CG request returns:
+   * - The list of TS addresses that are missing
+   * - The list of TS adresses that were received but not expected
+   */
+  struct AddressesDiff {
+    std::vector<unsigned int> missingAddresses;
+    std::vector<unsigned int> extraAddresses;
+  };
+  AddressesDiff m_getMismatchingTSCGAddresses() const;
+
 };
 
 #endif

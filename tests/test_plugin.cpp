@@ -164,12 +164,11 @@ TEST(HNZ, PluginReconfigure) {
   PLUGIN_HANDLE handle = nullptr;
   ASSERT_NO_THROW(handle = plugin_init(emptyConfig));
   ASSERT_NE(handle, nullptr);
-  ASSERT_NO_THROW(plugin_reconfigure(static_cast<PLUGIN_HANDLE *>(handle), new_test_conf));
+  ASSERT_NO_THROW(plugin_reconfigure(&handle, new_test_conf));
 
   ASSERT_NO_THROW(plugin_shutdown(static_cast<PLUGIN_HANDLE *>(handle)));
 
-  handle = nullptr;
-  ASSERT_THROW(plugin_reconfigure(static_cast<PLUGIN_HANDLE *>(handle), new_test_conf), exception);
+  ASSERT_THROW(plugin_reconfigure(nullptr, new_test_conf), exception);
 
   delete emptyConfig;
 }

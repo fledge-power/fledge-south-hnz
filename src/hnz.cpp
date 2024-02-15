@@ -28,7 +28,6 @@ HNZ::~HNZ() {
 void HNZ::start() {
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::start -";
-  Logger::getLogger()->setMinLevel(DEBUG_LEVEL);
 
   if (!m_hnz_conf->is_complete()) {
     HnzUtility::log_info("%s HNZ south plugin can't start because configuration is incorrect.", beforeLog.c_str());
@@ -188,6 +187,19 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   }
 }
 
+/* Helper function used to get a printable version of an address list */
+std::string formatAddresses(const std::vector<unsigned int>& addresses) {
+  std::string out = "[";
+  for(auto address: addresses) {
+    if(out.size() > 1) {
+      out += ", ";
+    }
+    out += std::to_string(address);
+  }
+  out += "]";
+  return out;
+}
+
 void HNZ::m_handle_message(const vector<unsigned char>& data) {
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handle_message -";
@@ -196,7 +208,7 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
 
   switch (t) {
   case MODULO_CODE:
-    HnzUtility::log_info("%s Received modulo time update");
+    HnzUtility::log_info("%s Received modulo time update", beforeLog.c_str());
     m_handleModuloCode(readings, data);
     break;
   case TM4_CODE:
@@ -236,13 +248,18 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
   }
   // Check if GI is complete (make sure we only update the end of GI status after creating readings for all TS received)
   if ((t == TSCG_CODE) && !m_gi_addresses_received.empty()) {
-    // All expected TS received: GI succeeded
-    if (m_gi_addresses_received.size() == m_hnz_conf->getNumberCG()) {
+    // Last expected TS received: GI succeeded
+    if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {  
+      auto nbTSCG = m_hnz_conf->getNumberCG();
+      // Mismatch in the number of TS received: Log CG as incomplete
+      if (m_gi_addresses_received.size() != nbTSCG) {
+        AddressesDiff TSAddressesDiff = m_getMismatchingTSCGAddresses();
+        HnzUtility::log_warn("%s Received last TSCG but %lu TS received when %lu were expected: Missing %s, Extra %s",
+                            beforeLog.c_str(), m_gi_addresses_received.size(), nbTSCG,
+                            formatAddresses(TSAddressesDiff.missingAddresses).c_str(),
+                            formatAddresses(TSAddressesDiff.extraAddresses).c_str());
+      }
       m_hnz_connection->checkGICompleted(true);
-      // Last expected TS received but some other TS were missing: GI failed
-    }
-    else if (m_gi_addresses_received.back() == m_hnz_conf->getLastTSAddress()) {
-      m_hnz_connection->checkGICompleted(false);
     }
   }
 }
@@ -534,31 +551,113 @@ void HNZ::registerIngest(void* data, INGEST_CB cb) {
   m_data = data;
 }
 
+/* Utility function used to print an array of PLUGIN_PARAMETER pointers in json format */
+std::string paramsToStr(PLUGIN_PARAMETER** params, int count) {
+  std::string out = "[";
+  for (int i = 0; i < count; i++){
+    if (i > 0) {
+      out += ", ";
+    }
+    out += R"({"name": ")" + params[i]->name + R"(", "value": ")" + params[i]->value + R"("})";
+  }
+  out += "]";
+  return out;
+}
+
+/* Utility function used to tell if a string ends with another string */
+static bool endsWith(const std::string& str, const std::string& suffix)
+{
+  return str.size() >= suffix.size() && 0 == str.compare(str.size()-suffix.size(), suffix.size(), suffix);
+}
+
 bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** params) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
-  HnzUtility::log_error("%s Operation %s", beforeLog.c_str(), operation.c_str());
+  HnzUtility::log_info("%s Operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str());
 
-  if (operation.compare("TC") == 0 && count == 3) {
-    int address = atoi(params[1]->value.c_str());
-    int value = atoi(params[2]->value.c_str());
-
-    m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
-    return true;
+  // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1239
+  // if (operation == "HNZCommand") {
+  if (endsWith(operation, "Command")) {
+    if(processCommandOperation(count, params)) {
+      // Only return on success so that all parameters are displayed by final error log in case of error
+      return true;
+    }
   }
-  else if (operation.compare("TVC") == 0 && count == 3) {
-    int address = atoi(params[1]->value.c_str());
-    int value = atoi(params[2]->value.c_str());
-
-    m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
-    return true;
-  }
-  else if (operation.compare("request_connection_status") == 0) {
+  else if (operation == "request_connection_status") {
     HnzUtility::log_info("%s Received request_connection_status", beforeLog.c_str());
     m_sendConnectionStatus();
     return true;
   }
 
-  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters", beforeLog.c_str(), operation.c_str(), count);
+  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters: %s", beforeLog.c_str(), operation.c_str(), count, paramsToStr(params, count).c_str());
+  return false;
+}
+
+bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::processCommandOperation -";
+  
+  std::map<std::string, std::string> commandParams = {
+    {"co_type", ""},
+    {"co_addr", ""},
+    {"co_value", ""},
+  };
+
+  for (int i=0 ; i<count ; i++) {
+    const std::string& paramName = params[i]->name;
+    const std::string& paramValue = params[i]->value;
+    if (commandParams.count(paramName) > 0) {
+      commandParams[paramName] = paramValue;
+      // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1240
+      if(paramValue.at(0) == '"'){
+        commandParams[paramName] = paramValue.substr(1,paramValue.length()-2);
+      }
+    }
+    else {
+      HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());
+    }
+  }
+
+  for (const auto &kvp : commandParams) {
+    if (kvp.second == "") {
+      HnzUtility::log_error("%s Received HNZCommand with missing '%s' parameter", beforeLog.c_str(), kvp.first.c_str());
+      return false;
+    }
+  }
+
+  const std::string& type = commandParams["co_type"];
+  const std::string& addrStr = commandParams["co_addr"];
+  const std::string& valStr = commandParams["co_value"];
+
+  int address = 0;
+  try {
+    address = std::stoi(addrStr);
+  } catch (const std::invalid_argument &e) {
+    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  } catch (const std::out_of_range &e) {
+    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  }
+
+  int value = 0;
+  try {
+    value = std::stoi(valStr);
+  } catch (const std::invalid_argument &e) {
+    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  } catch (const std::out_of_range &e) {
+    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+    return false;
+  }
+
+  if (type == "TC") {
+    return m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
+  }
+  else if (type == "TVC") {
+    return m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
+  }
+  else {
+    HnzUtility::log_error("%s Unknown co_type '%s' in HNZCommand", beforeLog.c_str(), type.c_str());
+  }
   return false;
 }
 
@@ -724,6 +823,7 @@ void HNZ::GICompleted(bool success) {
   m_hnz_connection->onGICompleted();
   if (success) {
     HnzUtility::log_info("%s General Interrogation completed.", beforeLog.c_str());
+    m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FINISHED);
   }
   else {
@@ -780,4 +880,27 @@ void HNZ::m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, co
   if (!readings.empty()) {
     m_sendToFledge(readings);
   }
+}
+
+HNZ::AddressesDiff HNZ::m_getMismatchingTSCGAddresses() const {
+  std::set<unsigned int> missingAddresses;
+  std::set<unsigned int> extraAddresses;
+  // Fill missingAddresses with all known addresses
+  const auto& allMessages = m_hnz_conf->get_all_messages();
+  const auto& allTSs = allMessages.at("TS").at(m_remote_address);
+  for (auto const& kvp : allTSs) {
+    unsigned int msg_address = kvp.first;
+    missingAddresses.insert(msg_address);
+  }
+  // Remove addresses received in missingAddresses / store unknown addresses in extraAddresses
+  for(auto address: m_gi_addresses_received) {
+    if(missingAddresses.count(address) == 0) {
+      extraAddresses.insert(address);
+    } else {
+      missingAddresses.erase(address);
+    }
+  }
+  return AddressesDiff{
+    std::vector<unsigned int>(missingAddresses.begin(), missingAddresses.end()),
+    std::vector<unsigned int>(extraAddresses.begin(), extraAddresses.end())};
 }

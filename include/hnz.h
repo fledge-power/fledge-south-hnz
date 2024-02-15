@@ -105,6 +105,15 @@ class HNZ {
                  PLUGIN_PARAMETER** params);
 
   /**
+   * Helper function used to parse the parameters of a command operation
+   * and call the appropriate processing function
+   *
+   * @param count Number of parameters
+   * @param params Array of parameters
+   */
+  bool processCommandOperation(int count, PLUGIN_PARAMETER** params);
+
+  /**
    * Utility function used to store the content of a frame as a human readable hex string
    *
    * @param frame The frame to format
@@ -332,6 +341,17 @@ private:
    * @param rejectFilter Only the TI with an address NOT listed in this filter will be sent
    */
   void m_sendAllTIQualityReadings(const ReadingParameters& paramsTemplate, const vector<unsigned int>& rejectFilter = {});
+
+  /**
+   * At the end of a CG request returns:
+   * - The list of TS addresses that are missing
+   * - The list of TS adresses that were received but not expected
+   */
+  struct AddressesDiff {
+    std::vector<unsigned int> missingAddresses;
+    std::vector<unsigned int> extraAddresses;
+  };
+  AddressesDiff m_getMismatchingTSCGAddresses() const;
 
 };
 

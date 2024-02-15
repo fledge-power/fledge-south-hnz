@@ -62,14 +62,31 @@ vector<unsigned char> convertPayloadToVector(unsigned char* data, int size) {
 /**
  * Helper method to convert payload into something readable for logs.
  */
-string convert_data_to_str(unsigned char* data, int len) {
+std::string convert_data_to_str(unsigned char* data, int len) {
   if (data == nullptr) {
     return "";
   }
   std::stringstream stream;
   for (int i = 0; i < len; i++) {
+    if (i > 0) {
+      stream << " ";
+    }
     stream << std::setfill ('0') << std::setw(2) << std::hex << static_cast<unsigned int>(data[i]);
-    if (i < len - 1) stream << " ";
+  }
+  return stream.str();
+}
+
+/**
+ * Helper method to convert message into something readable for logs.
+ */
+std::string convert_message_to_str(const Message& message) {
+  std::stringstream stream;
+  auto len = message.payload.size();
+  for (int i = 0; i < len; i++) {
+    if (i > 0) {
+      stream << " ";
+    }
+    stream << std::setfill ('0') << std::setw(2) << std::hex << static_cast<unsigned int>(message.payload[i]);
   }
   return stream.str();
 }
@@ -524,17 +541,29 @@ void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
 }
 
 void HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfo - " + m_name_log;
   Message message;
   message.payload = vector<unsigned char>(msg, msg + size);
 
   if (msg_sent.size() < m_anticipation_ratio) {
     m_sendInfoImmediately(message);
   } else {
+    std::string waitingMsgStr;
+    for(const Message& waitingMsg: msg_sent) {
+      if (waitingMsgStr.size() > 0){
+        waitingMsgStr += ", ";
+      }
+      waitingMsgStr += "[" + convert_message_to_str(waitingMsg) + "]";
+    }
+    HnzUtility::log_debug(beforeLog + " Anticipation ratio reached (" + std::to_string(m_anticipation_ratio) + "), message ["
+                        + convert_data_to_str(msg, static_cast<int>(size)) + "] will be delayed. Messages waiting: "
+                        + waitingMsgStr);
     msg_waiting.push_back(message);
   }
 }
 
 void HNZPath::m_sendInfoImmediately(Message message) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfoImmediately - " + m_name_log;
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
 
@@ -554,10 +583,15 @@ void HNZPath::m_sendInfoImmediately(Message message) {
   message.ns = m_ns;
   msg_sent.push_back(message);
 
+  HnzUtility::log_debug(beforeLog + " Sent information frame: " +
+                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1));
+
   m_ns = (m_ns + 1) % 8;
 }
 
 void HNZPath::sendBackInfo(Message& message) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::sendBackInfo - " + m_name_log;
+
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
 
@@ -572,6 +606,10 @@ void HNZPath::sendBackInfo(Message& message) {
   last_sent_time =
       std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
           .count();
+  
+  HnzUtility::log_debug(beforeLog + " Resent information frame: " +
+                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1));
+
 }
 
 void HNZPath::m_send_date_setting() {
@@ -633,7 +671,7 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   msg[3] = (value >= 0) ? 0 : 0x80;
 
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " TVC sent (address = " + to_string(address) + ", value = " + to_string(value));
+  HnzUtility::log_warn(beforeLog + " TVC sent (address = " + to_string(address) + ", value = " + to_string(value) + ")");
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
@@ -651,14 +689,15 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
 
 bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::sendTCCommand - " + m_name_log;
-  string address_str = to_string(address);
+  // Add a 0 in the string version to ensure that there is always 2 digits in the address
+  string address_str = "0" + to_string(address);
   unsigned char msg[3];
   msg[0] = TC_CODE;
   msg[1] = stoi(address_str.substr(0, address_str.length() - 1));
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " TC sent (address = " + to_string(address) + " and value = " + to_string(value));
+  HnzUtility::log_warn(beforeLog + " TC sent (address = " + to_string(address) + " and value = " + to_string(value) + ")");
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;

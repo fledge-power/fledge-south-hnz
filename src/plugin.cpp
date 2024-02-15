@@ -22,6 +22,9 @@ typedef void (*INGEST_CB)(void *, Reading);
 
 using namespace std;
 
+#define STRINGIFY(x) #x
+#define STRINGIFY_MACRO(x) STRINGIFY(x)
+
 // PLUGIN DEFAULT PROTOCOL STACK CONF
 #define PROTOCOL_STACK_DEF                            \
   QUOTE({                                             \
@@ -156,6 +159,9 @@ PLUGIN_INFORMATION *plugin_info() {
 }
 
 PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
+  #ifdef START_LOG_LEVEL
+  Logger::getLogger()->setMinLevel(STRINGIFY_MACRO(START_LOG_LEVEL));
+  #endif
 
   std::string beforeLog = HnzUtility::NamePlugin + " - plugin_init -";
   HnzUtility::log_info("%s Initializing the plugin", beforeLog.c_str());
@@ -214,7 +220,7 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
   std::string beforeLog = HnzUtility::NamePlugin + " - plugin_reconfigure -";
   HnzUtility::log_info("%s New config: %s", beforeLog.c_str(), newConfig.c_str());
 
-  auto hnz = reinterpret_cast<HNZ *>(handle);
+  auto hnz = reinterpret_cast<HNZ *>(*handle);
   ConfigCategory config("newConfig", newConfig);
   hnz->reconfigure(config);
 }

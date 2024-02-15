@@ -212,10 +212,10 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
     try {
       tmp = std::stoul(address);
     } catch (const std::invalid_argument &e) {
-      HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + e.what());
+      HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + typeid(e).name() + ": " + e.what());
       is_complete = false;
     } catch (const std::out_of_range &e) {
-      HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + e.what());
+      HnzUtility::log_error(beforeLog + "Cannot convert address '" + address + "' to integer: " + typeid(e).name() + ": " + e.what());
       is_complete = false;
     }
     unsigned int msg_address = 0;
@@ -375,10 +375,10 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, BulleFormat *target
     bulle.first = stoul(temp.substr(0, 2), nullptr, 16);
     bulle.second = stoul(temp.substr(2), nullptr, 16);
   } catch (const std::invalid_argument &e) {
-    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", cannot convert hex string to int: " + e.what());
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", cannot convert hex string to int: " + typeid(e).name() + ": " + e.what());
     return false;
   } catch (const std::out_of_range &e) {
-    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", cannot convert hex string to int: " + e.what());
+    HnzUtility::log_error(beforeLog + "Error with the field " + s + ", cannot convert hex string to int: " + typeid(e).name() + ": " + e.what());
     return false;
   }
 
@@ -412,10 +412,10 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, GIScheduleFormat *t
         time.hour = stoi(temp.substr(0, 2));
         time.min = stoi(temp.substr(3));
       } catch (const std::invalid_argument &e) {
-        HnzUtility::log_error(beforeLog + "Cannot convert time '" + temp + "' to integers: " + e.what());
+        HnzUtility::log_error(beforeLog + "Cannot convert time '" + temp + "' to integers: " + typeid(e).name() + ": " + e.what());
         return false;
       } catch (const std::out_of_range &e) {
-        HnzUtility::log_error(beforeLog + "Cannot convert time '" + temp + "' to integers: " + e.what());
+        HnzUtility::log_error(beforeLog + "Cannot convert time '" + temp + "' to integers: " + typeid(e).name() + ": " + e.what());
         return false;
       }
 

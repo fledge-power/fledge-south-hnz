@@ -204,13 +204,13 @@ class HNZTest : public testing::Test {
     const std::string& protocol_stack = protocol_stack_generator(port, port2);
     std::string configure = std::regex_replace(configureTemplate, std::regex("<protocol_stack>"), protocol_stack);
     configure = std::regex_replace(configure, std::regex("<exchanged_data>"), exchanged_data_def);
-    auto config = new ConfigCategory("newConfig", configure);
-    hnz->reconfigure(*config);
+    ConfigCategory config("newConfig", configure);
+    hnz->reconfigure(config);
   }
 
   static void startHNZ(int port, int port2) {
     initConfig(port, port2);
-    hnz->start();
+    hnz->start(true);
   }
 
   template<class... Args>
@@ -661,13 +661,13 @@ class ServersWrapper {
     }
     std::shared_ptr<BasicHNZServer> server1() {
       if (m_server1 && !m_server1->HNZServerIsReady()) {
-        m_server1 = nullptr;
+        return nullptr;
       }
       return m_server1;
     }
     std::shared_ptr<BasicHNZServer> server2() {
       if (m_server2 && !m_server2->HNZServerIsReady()) {
-        m_server2 = nullptr;
+        return nullptr;
       }
       return m_server2;
     }
@@ -2153,6 +2153,107 @@ TEST_F(HNZTest, ReconfigureWhileConnectionActive) {
     {"gi_status", "finished"},
   });
   if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, ReconfigureBadConfig) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  debug_print("[HNZ south plugin] Send bad plugin configuration");
+  clearReadings();
+  static const std::string badConfig = QUOTE({
+    "exchanged_data" : {
+      "value": 42
+    }
+  });
+  ConfigCategory config("newConfig", badConfig);
+  hnz->reconfigure(config);
+
+  // Check that connection was lost
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  // Validate new connection state
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+  });
+  if(HasFatalFailure()) return;
+
+  // No quality update message as new config contains no TI
+  ASSERT_EQ(dataObjectsReceived, 0);
+
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop...");
+  server->stopHNZServer();
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that connection cannot be established as client is no longer running due to invalid configuration
+  BasicHNZServer* deadServer = wrapper.server1().get();
+  ASSERT_EQ(deadServer, nullptr) << "Something went wrong. Server should not be able to reconnect, but it did!";
+
+  // This calls HNZ::reconfigure() again, causing a reconnect of the client
+  debug_print("[HNZ south plugin] Send good plugin configuration");
+  clearReadings();
+  wrapper.initHNZPlugin();
+
+  // Check that connection attempt to reopen on client side
+  validateAllTIQualityUpdate(true, false, true);
+  if(HasFatalFailure()) return;
+
+  // Restart the server
+  debug_print("[HNZ server] Request server stop 2...");
+  server->stopHNZServer();
+  debug_print("[HNZ server] Request server start 2...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  // Wait for initial CG request
+  waitUntil(southEventsReceived, 2, 1000);
+  // Check that ingestCallback had been called only for two GI status updates
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+  // Validate reconnection
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Complete CG request by sending all expected TS
+  server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] TSCG sent");
+  waitUntil(southEventsReceived, 2, 1000);
+  // Check that ingestCallback had been called only for two GI status updates
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Manually stop the server here or we may end up in a deadlock in the HNZServer
+  debug_print("[HNZ server] Request server stop 3...");
+  server->stopHNZServer();
 }
 
 TEST_F(HNZTest, UnknownMessage) {

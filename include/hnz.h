@@ -74,13 +74,15 @@ class HNZ {
 
   /**
    * Start the HZN south plugin
+   * @param requestedStart tells if start was requested by the Fledge API
    */
-  void start();
+  void start(bool requestedStart = false);
 
   /**
    * Stop the HZN south plugin
+   * @param requestedStop tells if stop was requested by the Fledge API
    */
-  void stop();
+  void stop(bool requestedStop = false);
 
   /**
    * Save the callback function and its data
@@ -170,7 +172,11 @@ class HNZ {
   void sendInitialGI();
 
 private:
+  // Tells if the plugin is currently running
   std::atomic<bool> m_is_running{false};
+  // Tells if the plugin should be running (eg: if you should be restarted after a configuration change)
+  std::atomic<bool> m_should_run{false};
+
   // Receiving threads
   std::unique_ptr<std::thread> m_receiving_thread_A;
   std::unique_ptr<std::thread> m_receiving_thread_B;

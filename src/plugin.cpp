@@ -190,7 +190,7 @@ void plugin_start(PLUGIN_HANDLE *handle) {
   std::string beforeLog = HnzUtility::NamePlugin + " - plugin_start -";
   HnzUtility::log_info("%s Starting the plugin...", beforeLog.c_str());
   auto hnz = reinterpret_cast<HNZ *>(handle);
-  hnz->start();
+  hnz->start(true);
   HnzUtility::log_info("%s Plugin started", beforeLog.c_str());
 }
 

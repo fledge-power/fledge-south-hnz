@@ -21,13 +21,22 @@ HNZ::HNZ() {}
 
 HNZ::~HNZ() {
   if (m_is_running) {
-    stop();
+    stop(true);
   }
 }
 
-void HNZ::start() {
+void HNZ::start(bool requestedStart /*= false*/) {
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::start -";
+
+  if (requestedStart) {
+    m_should_run = true;
+  }
+
+  if (m_is_running) {
+    HnzUtility::log_info("%s HNZ south plugin already started", beforeLog.c_str());
+    return;
+  }
 
   if (!m_hnz_conf->is_complete()) {
     HnzUtility::log_info("%s HNZ south plugin can't start because configuration is incorrect.", beforeLog.c_str());
@@ -53,10 +62,14 @@ void HNZ::start() {
   m_hnz_connection->start();
 }
 
-void HNZ::stop() {
+void HNZ::stop(bool requestedStop /*= false*/) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::stop -";
   HnzUtility::log_info("%s Starting shutdown of HNZ plugin", beforeLog.c_str());
   m_is_running = false;
+
+  if (requestedStop) {
+    m_should_run = false;
+  }
 
   // Connection must be stopped before management threads of both path
   // or join on both receive threads will hang forever
@@ -104,7 +117,7 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
     HnzUtility::log_info("%s No new configuration provided to reconfigure, skipping", beforeLog.c_str());
     return;
   }
-  bool was_running = m_is_running;
+
   if (m_is_running) {
     HnzUtility::log_info("%s Configuration change requested, stopping the plugin", beforeLog.c_str());
     stop();
@@ -129,7 +142,7 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
   m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
 
-  if (was_running) {
+  if (m_should_run) {
     HnzUtility::log_warn("%s Restarting the plugin...", beforeLog.c_str());
     start();
   }

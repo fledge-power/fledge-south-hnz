@@ -30,6 +30,7 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
   }
   else {
     HnzUtility::log_fatal("%s Attempted to start HNZ connection with no IP configured, aborting", beforeLog.c_str());
+    return;
   }
 
   // Set settings for GI
@@ -215,7 +216,8 @@ void HNZConnection::m_check_command_timer() {
     list<Command_message>::iterator it = m_active_path->command_sent.begin();
     while (it != m_active_path->command_sent.end()) {
       if (it->timestamp_max < m_current) {
-        HnzUtility::log_error("%s A remote control was not acknowledged in time !", beforeLog.c_str());
+        HnzUtility::log_warn("%s A remote control (%s addr=%d) was not acknowledged in time !", beforeLog.c_str(),
+                            it->type.c_str(), it->addr);
         m_active_path->go_to_connection();
         it = m_active_path->command_sent.erase(it);
         // DF.GLOB.TC : nothing to do in HNZ

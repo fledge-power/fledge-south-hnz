@@ -203,7 +203,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
       sleep = milliseconds(m_repeat_timeout);
     } else {
       // Inactivity timer reached
-      HnzUtility::log_error(beforeLog + " Inacc timeout! Reconnecting...");
+      HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
       m_connected = false;
       // Reconnection will be done in HNZ::receive
     }
@@ -234,7 +234,7 @@ milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
 
 void HNZPath::go_to_connection() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::go_to_connection - " + m_name_log;
-  HnzUtility::log_warn(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
+  HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
   m_protocol_state = CONNECTION;
   if (!m_isOtherPathHNZConnected()) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
@@ -343,7 +343,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
             m_sendRR(pf == 1, ns, nr);
           } else {
             // Supervision frame
-            HnzUtility::log_warn(beforeLog + " RR received (f = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
+            HnzUtility::log_info(beforeLog + " RR received (f = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
             m_receivedRR(nr, pf == 1);
           }
         }
@@ -351,7 +351,8 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
         break;
     }
   } else {
-    HnzUtility::log_warn(beforeLog + " The address don't match the configuration!");
+    HnzUtility::log_warn(beforeLog + " The received address " + to_string(address) +
+                        " don't match the configured address: " + to_string(m_remote_address));
   }
   return messages;
 }
@@ -622,7 +623,7 @@ void HNZPath::m_send_date_setting() {
   msg[2] = time_struct->tm_mon + 1;
   msg[3] = time_struct->tm_year % 100;
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " Time setting sent : " + to_string((int)msg[1]) + "/" +
+  HnzUtility::log_info(beforeLog + " Time setting sent : " + to_string((int)msg[1]) + "/" +
                                   to_string((int)msg[2]) + "/" + to_string((int)msg[3]));
 }
 
@@ -642,7 +643,7 @@ void HNZPath::m_send_time_setting() {
   msg[3] = frac & 0xff;
   msg[4] = 0x00;
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " Time setting sent : mod10m = " + to_string(mod10m) +
+  HnzUtility::log_info(beforeLog + " Time setting sent : mod10m = " + to_string(mod10m) +
                                   " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) +
                                   "h" + to_string((mod10m % 6) * 10) + "m and " + to_string(frac / 100) +
                                   "s " + to_string(frac % 100) + "ms");
@@ -652,7 +653,7 @@ void HNZPath::sendGeneralInterrogation() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::sendGeneralInterrogation - " + m_name_log;
   unsigned char msg[2]{0x13, 0x01};
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " GI (General Interrogation) request sent");
+  HnzUtility::log_info(beforeLog + " GI (General Interrogation) request sent");
   if ((gi_repeat == 0) || (m_hnz_connection->getGiStatus() != GiStatus::IN_PROGRESS)) {
     m_hnz_connection->updateGiStatus(GiStatus::STARTED);
   }
@@ -671,7 +672,7 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   msg[3] = (value >= 0) ? 0 : 0x80;
 
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " TVC sent (address = " + to_string(address) + ", value = " + to_string(value) + ")");
+  HnzUtility::log_info(beforeLog + " TVC sent (address = " + to_string(address) + ", value = " + to_string(value) + ")");
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
@@ -697,7 +698,7 @@ bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 
   m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_warn(beforeLog + " TC sent (address = " + to_string(address) + " and value = " + to_string(value) + ")");
+  HnzUtility::log_info(beforeLog + " TC sent (address = " + to_string(address) + " and value = " + to_string(value) + ")");
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;

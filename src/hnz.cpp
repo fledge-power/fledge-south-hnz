@@ -132,7 +132,7 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
     m_hnz_conf->importExchangedDataJson(msg_conf_json);
   }
   if (!m_hnz_conf->is_complete()) {
-    HnzUtility::log_fatal("%s Unable to set Plugin configuration due to error with the json conf.", beforeLog.c_str());
+    HnzUtility::log_fatal("%s Unable to set Plugin configuration due to error with the json conf", beforeLog.c_str());
     return;
   }
 
@@ -141,9 +141,13 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
   m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
+  if (!m_hnz_connection->isRunning()) {
+    HnzUtility::log_fatal("%s Unable to start HNZ Connection", beforeLog.c_str());
+    return;
+  }
 
   if (m_should_run) {
-    HnzUtility::log_warn("%s Restarting the plugin...", beforeLog.c_str());
+    HnzUtility::log_info("%s Restarting the plugin...", beforeLog.c_str());
     start();
   }
 }
@@ -169,7 +173,7 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
     return;
   }
 
-  HnzUtility::log_warn("%s Listening for data...", beforeLog.c_str());
+  HnzUtility::log_info("%s Listening for data...", beforeLog.c_str());
 
   vector<vector<unsigned char>> messages;
 
@@ -840,7 +844,7 @@ void HNZ::GICompleted(bool success) {
     updateGiStatus(GiStatus::FINISHED);
   }
   else {
-    HnzUtility::log_error("%s General Interrogation FAILED !", beforeLog.c_str());
+    HnzUtility::log_warn("%s General Interrogation FAILED !", beforeLog.c_str());
     m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FAILED);
   }

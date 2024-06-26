@@ -14,6 +14,7 @@
 
 #include <string>
 #include <logger.h>
+#include <audit_logger.h>
 
 #define PLUGIN_NAME "hnz"
 
@@ -67,6 +68,22 @@ namespace HnzUtility {
         fflush(stdout);
         #endif
         Logger::getLogger()->fatal(format.c_str(), std::forward<Args>(args)...);
+    }
+
+    inline void audit_fail(const std::string& code, const std::string& data) {  
+        AuditLogger::getLogger()->auditLog(code.c_str(), "FAILURE", data.c_str());
+    }
+
+    inline void audit_success(const std::string& code, const std::string& data) {  
+        AuditLogger::getLogger()->auditLog(code.c_str(), "SUCCESS", data.c_str());
+    }
+
+    inline void audit_warn(const std::string& code, const std::string& data) {  
+        AuditLogger::getLogger()->auditLog(code.c_str(), "WARNING", data.c_str());
+    }
+
+    inline void audit_info(const std::string& code, const std::string& data) {  
+        AuditLogger::getLogger()->auditLog(code.c_str(), "INFORMATION", data.c_str());
     }
 }
 

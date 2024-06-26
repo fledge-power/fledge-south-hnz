@@ -11,3 +11,12 @@ TEST(HNZUtility, Logs)
     ASSERT_NO_THROW(HnzUtility::log_error(text.c_str(), "error"));
     ASSERT_NO_THROW(HnzUtility::log_fatal(text.c_str(), "fatal"));
 }
+
+TEST(HNZUtility, Audit)
+{
+    std::string text("This audit is of type ");
+    ASSERT_NO_THROW(HnzUtility::audit_success("SRVFL", text + "success"));
+    ASSERT_NO_THROW(HnzUtility::audit_info("SRVFL", text + "info"));
+    ASSERT_NO_THROW(HnzUtility::audit_warn("SRVFL", text + "warn"));
+    ASSERT_NO_THROW(HnzUtility::audit_fail("SRVFL", text + "fail"));
+}

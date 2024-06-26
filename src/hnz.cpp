@@ -724,6 +724,7 @@ void HNZ::updateConnectionStatus(ConnectionStatus newState) {
   std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
   if (m_connStatus == newState) return;
 
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::updateConnectionStatus -";
   m_connStatus = newState;
 
   // When connection lost, start timer to update all readings quality
@@ -735,6 +736,14 @@ void HNZ::updateConnectionStatus(ConnectionStatus newState) {
   }
 
   m_sendSouthMonitoringEvent(true, false);
+
+  // Send audit for SNMP
+  if (m_connStatus == ConnectionStatus::STARTED) {
+    HnzUtility::audit_success("SRVFL", beforeLog + " connection established");
+  }
+  else {
+    HnzUtility::audit_fail("SRVFL", beforeLog + " connection closed");
+  }
 }
 
 void HNZ::updateGiStatus(GiStatus newState) {

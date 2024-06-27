@@ -3,6 +3,8 @@
 #include <sstream>
 #include <thread>
 
+#include "hnz_client.h"
+
 #include "basic_hnz_server.h"
 
 void BasicHNZServer::startHNZServer() {
@@ -35,10 +37,30 @@ bool BasicHNZServer::joinStartThread() {
       this_thread::sleep_for(chrono::milliseconds(100));
       timeMs += 100;
     }
+    // Join failed, try to connect a temporary client to fix it
     if (!joinSuccess) {
-      printf("[HNZ Server][%d] Could not join m_t1, exiting\n", m_port); fflush(stdout);
-      // Do not delete m_t1 if it was not joined or it will crash immediately, let the rest of the test complete first
-      return false;
+      printf("[HNZ Server][%d] Could not join m_t1, attempting connection from temp client...\n", m_port); fflush(stdout);
+      // Make a temporary TCP client and connect it to the server
+      // because the server is likely stuck in socket accept() until that happen
+      HNZClient tmpClient;
+      tmpClient.connect_Server("127.0.0.1", m_port, 100000);
+
+      timeMs = 0;
+      // Wait up to 10s for m_t1 thread to join
+      while (timeMs < 10000) {
+        if (joinSuccess) {
+          break;
+        }
+        this_thread::sleep_for(chrono::milliseconds(100));
+        timeMs += 100;
+      }
+      // Join still failed, something went wrong
+      if (!joinSuccess) {
+        printf("[HNZ Server][%d] Could not join m_t1, exiting\n", m_port); fflush(stdout);
+        // Do not delete m_t1 if it was not joined or it will crash immediately, let the rest of the test complete first
+        // so that we get the exact fail location
+        return false;
+      }
     }
     delete m_t1;
     m_t1 = nullptr;
@@ -46,12 +68,12 @@ bool BasicHNZServer::joinStartThread() {
   return true;
 }
 
-void BasicHNZServer::stopHNZServer() {
+bool BasicHNZServer::stopHNZServer() {
   printf("[HNZ Server][%d] Server stopping...\n", m_port); fflush(stdout);
   is_running = false;
   
   // Ensure that m_t1 was joined no matter what
-  joinStartThread();
+  bool success = joinStartThread();
 
   // Stop HNZ server before joining receiving_thread
   if (server != nullptr) {
@@ -72,6 +94,7 @@ void BasicHNZServer::stopHNZServer() {
     server = nullptr;
   }
   printf("[HNZ Server][%d] Server stopped!\n", m_port); fflush(stdout);
+  return success;
 }
 
 void BasicHNZServer::receiving_loop() {

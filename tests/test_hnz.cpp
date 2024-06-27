@@ -1808,7 +1808,7 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   if(HasFatalFailure()) return;
 
   // Disconnect server
-  server->stopHNZServer();
+  ASSERT_TRUE(server->stopHNZServer());
   debug_print("[HNZ Server] Server disconnected");
   waitUntil(southEventsReceived, 1, 1000);
   // Check that ingestCallback had been called only one time
@@ -1943,13 +1943,13 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   if(HasFatalFailure()) return;
 
   // Disconnect server 1
-  server->stopHNZServer();
+  ASSERT_TRUE(server->stopHNZServer());
   debug_print("[HNZ Server] Server 1 disconnected");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had not been called (second path is still connected)
   ASSERT_EQ(southEventsReceived, 0);
   // Disconnect server 2
-  server2->stopHNZServer();
+  ASSERT_TRUE(server2->stopHNZServer());
   debug_print("[HNZ Server] Server 2 disconnected");
   waitUntil(southEventsReceived, 1, 1000);
   // Check that ingestCallback had been called only one time
@@ -1996,8 +1996,8 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   if(HasFatalFailure()) return;
 
   // Disconnect server 1 and 2 simultaneously
-  server->stopHNZServer();
-  server2->stopHNZServer();
+  ASSERT_TRUE(server->stopHNZServer());
+  ASSERT_TRUE(server2->stopHNZServer());
   debug_print("[HNZ Server] Server 1 & 2 disconnected");
   waitUntil(southEventsReceived, 1, 1000);
   // Check that ingestCallback had been called only one time
@@ -2107,7 +2107,7 @@ TEST_F(HNZTest, ReconfigureWhileConnectionActive) {
 
   // Also stop the server as it is unable to reconnect on the fly
   debug_print("[HNZ server] Request server stop...");
-  server->stopHNZServer();
+  ASSERT_TRUE(server->stopHNZServer());
   debug_print("[HNZ south plugin] Waiting for outdated TI emission...");
   this_thread::sleep_for(chrono::milliseconds(1000));
   validateAllTIQualityUpdate(false, true);
@@ -2188,7 +2188,7 @@ TEST_F(HNZTest, ReconfigureBadConfig) {
 
   // Also stop the server as it is unable to reconnect on the fly
   debug_print("[HNZ server] Request server stop...");
-  server->stopHNZServer();
+  ASSERT_TRUE(server->stopHNZServer());
   debug_print("[HNZ server] Request server start...");
   server->startHNZServer();
 
@@ -2207,7 +2207,7 @@ TEST_F(HNZTest, ReconfigureBadConfig) {
 
   // Restart the server
   debug_print("[HNZ server] Request server stop 2...");
-  server->stopHNZServer();
+  ASSERT_TRUE(server->stopHNZServer());
   debug_print("[HNZ server] Request server start 2...");
   server->startHNZServer();
 
@@ -2253,7 +2253,7 @@ TEST_F(HNZTest, ReconfigureBadConfig) {
 
   // Manually stop the server here or we may end up in a deadlock in the HNZServer
   debug_print("[HNZ server] Request server stop 3...");
-  server->stopHNZServer();
+  ASSERT_TRUE(server->stopHNZServer());
 }
 
 TEST_F(HNZTest, UnknownMessage) {

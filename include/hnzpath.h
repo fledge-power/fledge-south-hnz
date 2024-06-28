@@ -149,11 +149,7 @@ class HNZPath {
   /**
    * Set the state of the path.
    */
-  void setActivePath(bool active) {
-    m_is_active_path = active;
-    m_name_log =
-        "[" + m_path_name + " - " + (active ? "active" : "passive") + "]";
-  };
+  void setActivePath(bool active);
 
   /**
    * Gets the state of the path
@@ -194,6 +190,7 @@ class HNZPath {
   long long int m_timeoutUs; // Timeout for socket recv in microseconds
 
   string m_name_log;   // Path name used in log
+  string m_path_letter; // Path letter
   string m_path_name;  // Path name
 
   unsigned int m_remote_address;

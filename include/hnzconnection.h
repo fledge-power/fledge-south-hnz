@@ -124,6 +124,11 @@ class HNZConnection {
    */
   bool isRunning() const { return m_is_running; };
 
+  /**
+   * Returns the name of the Fledge service instanciating this plugin
+   */
+  inline const std::string& getServiceName() { return m_hnz_fledge->getServiceName(); }
+
  private:
   std::shared_ptr<HNZPath> m_active_path;
   std::shared_ptr<HNZPath> m_passive_path;

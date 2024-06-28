@@ -68,9 +68,12 @@ class HNZ {
    * required.
    * @param protocol_conf_json Contain value to configure the protocol
    * @param msg_conf_json Describe the messages that the plugin can received
+   * @param service_name Name of the service created with this plugin
+   * @return true if reconfiguration was a success, else false
    */
-  void setJsonConfig(const std::string& protocol_conf_json,
-                     const std::string& msg_configuration);
+  bool setJsonConfig(const std::string& protocol_conf_json,
+                     const std::string& msg_configuration,
+                     const std::string& service_name);
 
   /**
    * Start the HZN south plugin
@@ -165,6 +168,11 @@ class HNZ {
    */
   void updateQualityUpdateTimer(long elapsedTimeMs);
 
+  /**
+   * Returns the name of the Fledge service instanciating this plugin
+   */
+  inline const std::string& getServiceName() { return m_service_name; }
+
  protected:
   /**
    * Sends a CG request (reset counters if any was already in progress)
@@ -197,6 +205,8 @@ private:
   BulleFormat m_test_msg_receive;
   // Section of day (modulo 10 minutes)
   unsigned char m_daySection = 0;
+  // Service name used to generate audits
+  std::string m_service_name;
 
   // Connection and GI status management
   ConnectionStatus m_connStatus = ConnectionStatus::NOT_CONNECTED;

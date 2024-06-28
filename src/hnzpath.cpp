@@ -23,7 +23,8 @@ HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_con
                   m_ip(secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A()),
                   m_port(secondary ? hnz_conf->get_port_B() : hnz_conf->get_port_A()),
                   m_timeoutUs(hnz_conf->get_cmd_recv_timeout()),
-                  m_path_name(secondary ? "Path B" : "Path A"),
+                  m_path_letter(secondary ? "B" : "A"),
+                  m_path_name(std::string("Path ") + m_path_letter),
                   // Global connection settings
                   m_remote_address(hnz_conf->get_remote_station_addr()),
                   m_address_PA(static_cast<unsigned char>((m_remote_address << 2) + 1)),
@@ -132,6 +133,8 @@ void HNZPath::connect() {
 void HNZPath::disconnect() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::disconnect - " + m_name_log;
   HnzUtility::log_debug(beforeLog + " HNZ Path stopping...");
+
+  HnzUtility::audit_fail("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-disconnected");
   
   if (!m_isOtherPathHNZConnected()) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
@@ -236,6 +239,8 @@ void HNZPath::go_to_connection() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::go_to_connection - " + m_name_log;
   HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
   m_protocol_state = CONNECTION;
+  // Send audit for path connection status
+  HnzUtility::audit_fail("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-disconnected");
   if (!m_isOtherPathHNZConnected()) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
   }
@@ -261,10 +266,24 @@ void HNZPath::go_to_connection() {
   }
 }
 
+void HNZPath::setActivePath(bool active) {
+  m_is_active_path = active;
+  std::string activePassive = m_is_active_path ? "active" : "passive";
+  m_name_log = "[" + m_path_name + " - " + activePassive + "]";
+  
+  if (isHNZConnected()) {
+    // Send audit for path connection status
+    HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
+  }
+}
+
 void HNZPath::m_go_to_connected() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_go_to_connected - " + m_name_log;
   std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
   m_protocol_state = CONNECTED;
+  // Send audit for path connection status
+  std::string activePassive = m_is_active_path ? "active" : "passive";
+  HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
   if (m_is_active_path) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
   }

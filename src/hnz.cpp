@@ -105,10 +105,7 @@ void HNZ::reconfigure(const ConfigCategory& config) {
   if (config.itemExists("exchanged_data")) {
     msg_conf_json = config.getValue("exchanged_data");
   }
-  std::string service_name;
-  if (config.itemExists("name")) {
-    service_name = config.getValue("name");
-  }
+  std::string service_name = config.getName();
 
   bool success = setJsonConfig(protocol_conf_json, msg_conf_json, service_name);
   if (!success) {

@@ -20,6 +20,7 @@ HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_con
                   m_hnz_client(make_unique<HNZClient>()),
                   m_hnz_connection(hnz_connection),
                   repeat_max((secondary ? hnz_conf->get_repeat_path_B() : hnz_conf->get_repeat_path_A())-1),
+                  m_protocol_state(CONNECTED), // This ensures that the initial state transition from go_to_connection generates an audit
                   m_ip(secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A()),
                   m_port(secondary ? hnz_conf->get_port_B() : hnz_conf->get_port_A()),
                   m_timeoutUs(hnz_conf->get_cmd_recv_timeout()),
@@ -238,9 +239,12 @@ milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
 void HNZPath::go_to_connection() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::go_to_connection - " + m_name_log;
   HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
-  m_protocol_state = CONNECTION;
-  // Send audit for path connection status
-  HnzUtility::audit_fail("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-disconnected");
+  if (m_protocol_state != CONNECTION) {
+    m_protocol_state = CONNECTION;
+    // Send audit for path connection status
+    HnzUtility::audit_fail("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-disconnected");
+  }
+  
   if (!m_isOtherPathHNZConnected()) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
   }

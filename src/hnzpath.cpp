@@ -134,12 +134,8 @@ void HNZPath::connect() {
 void HNZPath::disconnect() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::disconnect - " + m_name_log;
   HnzUtility::log_debug(beforeLog + " HNZ Path stopping...");
-
-  HnzUtility::audit_fail("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-disconnected");
-  
-  if (!m_isOtherPathHNZConnected()) {
-    m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
-  }
+  // This ensures that the path is in the correct state for both south_event and audits
+  go_to_connection();
 
   m_is_running = false;
   m_connected = false;

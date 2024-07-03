@@ -136,6 +136,8 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
 
   HnzUtility::log_info("%s Reading json config string...", beforeLog.c_str());
 
+  // Reset configuration info
+  m_hnz_conf = std::make_shared<HNZConf>();
   if (!protocol_conf_json.empty()) {
     m_hnz_conf->importConfigJson(protocol_conf_json);
   }

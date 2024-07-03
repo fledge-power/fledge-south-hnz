@@ -221,7 +221,7 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
   HnzUtility::log_info("%s New config: %s", beforeLog.c_str(), newConfig.c_str());
 
   auto hnz = reinterpret_cast<HNZ *>(*handle);
-  ConfigCategory config("newConfig", newConfig);
+  ConfigCategory config(hnz->getServiceName(), newConfig);
   hnz->reconfigure(config);
 }
 

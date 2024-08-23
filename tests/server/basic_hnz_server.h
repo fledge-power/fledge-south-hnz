@@ -18,7 +18,7 @@ class BasicHNZServer {
   };
 
   void startHNZServer();
-  void stopHNZServer();
+  bool stopHNZServer();
   bool joinStartThread();
 
   bool waitForTCPConnection(int timeout_s);

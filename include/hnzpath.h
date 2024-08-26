@@ -180,8 +180,9 @@ class HNZPath {
 
   std::shared_ptr<std::thread> m_connection_thread; // Main thread that maintains the connection
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
-  atomic<bool> m_connected{false};   // TCP Connection state with the PA
-  int m_protocol_state;       // HNZ Protocol connection state
+  atomic<bool> m_connected{false};  // TCP Connection state with the PA
+  // Initializing to CONNECTED ensures that the initial state transition from go_to_connection generates an audit
+  int m_protocol_state = CONNECTED; // HNZ Protocol connection state
   bool m_is_active_path = false;
 
   // Plugin configuration

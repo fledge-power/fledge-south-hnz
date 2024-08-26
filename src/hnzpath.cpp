@@ -20,7 +20,6 @@ HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_con
                   m_hnz_client(make_unique<HNZClient>()),
                   m_hnz_connection(hnz_connection),
                   repeat_max((secondary ? hnz_conf->get_repeat_path_B() : hnz_conf->get_repeat_path_A())-1),
-                  m_protocol_state(CONNECTED), // This ensures that the initial state transition from go_to_connection generates an audit
                   m_ip(secondary ? hnz_conf->get_ip_address_B() : hnz_conf->get_ip_address_A()),
                   m_port(secondary ? hnz_conf->get_port_B() : hnz_conf->get_port_A()),
                   m_timeoutUs(hnz_conf->get_cmd_recv_timeout()),

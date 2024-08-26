@@ -171,7 +171,7 @@ class HNZ {
   /**
    * Returns the name of the Fledge service instanciating this plugin
    */
-  inline const std::string& getServiceName() { return m_service_name; }
+  inline const std::string& getServiceName() const { return m_service_name; }
 
  protected:
   /**

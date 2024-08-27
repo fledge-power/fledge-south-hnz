@@ -15,7 +15,7 @@
 
 HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::HNZConnection -";
-
+  
   this->m_hnz_conf = hnz_conf;
   this->m_hnz_fledge = hnz_fledge;
 
@@ -27,11 +27,18 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
     if (m_hnz_conf->get_ip_address_B() != "") {
       m_passive_path = std::make_shared<HNZPath>(m_hnz_conf, this, true);
     }
+    else {
+      // Send initial path connection status audit
+      HnzUtility::audit_info("SRVFL", hnz_fledge->getServiceName() + "-B-unused");
+    }
   }
   else {
     HnzUtility::log_fatal("%s Attempted to start HNZ connection with no IP configured, aborting", beforeLog.c_str());
     return;
   }
+
+  // Send initial connection status audit
+  HnzUtility::audit_fail("SRVFL", hnz_fledge->getServiceName() + "-disconnected");
 
   // Set settings for GI
   this->gi_repeat_count_max = m_hnz_conf->get_gi_repeat_count();

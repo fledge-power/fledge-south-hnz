@@ -149,11 +149,7 @@ class HNZPath {
   /**
    * Set the state of the path.
    */
-  void setActivePath(bool active) {
-    m_is_active_path = active;
-    m_name_log =
-        "[" + m_path_name + " - " + (active ? "active" : "passive") + "]";
-  };
+  void setActivePath(bool active);
 
   /**
    * Gets the state of the path
@@ -184,8 +180,9 @@ class HNZPath {
 
   std::shared_ptr<std::thread> m_connection_thread; // Main thread that maintains the connection
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
-  atomic<bool> m_connected{false};   // TCP Connection state with the PA
-  int m_protocol_state;       // HNZ Protocol connection state
+  atomic<bool> m_connected{false};  // TCP Connection state with the PA
+  // Initializing to CONNECTED ensures that the initial state transition from go_to_connection generates an audit
+  int m_protocol_state = CONNECTED; // HNZ Protocol connection state
   bool m_is_active_path = false;
 
   // Plugin configuration
@@ -194,6 +191,7 @@ class HNZPath {
   long long int m_timeoutUs; // Timeout for socket recv in microseconds
 
   string m_name_log;   // Path name used in log
+  string m_path_letter; // Path letter
   string m_path_name;  // Path name
 
   unsigned int m_remote_address;

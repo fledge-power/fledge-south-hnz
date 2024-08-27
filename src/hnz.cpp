@@ -105,17 +105,24 @@ void HNZ::reconfigure(const ConfigCategory& config) {
   if (config.itemExists("exchanged_data")) {
     msg_conf_json = config.getValue("exchanged_data");
   }
+  std::string service_name = config.getName();
 
-  setJsonConfig(protocol_conf_json, msg_conf_json);
+  bool success = setJsonConfig(protocol_conf_json, msg_conf_json, service_name);
+  if (!success) {
+    // Resinitialize all connection state audits in case of failed configuration
+    HnzUtility::audit_info("SRVFL", m_service_name + "-A-unused");
+    HnzUtility::audit_info("SRVFL", m_service_name + "-B-unused");
+    HnzUtility::audit_fail("SRVFL", m_service_name + "-disconnected");
+  }
 }
 
-void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf_json) {
+bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf_json, const string& service_name) {
   std::lock_guard<std::recursive_mutex> guard(m_configMutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::setJsonConfig -";
   // If no new json configuration and the plugin is already in the correct running state, nothing to do
-  if (protocol_conf_json.empty() && msg_conf_json.empty()) {
+  if (protocol_conf_json.empty() && msg_conf_json.empty() && service_name.empty()) {
     HnzUtility::log_info("%s No new configuration provided to reconfigure, skipping", beforeLog.c_str());
-    return;
+    return true;
   }
 
   if (m_is_running) {
@@ -123,8 +130,14 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
     stop();
   }
 
+  if (!service_name.empty()) {
+    m_service_name = service_name;
+  }
+
   HnzUtility::log_info("%s Reading json config string...", beforeLog.c_str());
 
+  // Reset configuration info
+  m_hnz_conf = std::make_shared<HNZConf>();
   if (!protocol_conf_json.empty()) {
     m_hnz_conf->importConfigJson(protocol_conf_json);
   }
@@ -133,7 +146,7 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   }
   if (!m_hnz_conf->is_complete()) {
     HnzUtility::log_fatal("%s Unable to set Plugin configuration due to error with the json conf", beforeLog.c_str());
-    return;
+    return false;
   }
 
   HnzUtility::log_info("%s Json config parsed successsfully.", beforeLog.c_str());
@@ -143,13 +156,15 @@ void HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
   if (!m_hnz_connection->isRunning()) {
     HnzUtility::log_fatal("%s Unable to start HNZ Connection", beforeLog.c_str());
-    return;
+    return false;
   }
 
   if (m_should_run) {
     HnzUtility::log_info("%s Restarting the plugin...", beforeLog.c_str());
     start();
   }
+
+  return true;
 }
 
 void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
@@ -222,7 +237,7 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handle_message -";
   unsigned char t = data[0];  // Payload type
   vector<Reading> readings;   // Contains data object to push to fledge
-
+  
   switch (t) {
   case MODULO_CODE:
     HnzUtility::log_info("%s Received modulo time update", beforeLog.c_str());
@@ -735,6 +750,14 @@ void HNZ::updateConnectionStatus(ConnectionStatus newState) {
   }
 
   m_sendSouthMonitoringEvent(true, false);
+
+  // Send audit for connection status
+  if (m_connStatus == ConnectionStatus::STARTED) {
+    HnzUtility::audit_success("SRVFL", m_service_name + "-connected");
+  }
+  else {
+    HnzUtility::audit_fail("SRVFL", m_service_name + "-disconnected");
+  }
 }
 
 void HNZ::updateGiStatus(GiStatus newState) {

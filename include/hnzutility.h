@@ -14,6 +14,7 @@
 
 #include <string>
 #include <logger.h>
+#include <audit_logger.h>
 
 #define PLUGIN_NAME "hnz"
 
@@ -67,6 +68,39 @@ namespace HnzUtility {
         fflush(stdout);
         #endif
         Logger::getLogger()->fatal(format.c_str(), std::forward<Args>(args)...);
+    }
+
+    inline std::string m_addQuotes(const std::string& str, bool addQuotes) {
+        if (addQuotes) {
+            return std::string("\"") + str + "\"";
+        }
+        else {
+           return str;
+        }
+    }
+
+    inline void audit_fail(const std::string& code, const std::string& data, bool addQuotes = true) {  
+        // Audits accept pure json string, so if we want a simple text messages we need to add quotes to it
+        std::string message = m_addQuotes(data, addQuotes);
+        AuditLogger::auditLog(code.c_str(), "FAILURE", message.c_str());
+    }
+
+    inline void audit_success(const std::string& code, const std::string& data, bool addQuotes = true) {  
+        // Audits accept pure json string, so if we want a simple text messages we need to add quotes to it
+        std::string message = m_addQuotes(data, addQuotes);
+        AuditLogger::auditLog(code.c_str(), "SUCCESS", message.c_str());
+    }
+
+    inline void audit_warn(const std::string& code, const std::string& data, bool addQuotes = true) { 
+        // Audits accept pure json string, so if we want a simple text messages we need to add quotes to it
+        std::string message = m_addQuotes(data, addQuotes);
+        AuditLogger::auditLog(code.c_str(), "WARNING", message.c_str());
+    }
+
+    inline void audit_info(const std::string& code, const std::string& data, bool addQuotes = true) { 
+        // Audits accept pure json string, so if we want a simple text messages we need to add quotes to it
+        std::string message = m_addQuotes(data, addQuotes); 
+        AuditLogger::auditLog(code.c_str(), "INFORMATION", message.c_str());
     }
 }
 

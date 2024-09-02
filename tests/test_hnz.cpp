@@ -744,8 +744,18 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ///////////////////////////////////////
   // Send TS1
   ///////////////////////////////////////
+  // Find SET TIME message sent at startup and extract modulo value from it
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TIMEframe = findFrameWithId(frames, 0x1d);
+  ASSERT_NE(TIMEframe.get(), nullptr) << "Could not find SET TIME in frames received: " << BasicHNZServer::framesToStr(frames);
+  ASSERT_EQ(TIMEframe->usLgBuffer, 9);
+  unsigned char startupModulo = TIMEframe->aubTrame[3];
+  ASSERT_GE(startupModulo, 0);
+  ASSERT_LE(startupModulo, 143);
+
   dateTime = std::chrono::system_clock::now();
-  daySection = 0;
+  // Day section is initialized when sending SET TIME message after connection is established
+  daySection = startupModulo;
   ts = 14066;
   expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
   unsigned char msb = static_cast<unsigned char>(ts >> 8);
@@ -802,7 +812,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ///////////////////////////////////////
   // Send TS1 with modified day section
   ///////////////////////////////////////
-  daySection = 12;
+  daySection = (daySection + 12) % 144;
   expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
   server->sendFrame({0x0F, daySection}, false);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);

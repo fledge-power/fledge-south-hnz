@@ -29,6 +29,7 @@ string protocol_stack_def = QUOTE({
       "gi_repeat_count": 5,
       "gi_time": 300,
       "c_ack_time": 20,
+      "bulle_time": 15,
       "cmd_recv_timeout": 200000
     },
     "south_monitoring": {
@@ -162,6 +163,8 @@ TEST_F(HNZConfTest, GetCAckTime) { ASSERT_EQ(hnz_conf->get_c_ack_time(), 20); }
 
 TEST_F(HNZConfTest, GetCmdRecvTimeout) { ASSERT_EQ(hnz_conf->get_cmd_recv_timeout(), 200000); }
 
+TEST_F(HNZConfTest, GetBulleTime) { ASSERT_EQ(hnz_conf->get_bulle_time(), 15); }
+
 TEST_F(HNZConfTest, GetLabelTS1) {
   ASSERT_STREQ(hnz_conf->getLabel("TS", 511).c_str(), "TS1");
 }
@@ -199,16 +202,16 @@ TEST_F(HNZConfTest, GetAllMessages) {
   ASSERT_STREQ(allTMForRemoteAddr.at(msg_address).c_str(), "TM1");
 }
 
-string min_protocol_stack_def = QUOTE({
-  "protocol_stack": {
-    "name": "hnzclient",
-    "version": "1.0",
-    "transport_layer": {"connections": [ {"srv_ip": "0.0.0.0"} ]},
-    "application_layer": {"remote_station_addr": 18}
-  }
-});
-
 TEST(HNZCONF, MinimumConf) {
+  std::string min_protocol_stack_def = QUOTE({
+    "protocol_stack": {
+      "name": "hnzclient",
+      "version": "1.0",
+      "transport_layer": {"connections": [ {"srv_ip": "0.0.0.0"} ]},
+      "application_layer": {"remote_station_addr": 18}
+    }
+  });
+
   std::shared_ptr<HNZConf> hnz_conf = std::make_shared<HNZConf>();
   hnz_conf->importConfigJson(min_protocol_stack_def);
   hnz_conf->importExchangedDataJson(exchanged_data_def);
@@ -247,6 +250,8 @@ TEST(HNZCONF, MinimumConf) {
   ASSERT_EQ(hnz_conf->get_gi_time(), 255);
 
   ASSERT_EQ(hnz_conf->get_c_ack_time(), 10);
+
+  ASSERT_EQ(hnz_conf->get_bulle_time(), 10);
 
   ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "");
 }
@@ -553,6 +558,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": "nope",
         "gi_time": "nope",
         "c_ack_time": "nope",
+        "bulle_time": "nope",
         "cmd_recv_timeout": "nope"
       }
     }
@@ -584,6 +590,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -615,6 +622,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -646,6 +654,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -677,6 +686,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -708,6 +718,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -739,6 +750,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -770,6 +782,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -802,6 +815,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": 42
@@ -834,6 +848,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": {}
@@ -866,6 +881,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": {
@@ -900,6 +916,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": {

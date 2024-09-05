@@ -309,14 +309,16 @@ class HNZPath {
    * NS) will be added by this method.
    * @param msg payload
    * @param size nubmer of byte in the payload
+   * @return True if the message was sent, false if it was discarded
    */
-  void m_sendInfo(unsigned char* msg, unsigned long size);
+  bool m_sendInfo(unsigned char* msg, unsigned long size);
 
   /**
    * Send a message immediately
    * @param message The message to send
+   * @return True if the message was sent, false if it was discarded
    */
-  void m_sendInfoImmediately(Message message);
+  bool m_sendInfoImmediately(Message message);
 
   /**
    * Send a date configuration message

@@ -256,13 +256,29 @@ void HNZPath::go_to_connection() {
   gi_repeat = 0;
   gi_start_time = 0;
 
-  // Put unacknowledged messages in the list of messages waiting to be sent
+  // Discard unacknowledged messages and messages waiting to be sent
   if (!msg_sent.empty()) {
-    while (!msg_sent.empty()) {
-      msg_waiting.push_front(msg_sent.back());
-      msg_sent.pop_back();
+    std::string sentMsgStr;
+    for(const Message& sentMsg: msg_sent) {
+      if (sentMsgStr.size() > 0){
+        sentMsgStr += ", ";
+      }
+      sentMsgStr += "[" + convert_message_to_str(sentMsg) + "]";
     }
+    HnzUtility::log_debug(beforeLog + " Discarded unacknowledged messages sent: " + sentMsgStr);
+    msg_sent.clear();
   }
+  if (!msg_waiting.empty()) {
+    std::string waitingMsgStr;
+    for(const Message& waitingMsg: msg_waiting) {
+      if (waitingMsgStr.size() > 0){
+        waitingMsgStr += ", ";
+      }
+      waitingMsgStr += "[" + convert_message_to_str(waitingMsg) + "]";
+    }
+    HnzUtility::log_debug(beforeLog + " Discarded messages waiting to be sent: " + waitingMsgStr);
+    msg_waiting.clear();
+  }  
 }
 
 void HNZPath::setActivePath(bool active) {
@@ -488,8 +504,9 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
         // Sent message in waiting queue
         while (!msg_waiting.empty() &&
                (msg_sent.size() < m_anticipation_ratio)) {
-          m_sendInfoImmediately(msg_waiting.front());
-          msg_waiting.pop_front();
+          if (m_sendInfoImmediately(msg_waiting.front())) {
+            msg_waiting.pop_front();
+          }
         }
       } else {
         HnzUtility::log_warn(beforeLog + " Received an unexpected repeated RR, ignoring it");
@@ -520,8 +537,8 @@ void HNZPath::m_sendUA() {
 void HNZPath::m_sendBULLE() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendBULLE - " + m_name_log;
   unsigned char msg[2]{m_test_msg_send.first, m_test_msg_send.second};
-  m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_info(beforeLog + " BULLE sent");
+  bool sent = m_sendInfo(msg, sizeof(msg));
+  HnzUtility::log_info(beforeLog + " BULLE " + (sent?"sent":"discarded"));
 }
 
 void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
@@ -559,13 +576,18 @@ void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
   m_last_msg_time = time(nullptr);
 }
 
-void HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
+bool HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfo - " + m_name_log;
+  if (m_protocol_state != CONNECTED) {
+    HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message ["
+                        + convert_data_to_str(msg, static_cast<int>(size)) + "]");
+    return false;
+  }
   Message message;
   message.payload = vector<unsigned char>(msg, msg + size);
 
   if (msg_sent.size() < m_anticipation_ratio) {
-    m_sendInfoImmediately(message);
+    return m_sendInfoImmediately(message);
   } else {
     std::string waitingMsgStr;
     for(const Message& waitingMsg: msg_sent) {
@@ -579,12 +601,18 @@ void HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
                         + waitingMsgStr);
     msg_waiting.push_back(message);
   }
+  return false;
 }
 
-void HNZPath::m_sendInfoImmediately(Message message) {
+bool HNZPath::m_sendInfoImmediately(Message message) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfoImmediately - " + m_name_log;
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
+  if (m_protocol_state != CONNECTED) {
+    HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message ["
+                        + convert_data_to_str(msg, static_cast<int>(size)) + "]");
+    return false;
+  }
 
   unsigned char msgWithNrNs[size + 1];
   memcpy(msgWithNrNs + 1, msg, size);
@@ -606,6 +634,7 @@ void HNZPath::m_sendInfoImmediately(Message message) {
                         convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1));
 
   m_ns = (m_ns + 1) % 8;
+  return true;
 }
 
 void HNZPath::sendBackInfo(Message& message) {
@@ -640,8 +669,8 @@ void HNZPath::m_send_date_setting() {
   msg[1] = time_struct->tm_mday;
   msg[2] = time_struct->tm_mon + 1;
   msg[3] = time_struct->tm_year % 100;
-  m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_info(beforeLog + " Time setting sent : " + to_string((int)msg[1]) + "/" +
+  bool sent = m_sendInfo(msg, sizeof(msg));
+  HnzUtility::log_info(beforeLog + " Time setting " + (sent?"sent":"discarded") + " : " + to_string((int)msg[1]) + "/" +
                                   to_string((int)msg[2]) + "/" + to_string((int)msg[3]));
 }
 
@@ -659,9 +688,9 @@ void HNZPath::m_send_time_setting() {
   msg[2] = frac >> 8;
   msg[3] = frac & 0xff;
   msg[4] = 0x00;
-  m_sendInfo(msg, sizeof(msg));
+  bool sent = m_sendInfo(msg, sizeof(msg));
   m_hnz_connection->setDaySection(static_cast<unsigned char>(mod10m));
-  HnzUtility::log_info(beforeLog + " Time setting sent : mod10m = " + to_string(mod10m) +
+  HnzUtility::log_info(beforeLog + " Time setting " + (sent?"sent":"discarded") + " : mod10m = " + to_string(mod10m) +
                                   " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) +
                                   "h" + to_string((mod10m % 6) * 10) + "m and " + to_string(frac / 100) +
                                   "s " + to_string(frac % 100) + "ms");
@@ -670,8 +699,8 @@ void HNZPath::m_send_time_setting() {
 void HNZPath::sendGeneralInterrogation() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::sendGeneralInterrogation - " + m_name_log;
   unsigned char msg[2]{0x13, 0x01};
-  m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_info(beforeLog + " GI (General Interrogation) request sent");
+  bool sent = m_sendInfo(msg, sizeof(msg));
+  HnzUtility::log_info(beforeLog + " GI (General Interrogation) request " + (sent?"sent":"discarded"));
   if ((gi_repeat == 0) || (m_hnz_connection->getGiStatus() != GiStatus::IN_PROGRESS)) {
     m_hnz_connection->updateGiStatus(GiStatus::STARTED);
   }
@@ -689,9 +718,11 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   msg[2] = ((value >= 0) ? value : -value) & 0x7F;
   msg[3] = (value >= 0) ? 0 : 0x80;
 
-  m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_info(beforeLog + " TVC sent (address = " + to_string(address) + ", value = " + to_string(value) + ")");
-
+  bool sent = m_sendInfo(msg, sizeof(msg));
+  HnzUtility::log_info(beforeLog + " TVC " + (sent?"sent":"discarded") + " (address = " + to_string(address) + ", value = " + to_string(value) + ")");
+  if (!sent) {
+    return false;
+  }
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
   cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
@@ -715,8 +746,11 @@ bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   msg[1] = stoi(address_str.substr(0, address_str.length() - 1));
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 
-  m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_info(beforeLog + " TC sent (address = " + to_string(address) + " and value = " + to_string(value) + ")");
+  bool sent = m_sendInfo(msg, sizeof(msg));
+  HnzUtility::log_info(beforeLog + " TC " + (sent?"sent":"discarded") + " (address = " + to_string(address) + " and value = " + to_string(value) + ")");
+  if (!sent) {
+    return false;
+  }
 
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;

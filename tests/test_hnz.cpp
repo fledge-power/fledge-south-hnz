@@ -2503,7 +2503,7 @@ TEST_F(HNZTest, BackToSARM) {
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
 
-  // Stop sending automatic ack in response to messages from south plugin
+  // Stop sending automatic ack (RR) in response to messages from south plugin
   server->disableAcks(true);
 
   // Send 2 TCs so that south plugin has something to send to HNZ server
@@ -2527,4 +2527,131 @@ TEST_F(HNZTest, BackToSARM) {
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
   std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
   ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
+}
+
+TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Stop sending automatic ack (RR) in response to messages from south plugin
+  server->disableAcks(true);
+
+  // Send a TC while connection established but do not acknoledge it (so it will be resent)
+  std::string operationTC("HNZCommand");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send a TVC while connection established but do not acknoledge it (so it will be resent)
+  std::string operationTVC("HNZCommand");
+  int nbParamsTVC = 3;
+  PLUGIN_PARAMETER paramTVC1 = {"co_type", "TVC"};
+  PLUGIN_PARAMETER paramTVC2 = {"co_addr", "31"};
+  PLUGIN_PARAMETER paramTVC3 = {"co_value", "42"};
+  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
+  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  debug_print("[HNZ south plugin] TVC sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TVC frame in the list of frames received by server
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Stop the server to disconnect the path
+  debug_print("[HNZ server] Request server stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  server->disableAcks(false);
+
+  // Wait c_ack_time (10s) for all unanswered TC to expire or it may mess up reconnection by going back to SARM
+  this_thread::sleep_for(chrono::seconds(10));
+
+  // Send a TC while connection is not established (which is rejected as no connection established)
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC 2 sent");
+
+  // Send a TVC while connection is not established (which is rejected as no connection established)
+  ASSERT_FALSE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  debug_print("[HNZ south plugin] TVC 2 sent");
+
+  // Establish a new connection
+  resetCounters();
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  // Wait for initial CG request
+  waitUntil(southEventsReceived, 2, 1000);
+  resetCounters();
+
+  // Wait more than repeat_timeout (3s)
+  this_thread::sleep_for(chrono::seconds(4));
+
+  // Check that no TC or TVC is automatically sent after reconnection
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "TC was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
+
+  // Stop sending automatic ack (RR) in response to messages from south plugin
+  server->disableAcks(true);
+
+  // Fill list of messages until anticipation_ratio is reached
+  for(int i=0; i<5 ; i++) {
+    ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+    debug_print("[HNZ south plugin] TC %d sent", i+3);
+  }
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+
+  // Check that next message is rejected
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC 8 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "TC over anticipation_ratio was sent: " << BasicHNZServer::frameToStr(TCframe);
+
+  // Stop the server to disconnect the path
+  debug_print("[HNZ server] Request server stop 2...");
+  ASSERT_TRUE(server->stopHNZServer());
+  // Wait c_ack_time (10s) for all unanswered TC to expire or it may mess up reconnection by going back to SARM
+  this_thread::sleep_for(chrono::seconds(10));
+  resetCounters();
+  debug_print("[HNZ server] Request server start 2...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
+  // Wait for initial CG request
+  waitUntil(southEventsReceived, 2, 1000);
+  resetCounters();
+
+  // Wait more than repeat_timeout (3s)
+  this_thread::sleep_for(chrono::seconds(4));
+
+  // Check that no TC or TVC is automatically sent after reconnection
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "TC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
 }

@@ -115,8 +115,9 @@ class HNZ {
    *
    * @param count Number of parameters
    * @param params Array of parameters
+   * @return 0 if command was sent to HNZ device, 1 if command syntax error, 2 if command could not be sent to HNZ device (connection error)
    */
-  bool processCommandOperation(int count, PLUGIN_PARAMETER** params);
+  int processCommandOperation(int count, PLUGIN_PARAMETER** params);
 
   /**
    * Utility function used to store the content of a frame as a human readable hex string

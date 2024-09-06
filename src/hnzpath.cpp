@@ -92,6 +92,20 @@ std::string convert_message_to_str(const Message& message) {
   return stream.str();
 }
 
+/**
+ * Helper method to convert a list of message into something readable for logs.
+ */
+std::string convert_messages_to_str(const deque<Message>& messages) {
+  std::string msgStr;
+  for(const Message& msg: messages) {
+    if (msgStr.size() > 0){
+      msgStr += ", ";
+    }
+    msgStr += "[" + convert_message_to_str(msg) + "]";
+  }
+  return msgStr;
+}
+
 void HNZPath::connect() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::connect - " + m_name_log;
   // Reinitialize those variables in case of reconnection
@@ -258,24 +272,12 @@ void HNZPath::go_to_connection() {
 
   // Discard unacknowledged messages and messages waiting to be sent
   if (!msg_sent.empty()) {
-    std::string sentMsgStr;
-    for(const Message& sentMsg: msg_sent) {
-      if (sentMsgStr.size() > 0){
-        sentMsgStr += ", ";
-      }
-      sentMsgStr += "[" + convert_message_to_str(sentMsg) + "]";
-    }
+    std::string sentMsgStr = convert_messages_to_str(msg_sent);
     HnzUtility::log_debug(beforeLog + " Discarded unacknowledged messages sent: " + sentMsgStr);
     msg_sent.clear();
   }
   if (!msg_waiting.empty()) {
-    std::string waitingMsgStr;
-    for(const Message& waitingMsg: msg_waiting) {
-      if (waitingMsgStr.size() > 0){
-        waitingMsgStr += ", ";
-      }
-      waitingMsgStr += "[" + convert_message_to_str(waitingMsg) + "]";
-    }
+    std::string waitingMsgStr = convert_messages_to_str(msg_waiting);
     HnzUtility::log_debug(beforeLog + " Discarded messages waiting to be sent: " + waitingMsgStr);
     msg_waiting.clear();
   }  
@@ -589,13 +591,7 @@ bool HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
   if (msg_sent.size() < m_anticipation_ratio) {
     return m_sendInfoImmediately(message);
   } else {
-    std::string waitingMsgStr;
-    for(const Message& waitingMsg: msg_sent) {
-      if (waitingMsgStr.size() > 0){
-        waitingMsgStr += ", ";
-      }
-      waitingMsgStr += "[" + convert_message_to_str(waitingMsg) + "]";
-    }
+    std::string waitingMsgStr = convert_messages_to_str(msg_sent);
     HnzUtility::log_debug(beforeLog + " Anticipation ratio reached (" + std::to_string(m_anticipation_ratio) + "), message ["
                         + convert_data_to_str(msg, static_cast<int>(size)) + "] will be delayed. Messages waiting: "
                         + waitingMsgStr);
@@ -610,7 +606,7 @@ bool HNZPath::m_sendInfoImmediately(Message message) {
   int size = message.payload.size();
   if (m_protocol_state != CONNECTED) {
     HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message ["
-                        + convert_data_to_str(msg, static_cast<int>(size)) + "]");
+                        + convert_data_to_str(msg, size) + "]");
     return false;
   }
 

@@ -405,6 +405,17 @@ class HNZTest : public testing::Test {
     return frameFound;
   }
 
+  static std::shared_ptr<MSG_TRAME> findRR(const std::vector<std::shared_ptr<MSG_TRAME>>& frames) {
+    std::shared_ptr<MSG_TRAME> frameFound = nullptr;
+    for(auto frame: frames) {
+      if((frame->usLgBuffer > 1) && ((frame->aubTrame[1] & 0x0F) == 0x1)) {
+        frameFound = frame;
+        break;
+      }
+    }
+    return frameFound;
+  }
+
   static void validateFrame(const std::vector<std::shared_ptr<MSG_TRAME>>& frames,
                             const std::vector<unsigned char>& expectedFrame, bool fullFrame = false) {
     // When fullFrame is true, expectedFrame shall contain the complete frame:
@@ -2654,4 +2665,49 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
   ASSERT_EQ(TCframe.get(), nullptr) << "TC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
   TVCframe = findFrameWithId(frames, 0x1a);
   ASSERT_EQ(TVCframe.get(), nullptr) << "TVC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TVCframe);
+}
+
+TEST_F(HNZTest, MessageRejectedIfInvalidNR) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Clear frames received
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+
+  // Send BULLE with invalid NR (NR-1)
+  BasicHNZServer::FrameError fe;
+  fe.nr_minus_1 = true;
+  server->sendFrame({0x13, 0x04}, false, fe);
+  debug_print("[HNZ Server] BULLE sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that no RR frame was received
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> RRframe = findRR(frames);
+  ASSERT_EQ(RRframe.get(), nullptr) << "RR was sent in response to BULLE with invalid NR: " << BasicHNZServer::frameToStr(RRframe);
+
+  // Send BULLE with valid NR
+  server->sendFrame({0x13, 0x04}, false);
+  debug_print("[HNZ Server] BULLE 2 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that RR frame was received
+  frames = server->popLastFramesReceived();
+  RRframe = findRR(frames);
+  ASSERT_EQ(RRframe.get(), nullptr) << "Could not find RR in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send BULLE with invalid NR (NR+2)
+  BasicHNZServer::FrameError fe2;
+  fe2.nr_plus_2 = true;
+  server->sendFrame({0x13, 0x04}, false, fe2);
+  debug_print("[HNZ Server] BULLE 3 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that no RR frame was received
+  frames = server->popLastFramesReceived();
+  RRframe = findRR(frames);
+  ASSERT_EQ(RRframe.get(), nullptr) << "RR was sent in response to BULLE 3 with invalid NR: " << BasicHNZServer::frameToStr(RRframe);
 }

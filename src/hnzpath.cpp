@@ -376,7 +376,10 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
             }
 
             // Computing the frame number & sending RR
-            m_sendRR(pf == 1, ns, nr);
+            if (!m_sendRR(pf == 1, ns, nr)) {
+              // If NR was invalid, skip message processing
+              messages.clear();
+            }
           } else {
             // Supervision frame
             HnzUtility::log_info(beforeLog + " RR received (f = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
@@ -482,7 +485,7 @@ void HNZPath::m_receivedUA() {
 
 void HNZPath::m_receivedBULLE() { m_last_msg_time = time(nullptr); }
 
-void HNZPath::m_receivedRR(int nr, bool repetition) {
+bool HNZPath::m_receivedRR(int nr, bool repetition) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_receivedRR - " + m_name_log;
   if (nr != m_NRR) {
     int frameOk = (nr - m_NRR + 7) % 8 + 1;
@@ -512,13 +515,19 @@ void HNZPath::m_receivedRR(int nr, bool repetition) {
         }
       } else {
         HnzUtility::log_warn(beforeLog + " Received an unexpected repeated RR, ignoring it");
+        return false;
       }
     } else {
       // invalid NR
-      HnzUtility::log_warn(beforeLog + " Ignoring the RR, NR (=" + to_string(nr) + ") is invalid." +
+      HnzUtility::log_warn(beforeLog + " Ignoring the RR, NR (" + to_string(nr) + ") is invalid. " +
                                       "Current NRR : " + to_string(m_NRR + 1));
+      return false;
     }
   }
+  else {
+    HnzUtility::log_debug(beforeLog + " Received RR with NR=NRR (" + to_string(nr) + "), ignoring it");
+  }
+  return true;
 }
 
 void HNZPath::m_sendSARM() {
@@ -543,10 +552,13 @@ void HNZPath::m_sendBULLE() {
   HnzUtility::log_info(beforeLog + " BULLE " + (sent?"sent":"discarded"));
 }
 
-void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
+bool HNZPath::m_sendRR(bool repetition, int ns, int nr) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendRR - " + m_name_log;
   // use NR to validate frames sent
-  m_receivedRR(nr, 0);
+  if(!m_receivedRR(nr, false)) {
+    HnzUtility::log_warn(beforeLog + " Information frame contained unexpected NR (" + std::to_string(nr) + "), ignoring it");
+    return false;
+  }
 
   // send RR message
   if (ns == m_nr) {
@@ -576,6 +588,7 @@ void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
 
   // Update timer
   m_last_msg_time = time(nullptr);
+  return true;
 }
 
 bool HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {

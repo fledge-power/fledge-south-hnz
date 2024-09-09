@@ -27,7 +27,14 @@ class BasicHNZServer {
 
   void sendSARM();
 
-  void sendFrame(vector<unsigned char> message, bool repeat);
+  struct FrameError {
+    bool nr_minus_1;
+    bool nr_plus_2;
+    // Use constructor instead of default values for bracket initializer to work in C++11
+    FrameError(bool _nr_minus_1 = false, bool _nr_plus_2 = false):
+      nr_minus_1(_nr_minus_1), nr_plus_2(_nr_plus_2) {}
+  };
+  void sendFrame(vector<unsigned char> message, bool repeat, FrameError frameError = {});
   void createAndSendFrame(unsigned char addr, unsigned char *msg, int msgSize);
   // Note: return the strcutre by value becase a copy must be done by the caller to remain thread safe
   std::vector<std::shared_ptr<MSG_TRAME>> popLastFramesReceived();

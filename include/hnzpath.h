@@ -294,15 +294,17 @@ class HNZPath {
    * Call this method when a RR message is received.
    * @param nr NR of the RTU
    * @param repetition set to true if frame received is repeated
+   * @return True if the NR contained in the message was correct, else false
    */
-  void m_receivedRR(int nr, bool repetition);
+  bool m_receivedRR(int nr, bool repetition);
 
   /**
    * Send a RR
    * @param repetition set to true if frame received is repeated
    * @param ns NS of the received frame
+   * @return True if received NR was valid and RR was sent, false if invalid NR was received and no RR was sent
    */
-  void m_sendRR(bool repetition, int ns, int nr);
+  bool m_sendRR(bool repetition, int ns, int nr);
 
   /**
    * Send an information frame. The address byte, numbering bit (containing NR,

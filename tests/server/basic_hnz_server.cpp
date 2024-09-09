@@ -278,9 +278,6 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
     std::lock_guard<std::mutex> guard2(m_sarm_ua_mutex);
     if (ua_ok && sarm_ok) break;
   }
-  m_t2->join();
-  delete m_t2;
-  m_t2 = nullptr;
   if (!is_running) {
     printf("[HNZ Server][%d] Not running after SARM/UA, exit\n", m_port); fflush(stdout);
     return false;
@@ -288,7 +285,14 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
   printf("[HNZ Server][%d] Connection OK !!\n", m_port); fflush(stdout);
 
   // Connection established
+  m_ns = 0;
+  m_nr = 0;
   receiving_thread = new thread(&BasicHNZServer::receiving_loop, this);
+
+  // Join sarm thread after starting receiving loop as it may wait up to 3 seconds and some messages received will be missed (no RR sent)
+  m_t2->join();
+  delete m_t2;
+  m_t2 = nullptr;
   return true;
 }
 
@@ -299,8 +303,20 @@ void BasicHNZServer::sendSARM() {
   createAndSendFrame(0x05, message, sizeof(message));
 }
 
-void BasicHNZServer::sendFrame(vector<unsigned char> message, bool repeat) {
-  int num = (((repeat) ? (m_ns - 1) : m_ns) % 8) << 1 + ((m_nr + 1 << 5) % 8);
+void BasicHNZServer::sendFrame(vector<unsigned char> message, bool repeat, FrameError frameError /*= {}*/) {
+  int p = repeat ? 1 : 0;
+  int nr = m_nr;
+  if (frameError.nr_minus_1) {
+    nr = (m_nr + 7) % 8; // NR-1
+  }
+  if (frameError.nr_plus_2) {
+    nr = (m_nr + 2) % 8; // NR+2
+  }
+  int ns = m_ns;
+  if (repeat) {
+    ns = (m_ns + 7) % 8; // NS-1
+  }
+  int num = (nr << 5) + (p << 4) + (ns << 1);
   message.insert(message.begin(), num);
   int len = message.size();
   createAndSendFrame(addr, message.data(), len);

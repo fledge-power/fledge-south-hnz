@@ -2607,7 +2607,7 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
   TCframe = findFrameWithId(frames, 0x19);
   ASSERT_EQ(TCframe.get(), nullptr) << "TC was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
   TVCframe = findFrameWithId(frames, 0x1a);
-  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC was sent after reconnection: " << BasicHNZServer::frameToStr(TVCframe);
 
   // Stop sending automatic ack (RR) in response to messages from south plugin
   server->disableAcks(true);
@@ -2653,5 +2653,5 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
   TCframe = findFrameWithId(frames, 0x19);
   ASSERT_EQ(TCframe.get(), nullptr) << "TC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
   TVCframe = findFrameWithId(frames, 0x1a);
-  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TVCframe);
 }

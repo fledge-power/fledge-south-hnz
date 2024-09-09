@@ -173,6 +173,11 @@ class HNZ {
    */
   inline const std::string& getServiceName() const { return m_service_name; }
 
+  /**
+   * Setter for the day section (modulo calculation)
+   */
+  inline void setDaySection(unsigned char daySection) { m_daySection = daySection; }
+
  protected:
   /**
    * Sends a CG request (reset counters if any was already in progress)

@@ -647,20 +647,20 @@ void HNZPath::m_send_date_setting() {
 
 void HNZPath::m_send_time_setting() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_send_time_setting - " + m_name_log;
-  unsigned char msg[5];
-  long int ms_since_epoch, mod10m, frac;
-  ms_since_epoch = std::chrono::duration_cast<milliseconds>(
-                       high_resolution_clock::now().time_since_epoch())
-                       .count();
+  long int ms_since_epoch = std::chrono::duration_cast<milliseconds>(
+                          high_resolution_clock::now().time_since_epoch())
+                          .count();
   long int ms_today = ms_since_epoch % 86400000;
-  mod10m = ms_today / 600000;
-  frac = (ms_today - (mod10m * 600000)) / 10;
+  long int mod10m = ms_today / 600000;
+  long int frac = (ms_today - (mod10m * 600000)) / 10;
+  unsigned char msg[5];
   msg[0] = SETTIME_CODE;
   msg[1] = mod10m & 0xFF;
   msg[2] = frac >> 8;
   msg[3] = frac & 0xff;
   msg[4] = 0x00;
   m_sendInfo(msg, sizeof(msg));
+  m_hnz_connection->setDaySection(static_cast<unsigned char>(mod10m));
   HnzUtility::log_info(beforeLog + " Time setting sent : mod10m = " + to_string(mod10m) +
                                   " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) +
                                   "h" + to_string((mod10m % 6) * 10) + "m and " + to_string(frac / 100) +

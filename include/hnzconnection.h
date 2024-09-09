@@ -129,6 +129,12 @@ class HNZConnection {
    */
   inline const std::string& getServiceName() const { return m_hnz_fledge->getServiceName(); }
 
+  
+  /**
+   * Setter for the day section (modulo calculation)
+   */
+  inline void setDaySection(unsigned char daySection) { m_hnz_fledge->setDaySection(daySection); }
+
  private:
   std::shared_ptr<HNZPath> m_active_path;
   std::shared_ptr<HNZPath> m_passive_path;

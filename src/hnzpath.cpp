@@ -715,22 +715,8 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   msg[3] = (value >= 0) ? 0 : 0x80;
 
   bool sent = m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_info(beforeLog + " TVC " + (sent?"sent":"discarded") + " (address = " + to_string(address) + ", value = " + to_string(value) + ")");
-  if (!sent) {
-    return false;
-  }
-  // Add the command in the list of commend sent (to check ACK later)
-  Command_message cmd;
-  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
-                          high_resolution_clock::now().time_since_epoch())
-                          .count() +
-                      c_ack_time_max;
-  cmd.type = "TVC";
-  cmd.addr = address;
-  // TVC command has a high priority
-  command_sent.push_front(cmd);
-
-  return true;
+  m_registerCommandIfSent("TVC", sent, address, value, beforeLog);
+  return sent;
 }
 
 bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
@@ -743,24 +729,8 @@ bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
   msg[2] = ((value & 0x3) << 3) | ((address_str.back() - '0') << 5);
 
   bool sent = m_sendInfo(msg, sizeof(msg));
-  HnzUtility::log_info(beforeLog + " TC " + (sent?"sent":"discarded") + " (address = " + to_string(address) + " and value = " + to_string(value) + ")");
-  if (!sent) {
-    return false;
-  }
-
-  // Add the command in the list of commend sent (to check ACK later)
-  Command_message cmd;
-  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
-                          high_resolution_clock::now().time_since_epoch())
-                          .count() +
-                      c_ack_time_max;
-  cmd.type = "TC";
-  cmd.addr = address;
-
-  // TC command has a high priority, we add it to the beginning of the queue
-  command_sent.push_front(cmd);
-
-  return true;
+  m_registerCommandIfSent("TC", sent, address, value, beforeLog);
+  return sent;
 }
 
 void HNZPath::receivedCommandACK(string type, int addr) {
@@ -795,4 +765,22 @@ bool HNZPath::m_isOtherPathHNZConnected() {
     return false;
   }
   return otherPath->isHNZConnected();
+}
+
+
+void HNZPath::m_registerCommandIfSent(const std::string& type, bool sent, unsigned char address, int value, const std::string& beforeLog) {
+  HnzUtility::log_info(beforeLog + " " + type + " " + (sent?"sent":"discarded") + " (address = " + to_string(address) + ", value = " + to_string(value) + ")");
+  if (!sent) {
+    return;
+  }
+  // Add the command in the list of commend sent (to check ACK later)
+  Command_message cmd;
+  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
+                          high_resolution_clock::now().time_since_epoch())
+                          .count() +
+                      c_ack_time_max;
+  cmd.type = type;
+  cmd.addr = address;
+  // TVC command has a high priority
+  command_sent.push_front(cmd);
 }

@@ -346,6 +346,16 @@ class HNZPath {
    * @return True if the connection is established, false if not established or no other path defined
    */
   bool m_isOtherPathHNZConnected();
+
+  /**
+   * Called after sending a Command to store its information until a ACK is received, if the command was actually sent
+   * @param type Type of command: TC or TVC
+   * @param sent True if the command was sent to the HNZ device, else false
+   * @param address Destination address of the command
+   * @param value Value of the command
+   * @param beforeLog Prefix for the log messages produced by this function
+   */
+  void m_registerCommandIfSent(const std::string& type, bool sent, unsigned char address, int value, const std::string& beforeLog);
 };
 
 #endif

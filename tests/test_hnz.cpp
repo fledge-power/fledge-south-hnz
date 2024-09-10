@@ -2689,15 +2689,15 @@ TEST_F(HNZTest, MessageRejectedIfInvalidNR) {
   std::shared_ptr<MSG_TRAME> RRframe = findRR(frames);
   ASSERT_EQ(RRframe.get(), nullptr) << "RR was sent in response to BULLE with invalid NR: " << BasicHNZServer::frameToStr(RRframe);
 
-  // Send BULLE with valid NR
-  server->sendFrame({0x13, 0x04}, false);
+  // Send BULLE with valid NR (and repeat flag or else NS is invalid)
+  server->sendFrame({0x13, 0x04}, true);
   debug_print("[HNZ Server] BULLE 2 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Check that RR frame was received
   frames = server->popLastFramesReceived();
   RRframe = findRR(frames);
-  ASSERT_EQ(RRframe.get(), nullptr) << "Could not find RR in frames received: " << BasicHNZServer::framesToStr(frames);
+  ASSERT_NE(RRframe.get(), nullptr) << "Could not find RR in frames received: " << BasicHNZServer::framesToStr(frames);
 
   // Send BULLE with invalid NR (NR+2)
   BasicHNZServer::FrameError fe2;

@@ -487,9 +487,25 @@ void HNZPath::m_receivedBULLE() { m_last_msg_time = time(nullptr); }
 
 bool HNZPath::m_receivedRR(int nr, bool repetition) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_receivedRR - " + m_name_log;
+  // We want to test (m_NRR <= nr <= m_ns) modulo 8
+  // Case 0 (OK): m_NRR == nr <= m_ns
   if (nr != m_NRR) {
-    int frameOk = (nr - m_NRR + 7) % 8 + 1;
-    if (frameOk <= m_anticipation_ratio) {
+    // Case 1 (OK): m_NRR < nr <= m_ns
+    bool frameOk = (m_NRR < nr) && (nr <= m_ns);
+    if (m_ns < m_NRR) {
+      // Case 2 (OK): m_ns < m_NRR < nr (m_ns wrapped left by modulo 8)
+      if(m_NRR < nr) {
+        frameOk = true;
+      }
+      // Case 3 (OK):  nr <= m_ns < m_NRR (m_NRR wrapped right by modulo 8)
+      else if (nr <= m_ns) {
+        frameOk = true;
+      }
+      // Case 4 (NOK): m_ns < nr < m_NRR (nr out of bounds)
+    }
+    // Case 5 (NOK): m_NRR < m_ns < nr (nr out of bounds)
+    // Case 6 (NOK): nr < m_NRR < m_ns (nr out of bounds)
+    if (frameOk) {
       if (!repetition || (m_repeat > 0)) {
         // valid NR, message(s) well received
         // remove them from msg sent list
@@ -520,7 +536,7 @@ bool HNZPath::m_receivedRR(int nr, bool repetition) {
     } else {
       // invalid NR
       HnzUtility::log_warn(beforeLog + " Ignoring the RR, NR (" + to_string(nr) + ") is invalid. " +
-                                      "Current NRR : " + to_string(m_NRR + 1));
+                                      "Current NRR: " + to_string(m_NRR) + ", Current VS: " + to_string(m_ns));
       return false;
     }
   }

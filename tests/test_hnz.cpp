@@ -2577,8 +2577,8 @@ TEST_F(HNZTest, BackToSARM) {
 
   // Clear messages received from south plugin
   server->popLastFramesReceived();
-  // Wait (repeat_timeout * repeat_path_A) + 1 = (3 * 3) + 1 = 10s
-  this_thread::sleep_for(chrono::seconds(10));
+  // Wait (repeat_timeout * repeat_path_A) + m_repeat_timeout = (3 * 3) + 3 = 12s
+  this_thread::sleep_for(chrono::seconds(12));
   
   // Find the SARM frame in the list of frames received by server
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();

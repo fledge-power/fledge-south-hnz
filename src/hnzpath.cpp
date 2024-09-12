@@ -492,29 +492,13 @@ void HNZPath::m_receivedBULLE() { m_last_msg_time = time(nullptr); }
 
 bool HNZPath::m_receivedRR(int nr, bool repetition) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_receivedRR - " + m_name_log;
-  // We want to test (m_NRR <= nr <= m_ns) modulo 8
-  // Case 0 (OK): m_NRR == nr <= m_ns
   if (nr != m_NRR) {
-    // Case 1 (OK): m_NRR < nr <= m_ns
-    bool frameOk = (m_NRR < nr) && (nr <= m_ns);
-    if (m_ns < m_NRR) {
-      // Case 2 (OK): m_ns < m_NRR < nr (m_ns wrapped left by modulo 8)
-      if(m_NRR < nr) {
-        frameOk = true;
-      }
-      // Case 3 (OK):  nr <= m_ns < m_NRR (m_NRR wrapped right by modulo 8)
-      else if (nr <= m_ns) {
-        frameOk = true;
-      }
-      // Case 4 (NOK): m_ns < nr < m_NRR (nr out of bounds)
-    }
-    // Case 5 (NOK): m_NRR < m_ns < nr (nr out of bounds)
-    // Case 6 (NOK): nr < m_NRR < m_ns (nr out of bounds)
-    if (frameOk) {
+    if (m_isNRValid(nr)) {
       if (!repetition || (m_repeat > 0)) {
         // valid NR, message(s) well received
         // remove them from msg sent list
-        for (size_t i = 0; i < frameOk; i++) {
+        int nrOffset = m_getNROffset(nr);
+        for (size_t i = 0; i < nrOffset; i++) {
           if (!msg_sent.empty()) msg_sent.pop_front();
         }
 
@@ -549,6 +533,36 @@ bool HNZPath::m_receivedRR(int nr, bool repetition) {
     HnzUtility::log_debug(beforeLog + " Received RR with NR=NRR (" + to_string(nr) + "), ignoring it");
   }
   return true;
+}
+
+bool HNZPath::m_isNRValid(int nr) {
+  // We want to test (m_NRR <= nr <= m_ns) modulo 8
+  bool frameOk = true;
+  // Case 0 (OK): m_NRR == nr <= m_ns
+  if (nr != m_NRR) {
+    // Case 1 (OK): m_NRR < nr <= m_ns
+    frameOk = (m_NRR < nr) && (nr <= m_ns);
+    if (m_ns < m_NRR) {
+      // Case 2 (OK): m_ns < m_NRR < nr (m_ns wrapped left by modulo 8)
+      if(m_NRR < nr) {
+        frameOk = true;
+      }
+      // Case 3 (OK):  nr <= m_ns < m_NRR (m_NRR wrapped right by modulo 8)
+      else if (nr <= m_ns) {
+        frameOk = true;
+      }
+      // Case 4 (NOK): m_ns < nr < m_NRR (nr out of bounds)
+    }
+    // Case 5 (NOK): m_NRR < m_ns < nr (nr out of bounds)
+    // Case 6 (NOK): nr < m_NRR < m_ns (nr out of bounds)
+  }
+  return frameOk;
+}
+
+int HNZPath::m_getNROffset(int nr) {
+  // Return the distance between nr and m_NRR as a positive modulo 8 number
+  int modulo = 8;
+  return (((nr - m_NRR) % modulo) + modulo) % modulo;
 }
 
 void HNZPath::m_sendSARM() {

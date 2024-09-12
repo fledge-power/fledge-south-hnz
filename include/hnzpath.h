@@ -365,6 +365,20 @@ class HNZPath {
    * @param beforeLog Prefix for the log messages produced by this function
    */
   void m_registerCommandIfSent(const std::string& type, bool sent, unsigned char address, int value, const std::string& beforeLog);
+
+  /**
+   * Test if a NR is valid
+   * @param nr NR of the RTU
+   * @return True if the NR contained in the message was correct, else false
+   */
+  bool m_isNRValid(int nr);
+
+  /**
+   * Return the number of frames acquitted by the received NR
+   * @param nr NR of the RTU
+   * @return Number of frames acquitted
+   */
+  int m_getNROffset(int nr);
 };
 
 #endif

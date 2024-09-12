@@ -71,8 +71,7 @@ void HNZConnection::stop() {
 
   // Stop the path used (close the TCP connection and stop the threads that
   // manage HNZ connections)
-  if (m_active_path != nullptr || m_passive_path != nullptr) {
-    // Parent if is mostly here for scope lock
+  {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     if (m_active_path != nullptr) m_active_path->disconnect();
     if (m_passive_path != nullptr) m_passive_path->disconnect();
@@ -90,8 +89,8 @@ void HNZConnection::stop() {
 }
 
 void HNZConnection::checkGICompleted(bool success) { 
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::checkGICompleted -";
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   
   // GI is a success
   if (success) {
@@ -140,8 +139,7 @@ void HNZConnection::m_manageMessages() {
     m_update_current_time();
 
     // Manage repeat/timeout for each path
-    if (m_active_path || m_passive_path) {
-      // Parent if is mostly here for scope lock
+    {
       std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
       m_check_timer(m_active_path);
       m_check_timer(m_passive_path);

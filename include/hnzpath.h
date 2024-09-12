@@ -89,7 +89,10 @@ class HNZPath {
    * Is the HNZ connection with the PA established and still alive?
    * @return true if connected, false otherwise
    */
-  bool isHNZConnected() { return (m_protocol_state == CONNECTED) && isConnected(); };
+  bool isHNZConnected() {
+    std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
+    return (m_protocol_state == CONNECTED) && isConnected();
+  };
 
   /**
    * Is the TCP connection with the PA established and still alive?
@@ -161,7 +164,10 @@ class HNZPath {
    * Gets the state of the HNZ protocol (CONNECTION, CONNECTED)
    * @return CONNECTION if SARM/UA step is not complete, CONNECTED after that
    */
-  int getProtocolState() const { return m_protocol_state; }
+  int getProtocolState() const { 
+    std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
+    return m_protocol_state;
+  }
 
  private:
   std::unique_ptr<HNZClient> m_hnz_client;  // HNZ Client that manage TCP connection
@@ -173,54 +179,55 @@ class HNZPath {
   list<Command_message>
       command_sent;  // List of command already sent waiting to be ack
 
-  long last_sent_time;     // Timestamp of the last message sent
-  int repeat_max;          // max number of authorized repeats
+  long last_sent_time = 0;     // Timestamp of the last message sent
+  int repeat_max = 0;          // max number of authorized repeats
   int gi_repeat = 0;       // number of time a GI is repeated
   long gi_start_time = 0;  // GI start time
 
   std::shared_ptr<std::thread> m_connection_thread; // Main thread that maintains the connection
+  std::mutex m_connection_thread_mutex; // mutex to protect changes in m_connection_thread
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
   atomic<bool> m_connected{false};  // TCP Connection state with the PA
   // Initializing to CONNECTED ensures that the initial state transition from go_to_connection generates an audit
   int m_protocol_state = CONNECTED; // HNZ Protocol connection state
+  mutable std::recursive_mutex m_protocol_state_mutex; // mutex to protect changes in m_protocol_state
   bool m_is_active_path = false;
 
   // Plugin configuration
   string m_ip;  // IP of the PA
-  int m_port;   // Port to connect to
-  long long int m_timeoutUs; // Timeout for socket recv in microseconds
+  int m_port = 0;   // Port to connect to
+  long long int m_timeoutUs = 0; // Timeout for socket recv in microseconds
 
   string m_name_log;   // Path name used in log
   string m_path_letter; // Path letter
   string m_path_name;  // Path name
 
-  unsigned int m_remote_address;
-  unsigned char m_address_PA;   // remote address + 1
-  unsigned char m_address_ARP;  // remote address + 3
+  unsigned int m_remote_address = 0;
+  unsigned char m_address_PA = 0;   // remote address + 1
+  unsigned char m_address_ARP = 0;  // remote address + 3
 
-  int m_max_sarm;  // max number of SARM messages before handing over to the
+  int m_max_sarm = 0;  // max number of SARM messages before handing over to the
                    // passive path
-  int m_inacc_timeout;   // timeout before declaring the remote server
+  int m_inacc_timeout = 0;   // timeout before declaring the remote server
                          // unreachable
-  int m_repeat_timeout;  // time allowed for the receiver to acknowledge a frame
-  int m_anticipation_ratio;  // number of frames allowed to be received without
+  int m_repeat_timeout = 0;  // time allowed for the receiver to acknowledge a frame
+  int m_anticipation_ratio = 0;  // number of frames allowed to be received without
                              // acknowledgement
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
-  int c_ack_time_max;  // Max time to wait before receving a acknowledgement for
+  int c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for
                       // a control command (in ms)
 
   // HNZ protocol related variable
-  int m_nr;   // Number in reception
-  int m_ns;   // Number in sending
-  int m_NRR;  // Received aquit number
-  int module10M;
-  long m_last_msg_time;   // Timestamp of the last reception
-  bool sarm_PA_received;  // The SARM sent by the PA was received
-  bool sarm_ARP_UA;     // The UA sent by the PA (after receiving our SARM) was
+  int m_nr = 0;   // Number in reception
+  int m_ns = 0;   // Number in sending
+  int m_NRR = 0;  // Received aquit number
+  long m_last_msg_time = 0;   // Timestamp of the last reception
+  bool sarm_PA_received = false;  // The SARM sent by the PA was received
+  bool sarm_ARP_UA = false;     // The UA sent by the PA (after receiving our SARM) was
                         // received
-  int m_nbr_sarm_sent;  // Number of SARM sent
-  int m_repeat;         // Number of times the sent message is repeated
+  int m_nbr_sarm_sent = 0;  // Number of SARM sent
+  int m_repeat = 0;         // Number of times the sent message is repeated
 
   /**
    * Manage the HNZ protocol connection with the PA. Be careful, it doesn't

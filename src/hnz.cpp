@@ -168,8 +168,7 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
 }
 
 void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
-  if (m_hnz_conf) {
-    // Parent if used only for scope lock
+  {
     std::lock_guard<std::recursive_mutex> guard(m_configMutex);
     if (!m_hnz_conf->is_complete()) {
       return;
@@ -606,9 +605,7 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
   HnzUtility::log_info("%s Operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str());
 
-  // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1239
-  // if (operation == "HNZCommand") {
-  if (endsWith(operation, "Command")) {
+  if (operation == "HNZCommand") {
     int res = processCommandOperation(count, params);
     if(res == 0) {
       // Only return on success so that all parameters are displayed by final error log in case of syntax error
@@ -644,10 +641,6 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
     const std::string& paramValue = params[i]->value;
     if (commandParams.count(paramName) > 0) {
       commandParams[paramName] = paramValue;
-      // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1240
-      if(paramValue.at(0) == '"'){
-        commandParams[paramName] = paramValue.substr(1,paramValue.length()-2);
-      }
     }
     else {
       HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());

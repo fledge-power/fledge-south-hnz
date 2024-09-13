@@ -64,9 +64,6 @@ vector<unsigned char> convertPayloadToVector(unsigned char* data, int size) {
  * Helper method to convert payload into something readable for logs.
  */
 std::string convert_data_to_str(unsigned char* data, int len) {
-  if (data == nullptr) {
-    return "";
-  }
   std::stringstream stream;
   for (int i = 0; i < len; i++) {
     if (i > 0) {
@@ -126,6 +123,7 @@ void HNZPath::connect() {
     if (m_connected) {
       HnzUtility::log_info(beforeLog + " Connected to " + m_ip + " (" + to_string(m_port) + ").");
       go_to_connection();
+      std::lock_guard<std::mutex> lock(m_connection_thread_mutex);
       if (m_connection_thread == nullptr) {
         // Start the thread that manage the HNZ connection
         m_connection_thread = std::make_shared<std::thread>(&HNZPath::m_manageHNZProtocolConnection, this);
@@ -154,13 +152,13 @@ void HNZPath::disconnect() {
   m_connected = false;
   m_hnz_client->stop();
 
+  HnzUtility::log_debug(beforeLog + " HNZ client stopped");
+
+  std::lock_guard<std::mutex> lock(m_connection_thread_mutex);
   if (m_connection_thread != nullptr) {
-    // To avoid to be here at the same time, we put m_connection_thread =
-    // nullptr
-    std::shared_ptr<std::thread> temp = m_connection_thread;
+    HnzUtility::log_debug(beforeLog + " Waiting for the connection thread...");
+    m_connection_thread->join();
     m_connection_thread = nullptr;
-    HnzUtility::log_debug(beforeLog + " Waiting for the connection thread");
-    temp->join();
   }
 
   HnzUtility::log_info(beforeLog + " stopped !");
@@ -174,20 +172,20 @@ void HNZPath::m_manageHNZProtocolConnection() {
   HnzUtility::log_debug(beforeLog + " HNZ Connection Management thread running");
 
   do {
-    now = time(nullptr);
-
-    switch (m_protocol_state) {
-      case CONNECTION:
-        sleep = m_manageHNZProtocolConnecting(now);
-        break;
-      case CONNECTED:
-        sleep = m_manageHNZProtocolConnected(now);
-        break;
-      default:
-        HnzUtility::log_debug(beforeLog + " STOP state");
-        m_is_running = false;
-        sleep = milliseconds(10);
-        break;
+    {
+      // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+      std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+      std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
+      std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+      now = time(nullptr);
+      switch (m_protocol_state) {
+        case CONNECTION:
+          sleep = m_manageHNZProtocolConnecting(now);
+          break;
+        case CONNECTED:
+          sleep = m_manageHNZProtocolConnected(now);
+          break;
+      }
     }
 
     this_thread::sleep_for(sleep);
@@ -220,13 +218,6 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long now) {
       m_connected = false;
       // Reconnection will be done in HNZ::receive
     }
-  } else {
-    m_protocol_state = CONNECTED;
-    std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
-    if (m_is_active_path) {
-      m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
-    }
-    sleep = milliseconds(10);
   }
   return sleep;
 }
@@ -247,6 +238,10 @@ milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
 
 void HNZPath::go_to_connection() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::go_to_connection - " + m_name_log;
+  // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
   HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
   if (m_protocol_state != CONNECTION) {
     m_protocol_state = CONNECTION;
@@ -296,11 +291,15 @@ void HNZPath::setActivePath(bool active) {
 
 void HNZPath::m_go_to_connected() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_go_to_connected - " + m_name_log;
-  std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
-  m_protocol_state = CONNECTED;
-  // Send audit for path connection status
-  std::string activePassive = m_is_active_path ? "active" : "passive";
-  HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
+  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+  if (m_protocol_state != CONNECTED) {
+    m_protocol_state = CONNECTED;
+    // Send audit for path connection status
+    std::string activePassive = m_is_active_path ? "active" : "passive";
+    HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
+  }
   if (m_is_active_path) {
     m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
   }
@@ -356,6 +355,10 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
         m_receivedSARM();
         break;
       default:
+        // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+        std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+        std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
+        std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
         if (m_protocol_state != CONNECTION) {
           // Get NR, P/F ans NS field
           int ns = (type >> 1) & 0x07;
@@ -365,8 +368,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
             // Information frame
             HnzUtility::log_info(beforeLog + " Received an information frame (ns = " + to_string(ns) +
                                             ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
-
-            std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+            std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getPathMutex());
             if (m_is_active_path) {
               // Only the messages on the active path are extracted. The
               // passive path does not need them.
@@ -376,7 +378,10 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
             }
 
             // Computing the frame number & sending RR
-            m_sendRR(pf == 1, ns, nr);
+            if (!m_sendRR(pf == 1, ns, nr)) {
+              // If NR was invalid, skip message processing
+              messages.clear();
+            }
           } else {
             // Supervision frame
             HnzUtility::log_info(beforeLog + " RR received (f = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
@@ -417,7 +422,6 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data, i
       len = 7;
       break;
     case MODULO_CODE:
-      module10M = (int)data[1];
       HnzUtility::log_info(beforeLog + " Received Modulo 10mn");
       len = 2;
       break;
@@ -437,6 +441,7 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data, i
         len = 2;
       } else {
         HnzUtility::log_info(beforeLog + "Received an unknown type");
+        len = payloadSize;
       }
       break;
   }
@@ -461,17 +466,20 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data, i
 }
 
 void HNZPath::m_receivedSARM() {
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
   if (m_protocol_state == CONNECTED) {
     // Reset HNZ protocol variables
     go_to_connection();
   }
   sarm_PA_received = true;
-  sarm_ARP_UA = false;
   m_sendUA();
-  module10M = 0;
+  if (sarm_ARP_UA) {
+    m_go_to_connected();
+  }
 }
 
 void HNZPath::m_receivedUA() {
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
   if (m_protocol_state == CONNECTION) {
     sarm_ARP_UA = true;
     if (sarm_PA_received) {
@@ -482,41 +490,76 @@ void HNZPath::m_receivedUA() {
 
 void HNZPath::m_receivedBULLE() { m_last_msg_time = time(nullptr); }
 
-void HNZPath::m_receivedRR(int nr, bool repetition) {
+bool HNZPath::m_receivedRR(int nr, bool repetition) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_receivedRR - " + m_name_log;
   if (nr != m_NRR) {
-    int frameOk = (nr - m_NRR + 7) % 8 + 1;
-    if (frameOk <= m_anticipation_ratio) {
+    if (m_isNRValid(nr)) {
       if (!repetition || (m_repeat > 0)) {
-        // valid NR, message(s) well received
-        // remove them from msg sent list
-        for (size_t i = 0; i < frameOk; i++) {
-          if (!msg_sent.empty()) msg_sent.pop_front();
-        }
-
-        m_NRR = nr;
-        m_repeat = 0;
-
-        // Waiting for other RR, set timer
-        if (!msg_sent.empty())
-          last_sent_time = std::chrono::duration_cast<milliseconds>(
-                               system_clock::now().time_since_epoch())
-                               .count();
-
-        // Sent message in waiting queue
-        while (!msg_waiting.empty() &&
-               (msg_sent.size() < m_anticipation_ratio)) {
-          if (m_sendInfoImmediately(msg_waiting.front())) {
-            msg_waiting.pop_front();
-          }
-        }
+        m_NRAccepted(nr);
       } else {
         HnzUtility::log_warn(beforeLog + " Received an unexpected repeated RR, ignoring it");
+        return false;
       }
     } else {
       // invalid NR
-      HnzUtility::log_warn(beforeLog + " Ignoring the RR, NR (=" + to_string(nr) + ") is invalid." +
-                                      "Current NRR : " + to_string(m_NRR + 1));
+      HnzUtility::log_warn(beforeLog + " Ignoring the RR, NR (" + to_string(nr) + ") is invalid. " +
+                                      "Current NRR: " + to_string(m_NRR) + ", Current VS: " + to_string(m_ns));
+      return false;
+    }
+  }
+  else {
+    HnzUtility::log_debug(beforeLog + " Received RR with NR=NRR (" + to_string(nr) + "), ignoring it");
+  }
+  return true;
+}
+
+bool HNZPath::m_isNRValid(int nr) const {
+  // We want to test (m_NRR <= nr <= m_ns) modulo 8
+  bool frameOk = true;
+  // Case 0 (OK): m_NRR == nr <= m_ns
+  if (nr != m_NRR) {
+    // Case 1 (OK): m_NRR < nr <= m_ns
+    frameOk = (m_NRR < nr) && (nr <= m_ns);
+    if (m_ns < m_NRR) {
+      // Case 2 (OK): m_ns < m_NRR < nr (m_ns wrapped left by modulo 8)
+      if(m_NRR < nr) {
+        frameOk = true;
+      }
+      // Case 3 (OK):  nr <= m_ns < m_NRR (m_NRR wrapped right by modulo 8)
+      else if (nr <= m_ns) {
+        frameOk = true;
+      }
+      // Case 4 (NOK): m_ns < nr < m_NRR (nr out of bounds)
+    }
+    // Case 5 (NOK): m_NRR < m_ns < nr (nr out of bounds)
+    // Case 6 (NOK): nr < m_NRR < m_ns (nr out of bounds)
+  }
+  return frameOk;
+}
+
+void HNZPath::m_NRAccepted(int nr) {
+  // valid NR, message(s) well received
+  // remove them from msg sent list
+  int modulo = 8;
+  int nrOffset = (((nr - m_NRR) % modulo) + modulo) % modulo;
+  for (size_t i = 0; i < nrOffset; i++) {
+    if (!msg_sent.empty()) msg_sent.pop_front();
+  }
+
+  m_NRR = nr;
+  m_repeat = 0;
+
+  // Waiting for other RR, set timer
+  if (!msg_sent.empty())
+    last_sent_time = std::chrono::duration_cast<milliseconds>(
+                          system_clock::now().time_since_epoch())
+                          .count();
+
+  // Sent message in waiting queue
+  while (!msg_waiting.empty() &&
+          (msg_sent.size() < m_anticipation_ratio)) {
+    if (m_sendInfoImmediately(msg_waiting.front())) {
+      msg_waiting.pop_front();
     }
   }
 }
@@ -543,10 +586,13 @@ void HNZPath::m_sendBULLE() {
   HnzUtility::log_info(beforeLog + " BULLE " + (sent?"sent":"discarded"));
 }
 
-void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
+bool HNZPath::m_sendRR(bool repetition, int ns, int nr) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendRR - " + m_name_log;
   // use NR to validate frames sent
-  m_receivedRR(nr, 0);
+  if(!m_receivedRR(nr, false)) {
+    HnzUtility::log_warn(beforeLog + " Information frame contained unexpected NR (" + std::to_string(nr) + "), ignoring it");
+    return false;
+  }
 
   // send RR message
   if (ns == m_nr) {
@@ -576,10 +622,12 @@ void HNZPath::m_sendRR(bool repetition, int ns, int nr) {
 
   // Update timer
   m_last_msg_time = time(nullptr);
+  return true;
 }
 
 bool HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfo - " + m_name_log;
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
   if (m_protocol_state != CONNECTED) {
     HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message ["
                         + convert_data_to_str(msg, static_cast<int>(size)) + "]");
@@ -604,6 +652,7 @@ bool HNZPath::m_sendInfoImmediately(Message message) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfoImmediately - " + m_name_log;
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
   if (m_protocol_state != CONNECTED) {
     HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message ["
                         + convert_data_to_str(msg, size) + "]");

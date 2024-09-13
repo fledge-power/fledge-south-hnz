@@ -12,6 +12,11 @@ void BasicHNZServer::startHNZServer() {
   if (server == nullptr) {
     server = new HNZServer();
   }
+  {
+    std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
+    ua_ok = false;
+    sarm_ok = false;
+  }
   std::lock_guard<std::mutex> guard(m_t1_mutex);
   m_t1 = new thread(&BasicHNZServer::m_start, server, m_port);
 }
@@ -98,6 +103,9 @@ bool BasicHNZServer::stopHNZServer() {
 }
 
 void BasicHNZServer::receiving_loop() {
+  // Reset NS/NR variables
+  m_ns = 0;
+  m_nr = 0;
   while (is_running) {
     // Receive an hnz frame, this call is blocking
     MSG_TRAME *frReceived = (server->receiveFr());
@@ -155,19 +163,10 @@ void BasicHNZServer::receiving_loop() {
 }
 
 void BasicHNZServer::sendSARMLoop() {
-  // Reset SARM/UA variables in case of reconnect
-  {
-    std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
-    ua_ok = false;
-    sarm_ok = false;
-  }
   bool sarm_ua_ok = false;
   while (is_running && !sarm_ua_ok) {
     if(server->isConnected()) {
       sendSARM();
-      std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
-      ua_ok = false;
-      sarm_ok = false;
     }
     this_thread::sleep_for(chrono::milliseconds(3000));
     std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
@@ -191,7 +190,13 @@ bool BasicHNZServer::waitForTCPConnection(int timeout_s) {
   return true;
 }
 
-bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
+bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/, bool sendSarm /*= true*/, bool delaySarm /*= false*/) {
+  // Reset SARM/UA variables in case of reconnect
+  {
+    std::lock_guard<std::mutex> guard(m_sarm_ua_mutex);
+    ua_ok = false;
+    sarm_ok = false;
+  }
   // Lock to prevent multiple calls to this function in parallel
   std::lock_guard<std::mutex> guard(m_init_mutex);
   if (receiving_thread) {
@@ -210,15 +215,20 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
     return false;
   }
   // Loop that sending sarm every 3s
-  thread *m_t2 = new thread(&BasicHNZServer::sendSARMLoop, this);
-  this_thread::sleep_for(chrono::milliseconds(100));
+  thread *m_t2 = nullptr;
+  if (sendSarm && !delaySarm) {
+    m_t2 = new thread(&BasicHNZServer::sendSARMLoop, this);
+    this_thread::sleep_for(chrono::milliseconds(100));
+  }
   // Wait for UA and send UA in response of SARM
   start = time(NULL);
+  int nbReconnect = 0;
+  int maxReconnect = 10;
   bool lastFrameWasEmpty = false;
   // Make sure to always exit this loop with is_running==false, not return
   // to ensure that m_t2 is joined properly
   while (is_running) {
-    if (time(NULL) - start > timeout_s) {
+    if ((time(NULL) - start > timeout_s) || (nbReconnect >= maxReconnect)) {
       printf("[HNZ Server][%d] SARM/UA timeout\n", m_port); fflush(stdout);
       is_running = false;
       break;
@@ -237,6 +247,7 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
         break;
       }
       start = time(NULL);
+      nbReconnect++;
       printf("[HNZ Server][%d] Server reconnected!\n", m_port); fflush(stdout);
     }
 
@@ -268,6 +279,11 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
           std::lock_guard<std::mutex> guard2(m_sarm_ua_mutex);
           sarm_ok = true;
         }
+        // If SARM delayed, only start sending it after SARM was received
+        if (delaySarm && (m_t2 == nullptr)) {
+          m_t2 = new thread(&BasicHNZServer::sendSARMLoop, this);
+          this_thread::sleep_for(chrono::milliseconds(100));
+        }
         break;
       default:
         printf("[HNZ Server][%d] Neither UA nor SARM: %d\n", m_port, static_cast<int>(c)); fflush(stdout);
@@ -276,11 +292,8 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
     // Store the frame that was received for testing purposes
     onFrameReceived(frReceived);
     std::lock_guard<std::mutex> guard2(m_sarm_ua_mutex);
-    if (ua_ok && sarm_ok) break;
+    if (server->isConnected() && ua_ok && sarm_ok) break;
   }
-  m_t2->join();
-  delete m_t2;
-  m_t2 = nullptr;
   if (!is_running) {
     printf("[HNZ Server][%d] Not running after SARM/UA, exit\n", m_port); fflush(stdout);
     return false;
@@ -289,6 +302,13 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/) {
 
   // Connection established
   receiving_thread = new thread(&BasicHNZServer::receiving_loop, this);
+
+  // Join SARM thread after starting receiving loop as it may wait up to 3 seconds and some messages received will be missed (no RR sent)
+  if (m_t2 != nullptr) {
+    m_t2->join();
+    delete m_t2;
+    m_t2 = nullptr;
+  }
   return true;
 }
 
@@ -299,15 +319,33 @@ void BasicHNZServer::sendSARM() {
   createAndSendFrame(0x05, message, sizeof(message));
 }
 
-void BasicHNZServer::sendFrame(vector<unsigned char> message, bool repeat) {
-  int num = (((repeat) ? (m_ns - 1) : m_ns) % 8) << 1 + ((m_nr + 1 << 5) % 8);
+void BasicHNZServer::sendFrame(vector<unsigned char> message, bool repeat, const FrameError& frameError /*= {}*/) {
+  int p = repeat ? 1 : 0;
+  int nr = m_nr;
+  if (frameError.nr_minus_1) {
+    nr = (m_nr + 7) % 8; // NR-1
+  }
+  if (frameError.nr_plus_2) {
+    nr = (m_nr + 2) % 8; // NR+2
+  }
+  int ns = m_ns;
+  if (repeat) {
+    ns = (m_ns + 7) % 8; // NS-1
+  }
+  int num = (nr << 5) + (p << 4) + (ns << 1);
   message.insert(message.begin(), num);
   int len = message.size();
-  createAndSendFrame(addr, message.data(), len);
+  int addressByte = addr;
+  if (frameError.address) {
+    int address = addressByte >> 2;
+    address = (address + 1) % 64;
+    addressByte = (address << 2) + (addressByte & 0x03);
+  }
+  createAndSendFrame(addressByte, message.data(), len, frameError);
   if (!repeat) m_ns++;
 }
 
-void BasicHNZServer::createAndSendFrame(unsigned char addr, unsigned char *msg, int msgSize) {
+void BasicHNZServer::createAndSendFrame(unsigned char addr, unsigned char *msg, int msgSize, const FrameError& frameError /*= {}*/) {
   // Code extracted from HNZClient::createAndSendFr of libhnz
   MSG_TRAME* pTrame = new MSG_TRAME;
   unsigned char msgWithAddr[msgSize + 1];
@@ -317,6 +355,9 @@ void BasicHNZServer::createAndSendFrame(unsigned char addr, unsigned char *msg, 
   memcpy(msgWithAddr + 1, msg, msgSize);
   server->addMsgToFr(pTrame, msgWithAddr, sizeof(msgWithAddr));
   server->setCRC(pTrame);
+  if (frameError.fcs) {
+    pTrame->aubTrame[pTrame->usLgBuffer-1]^=0xFF; // Invert all bits on one byte of the FCS to make it invalid
+  }
   // Store the frame about to be sent for testing purposes
   onFrameSent(pTrame);
   server->sendFr(pTrame);

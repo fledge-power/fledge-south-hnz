@@ -495,29 +495,7 @@ bool HNZPath::m_receivedRR(int nr, bool repetition) {
   if (nr != m_NRR) {
     if (m_isNRValid(nr)) {
       if (!repetition || (m_repeat > 0)) {
-        // valid NR, message(s) well received
-        // remove them from msg sent list
-        int nrOffset = m_getNROffset(nr);
-        for (size_t i = 0; i < nrOffset; i++) {
-          if (!msg_sent.empty()) msg_sent.pop_front();
-        }
-
-        m_NRR = nr;
-        m_repeat = 0;
-
-        // Waiting for other RR, set timer
-        if (!msg_sent.empty())
-          last_sent_time = std::chrono::duration_cast<milliseconds>(
-                               system_clock::now().time_since_epoch())
-                               .count();
-
-        // Sent message in waiting queue
-        while (!msg_waiting.empty() &&
-               (msg_sent.size() < m_anticipation_ratio)) {
-          if (m_sendInfoImmediately(msg_waiting.front())) {
-            msg_waiting.pop_front();
-          }
-        }
+        m_NRAccepted(nr);
       } else {
         HnzUtility::log_warn(beforeLog + " Received an unexpected repeated RR, ignoring it");
         return false;
@@ -535,7 +513,7 @@ bool HNZPath::m_receivedRR(int nr, bool repetition) {
   return true;
 }
 
-bool HNZPath::m_isNRValid(int nr) {
+bool HNZPath::m_isNRValid(int nr) const {
   // We want to test (m_NRR <= nr <= m_ns) modulo 8
   bool frameOk = true;
   // Case 0 (OK): m_NRR == nr <= m_ns
@@ -559,10 +537,31 @@ bool HNZPath::m_isNRValid(int nr) {
   return frameOk;
 }
 
-int HNZPath::m_getNROffset(int nr) {
-  // Return the distance between nr and m_NRR as a positive modulo 8 number
+void HNZPath::m_NRAccepted(int nr) {
+  // valid NR, message(s) well received
+  // remove them from msg sent list
   int modulo = 8;
-  return (((nr - m_NRR) % modulo) + modulo) % modulo;
+  int nrOffset = (((nr - m_NRR) % modulo) + modulo) % modulo;
+  for (size_t i = 0; i < nrOffset; i++) {
+    if (!msg_sent.empty()) msg_sent.pop_front();
+  }
+
+  m_NRR = nr;
+  m_repeat = 0;
+
+  // Waiting for other RR, set timer
+  if (!msg_sent.empty())
+    last_sent_time = std::chrono::duration_cast<milliseconds>(
+                          system_clock::now().time_since_epoch())
+                          .count();
+
+  // Sent message in waiting queue
+  while (!msg_waiting.empty() &&
+          (msg_sent.size() < m_anticipation_ratio)) {
+    if (m_sendInfoImmediately(msg_waiting.front())) {
+      msg_waiting.pop_front();
+    }
+  }
 }
 
 void HNZPath::m_sendSARM() {

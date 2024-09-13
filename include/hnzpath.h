@@ -371,14 +371,13 @@ class HNZPath {
    * @param nr NR of the RTU
    * @return True if the NR contained in the message was correct, else false
    */
-  bool m_isNRValid(int nr);
+  bool m_isNRValid(int nr) const;
 
   /**
-   * Return the number of frames acquitted by the received NR
+   * Called to update internal values once a message containing a valid NR was received
    * @param nr NR of the RTU
-   * @return Number of frames acquitted
    */
-  int m_getNROffset(int nr);
+  void m_NRAccepted(int nr);
 };
 
 #endif

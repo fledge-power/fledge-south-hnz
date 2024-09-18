@@ -238,10 +238,13 @@ milliseconds HNZPath::m_manageHNZProtocolConnected(long now) {
 
 void HNZPath::go_to_connection() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::go_to_connection - " + m_name_log;
+  std::recursive_mutex& m_other_path_protocol_state_mutex = m_getOtherPathProtocolStateMutex();
   // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
-  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+  // Same can happen if m_protocol_state_mutex from the other path gets locked later withing this function
+  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex(), m_other_path_protocol_state_mutex); // Lock all mutexes simultaneously
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
   std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock3(m_other_path_protocol_state_mutex, std::adopt_lock);
   HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
   if (m_protocol_state != CONNECTION) {
     m_protocol_state = CONNECTION;
@@ -797,7 +800,7 @@ void HNZPath::receivedCommandACK(string type, int addr) {
 }
 
 
-std::shared_ptr<HNZPath> HNZPath::m_getOtherPath() {
+std::shared_ptr<HNZPath> HNZPath::m_getOtherPath() const {
   std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
   if (m_is_active_path) {
     return m_hnz_connection->getPassivePath();
@@ -807,7 +810,7 @@ std::shared_ptr<HNZPath> HNZPath::m_getOtherPath() {
   }
 }
 
-bool HNZPath::m_isOtherPathHNZConnected() {
+bool HNZPath::m_isOtherPathHNZConnected() const {
   std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
   auto otherPath = m_getOtherPath();
   if (otherPath == nullptr) {
@@ -832,4 +835,14 @@ void HNZPath::m_registerCommandIfSent(const std::string& type, bool sent, unsign
   cmd.addr = address;
   // TVC command has a high priority
   command_sent.push_front(cmd);
+}
+
+std::recursive_mutex& HNZPath::m_getOtherPathProtocolStateMutex() const {
+  std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+  auto otherPath = m_getOtherPath();
+  if (otherPath == nullptr) {
+    static std::recursive_mutex dummyMutex;
+    return dummyMutex;
+  }
+  return otherPath->m_protocol_state_mutex;
 }

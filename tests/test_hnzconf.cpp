@@ -1148,7 +1148,7 @@ TEST(HNZCONF, ExchangedDataImportErrors) {
         "pivot_type": "test",
         "protocols": [{
           "name": "hnzip",
-          "address": "4294967296",
+          "address": "18446744073709551616",
           "typeid": "test"
         }]
       }]

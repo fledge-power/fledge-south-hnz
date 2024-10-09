@@ -89,7 +89,10 @@ class HNZPath {
    * Is the HNZ connection with the PA established and still alive?
    * @return true if connected, false otherwise
    */
-  bool isHNZConnected() { return (m_protocol_state == CONNECTED) && isConnected(); };
+  bool isHNZConnected() {
+    std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
+    return (m_protocol_state == CONNECTED) && isConnected();
+  };
 
   /**
    * Is the TCP connection with the PA established and still alive?
@@ -161,7 +164,10 @@ class HNZPath {
    * Gets the state of the HNZ protocol (CONNECTION, CONNECTED)
    * @return CONNECTION if SARM/UA step is not complete, CONNECTED after that
    */
-  int getProtocolState() const { return m_protocol_state; }
+  int getProtocolState() const { 
+    std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
+    return m_protocol_state;
+  }
 
  private:
   std::unique_ptr<HNZClient> m_hnz_client;  // HNZ Client that manage TCP connection
@@ -173,54 +179,55 @@ class HNZPath {
   list<Command_message>
       command_sent;  // List of command already sent waiting to be ack
 
-  long last_sent_time;     // Timestamp of the last message sent
-  int repeat_max;          // max number of authorized repeats
+  long last_sent_time = 0;     // Timestamp of the last message sent
+  int repeat_max = 0;          // max number of authorized repeats
   int gi_repeat = 0;       // number of time a GI is repeated
   long gi_start_time = 0;  // GI start time
 
   std::shared_ptr<std::thread> m_connection_thread; // Main thread that maintains the connection
+  std::mutex m_connection_thread_mutex; // mutex to protect changes in m_connection_thread
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
   atomic<bool> m_connected{false};  // TCP Connection state with the PA
   // Initializing to CONNECTED ensures that the initial state transition from go_to_connection generates an audit
   int m_protocol_state = CONNECTED; // HNZ Protocol connection state
+  mutable std::recursive_mutex m_protocol_state_mutex; // mutex to protect changes in m_protocol_state
   bool m_is_active_path = false;
 
   // Plugin configuration
   string m_ip;  // IP of the PA
-  int m_port;   // Port to connect to
-  long long int m_timeoutUs; // Timeout for socket recv in microseconds
+  int m_port = 0;   // Port to connect to
+  long long int m_timeoutUs = 0; // Timeout for socket recv in microseconds
 
   string m_name_log;   // Path name used in log
   string m_path_letter; // Path letter
   string m_path_name;  // Path name
 
-  unsigned int m_remote_address;
-  unsigned char m_address_PA;   // remote address + 1
-  unsigned char m_address_ARP;  // remote address + 3
+  unsigned int m_remote_address = 0;
+  unsigned char m_address_PA = 0;   // remote address + 1
+  unsigned char m_address_ARP = 0;  // remote address + 3
 
-  int m_max_sarm;  // max number of SARM messages before handing over to the
+  int m_max_sarm = 0;  // max number of SARM messages before handing over to the
                    // passive path
-  int m_inacc_timeout;   // timeout before declaring the remote server
+  int m_inacc_timeout = 0;   // timeout before declaring the remote server
                          // unreachable
-  int m_repeat_timeout;  // time allowed for the receiver to acknowledge a frame
-  int m_anticipation_ratio;  // number of frames allowed to be received without
+  int m_repeat_timeout = 0;  // time allowed for the receiver to acknowledge a frame
+  int m_anticipation_ratio = 0;  // number of frames allowed to be received without
                              // acknowledgement
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
-  int c_ack_time_max;  // Max time to wait before receving a acknowledgement for
+  int c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for
                       // a control command (in ms)
 
   // HNZ protocol related variable
-  int m_nr;   // Number in reception
-  int m_ns;   // Number in sending
-  int m_NRR;  // Received aquit number
-  int module10M;
-  long m_last_msg_time;   // Timestamp of the last reception
-  bool sarm_PA_received;  // The SARM sent by the PA was received
-  bool sarm_ARP_UA;     // The UA sent by the PA (after receiving our SARM) was
+  int m_nr = 0;   // Number in reception
+  int m_ns = 0;   // Number in sending
+  int m_NRR = 0;  // Received aquit number
+  long m_last_msg_time = 0;   // Timestamp of the last reception
+  bool sarm_PA_received = false;  // The SARM sent by the PA was received
+  bool sarm_ARP_UA = false;     // The UA sent by the PA (after receiving our SARM) was
                         // received
-  int m_nbr_sarm_sent;  // Number of SARM sent
-  int m_repeat;         // Number of times the sent message is repeated
+  int m_nbr_sarm_sent = 0;  // Number of SARM sent
+  int m_repeat = 0;         // Number of times the sent message is repeated
 
   /**
    * Manage the HNZ protocol connection with the PA. Be careful, it doesn't
@@ -294,29 +301,33 @@ class HNZPath {
    * Call this method when a RR message is received.
    * @param nr NR of the RTU
    * @param repetition set to true if frame received is repeated
+   * @return True if the NR contained in the message was correct, else false
    */
-  void m_receivedRR(int nr, bool repetition);
+  bool m_receivedRR(int nr, bool repetition);
 
   /**
    * Send a RR
    * @param repetition set to true if frame received is repeated
    * @param ns NS of the received frame
+   * @return True if received NR was valid and RR was sent, false if invalid NR was received and no RR was sent
    */
-  void m_sendRR(bool repetition, int ns, int nr);
+  bool m_sendRR(bool repetition, int ns, int nr);
 
   /**
    * Send an information frame. The address byte, numbering bit (containing NR,
    * NS) will be added by this method.
    * @param msg payload
    * @param size nubmer of byte in the payload
+   * @return True if the message was sent, false if it was discarded
    */
-  void m_sendInfo(unsigned char* msg, unsigned long size);
+  bool m_sendInfo(unsigned char* msg, unsigned long size);
 
   /**
    * Send a message immediately
    * @param message The message to send
+   * @return True if the message was sent, false if it was discarded
    */
-  void m_sendInfoImmediately(Message message);
+  bool m_sendInfoImmediately(Message message);
 
   /**
    * Send a date configuration message
@@ -337,13 +348,44 @@ class HNZPath {
    * Get the other path if any
    * @return Second HNZ path, or nullptr if no other path defined
    */
-  std::shared_ptr<HNZPath> m_getOtherPath();
+  std::shared_ptr<HNZPath> m_getOtherPath() const;
 
   /**
    * Tells if the HNZ connection is fully established and active on the other path
    * @return True if the connection is established, false if not established or no other path defined
    */
-  bool m_isOtherPathHNZConnected();
+  bool m_isOtherPathHNZConnected() const;
+
+  /**
+   * Called after sending a Command to store its information until a ACK is received, if the command was actually sent
+   * @param type Type of command: TC or TVC
+   * @param sent True if the command was sent to the HNZ device, else false
+   * @param address Destination address of the command
+   * @param value Value of the command
+   * @param beforeLog Prefix for the log messages produced by this function
+   */
+  void m_registerCommandIfSent(const std::string& type, bool sent, unsigned char address, int value, const std::string& beforeLog);
+
+  /**
+   * Test if a NR is valid
+   * @param nr NR of the RTU
+   * @return True if the NR contained in the message was correct, else false
+   */
+  bool m_isNRValid(int nr) const;
+
+  /**
+   * Called to update internal values once a message containing a valid NR was received
+   * @param nr NR of the RTU
+   */
+  void m_NRAccepted(int nr);
+
+  /**
+   * Returns mutex used to protect the protocol state from the other path,
+   * if no other path is defined, returns a static mutex object instead
+   * so that the return of this function can always be passed to a lock
+   * @return Mutex protecting m_protocol_state from the other path, or static mutex
+   */
+  std::recursive_mutex& m_getOtherPathProtocolStateMutex() const;
 };
 
 #endif

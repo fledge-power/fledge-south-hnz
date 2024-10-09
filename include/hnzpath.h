@@ -348,13 +348,13 @@ class HNZPath {
    * Get the other path if any
    * @return Second HNZ path, or nullptr if no other path defined
    */
-  std::shared_ptr<HNZPath> m_getOtherPath();
+  std::shared_ptr<HNZPath> m_getOtherPath() const;
 
   /**
    * Tells if the HNZ connection is fully established and active on the other path
    * @return True if the connection is established, false if not established or no other path defined
    */
-  bool m_isOtherPathHNZConnected();
+  bool m_isOtherPathHNZConnected() const;
 
   /**
    * Called after sending a Command to store its information until a ACK is received, if the command was actually sent
@@ -378,6 +378,14 @@ class HNZPath {
    * @param nr NR of the RTU
    */
   void m_NRAccepted(int nr);
+
+  /**
+   * Returns mutex used to protect the protocol state from the other path,
+   * if no other path is defined, returns a static mutex object instead
+   * so that the return of this function can always be passed to a lock
+   * @return Mutex protecting m_protocol_state from the other path, or static mutex
+   */
+  std::recursive_mutex& m_getOtherPathProtocolStateMutex() const;
 };
 
 #endif

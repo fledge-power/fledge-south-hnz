@@ -1639,6 +1639,55 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
 
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(dataObjectsReceived, 1);
+
+  /////////////////////////////
+  // No deadlock after SARM received on both path
+  /////////////////////////////
+
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+  server2->popLastFramesReceived();
+
+  // Send a SARM on both path to send them back to SARM loop and make sure no deadlock is happening
+  // by checking that SARM are received and the connection can be established on both path again
+  debug_print("[HNZ Server] Send SARM on Path A and B");
+  server->sendSARM();
+  server2->sendSARM();
+  this_thread::sleep_for(chrono::seconds(10));
+
+  // Find the SARM frame in the list of frames received by servers
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
+  frames = server2->popLastFramesReceived();
+  SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM 2 in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Also stop the servers as they are unable to reconnect on the fly
+  debug_print("[HNZ server] Request servers stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  ASSERT_TRUE(server2->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request servers start...");
+  server->startHNZServer();
+  server2->startHNZServer();
+
+  // Check that the servers are reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
+  server2 = wrapper.server2().get();
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
 }
 
 TEST_F(HNZTest, SendingMessagesTwoPath) {

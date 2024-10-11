@@ -189,7 +189,7 @@ class HNZTest : public testing::Test {
     southEventsReceived = 0;
   }
 
-  static void initConfig(int port, int port2) {
+  static void initCustomConfig(int port, int port2, const std::string& protocol_stack, const std::string& exchanged_data) {
     static const std::string configureTemplate = QUOTE({
       "enable" : {
         "value": "true"
@@ -201,15 +201,19 @@ class HNZTest : public testing::Test {
         "value": <exchanged_data>
       }
     });
-    const std::string& protocol_stack = protocol_stack_generator(port, port2);
     std::string configure = std::regex_replace(configureTemplate, std::regex("<protocol_stack>"), protocol_stack);
-    configure = std::regex_replace(configure, std::regex("<exchanged_data>"), exchanged_data_def);
+    configure = std::regex_replace(configure, std::regex("<exchanged_data>"), exchanged_data);
     ConfigCategory config("newConfig", configure);
     hnz->reconfigure(config);
   }
 
-  static void startHNZ(int port, int port2) {
-    initConfig(port, port2);
+  static void initConfig(int port, int port2, const std::string& protocol_stack = "", const std::string& exchanged_data = "") {
+    const std::string& protocol_stack_conf = protocol_stack.empty() ? protocol_stack_generator(port, port2) : protocol_stack;
+    const std::string& exchanged_data_conf = exchanged_data.empty() ? exchanged_data_def : exchanged_data;
+    initCustomConfig(port, port2, protocol_stack_conf, exchanged_data_conf);
+  }
+
+  static void startHNZ(int port, int port2, const std::string& protocol_stack = "", const std::string& exchanged_data = "") {
     hnz->start(true);
   }
 
@@ -398,6 +402,17 @@ class HNZTest : public testing::Test {
     std::shared_ptr<MSG_TRAME> frameFound = nullptr;
     for(auto frame: frames) {
       if((frame->usLgBuffer > 1) && (frame->aubTrame[1] == frameId)) {
+        frameFound = frame;
+        break;
+      }
+    }
+    return frameFound;
+  }
+
+  static std::shared_ptr<MSG_TRAME> findRR(const std::vector<std::shared_ptr<MSG_TRAME>>& frames) {
+    std::shared_ptr<MSG_TRAME> frameFound = nullptr;
+    for(auto frame: frames) {
+      if((frame->usLgBuffer > 1) && ((frame->aubTrame[1] & 0x0F) == 0x1)) {
         frameFound = frame;
         break;
       }
@@ -653,20 +668,23 @@ class ServersWrapper {
         startHNZPlugin(); 
       }
     }
-    void initHNZPlugin() {
-      HNZTest::initConfig(m_port1, m_port2);
+    void initHNZPlugin(const std::string& protocol_stack = "", const std::string& exchanged_data = "") {
+      HNZTest::initConfig(m_port1, m_port2, protocol_stack, exchanged_data);
     }
-    void startHNZPlugin() {
-      HNZTest::startHNZ(m_port1, m_port2);
+    void startHNZPlugin(bool config = true, const std::string& protocol_stack = "", const std::string& exchanged_data = "") {
+      if (config) {
+        HNZTest::initConfig(m_port1, m_port2, protocol_stack, exchanged_data);
+      }
+      HNZTest::startHNZ(m_port1, m_port2, protocol_stack, exchanged_data);
     }
-    std::shared_ptr<BasicHNZServer> server1() {
-      if (m_server1 && !m_server1->HNZServerIsReady()) {
+    std::shared_ptr<BasicHNZServer> server1(bool sendSarm = true, bool delaySarm = false) {
+      if (m_server1 && !m_server1->HNZServerIsReady(16, sendSarm, delaySarm)) {
         return nullptr;
       }
       return m_server1;
     }
-    std::shared_ptr<BasicHNZServer> server2() {
-      if (m_server2 && !m_server2->HNZServerIsReady()) {
+    std::shared_ptr<BasicHNZServer> server2(bool sendSarm = true, bool delaySarm = false) {
+      if (m_server2 && !m_server2->HNZServerIsReady(16, sendSarm, delaySarm)) {
         return nullptr;
       }
       return m_server2;
@@ -744,8 +762,18 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ///////////////////////////////////////
   // Send TS1
   ///////////////////////////////////////
+  // Find SET TIME message sent at startup and extract modulo value from it
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TIMEframe = findFrameWithId(frames, 0x1d);
+  ASSERT_NE(TIMEframe.get(), nullptr) << "Could not find SET TIME in frames received: " << BasicHNZServer::framesToStr(frames);
+  ASSERT_EQ(TIMEframe->usLgBuffer, 9);
+  unsigned char startupModulo = TIMEframe->aubTrame[3];
+  ASSERT_GE(startupModulo, 0);
+  ASSERT_LE(startupModulo, 143);
+
   dateTime = std::chrono::system_clock::now();
-  daySection = 0;
+  // Day section is initialized when sending SET TIME message after connection is established
+  daySection = startupModulo;
   ts = 14066;
   expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
   unsigned char msb = static_cast<unsigned char>(ts >> 8);
@@ -802,7 +830,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ///////////////////////////////////////
   // Send TS1 with modified day section
   ///////////////////////////////////////
-  daySection = 12;
+  daySection = (daySection + 12) % 144;
   expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
   server->sendFrame({0x0F, daySection}, false);
   server->sendFrame({0x0B, 0x33, 0x38, msb, lsb}, false);
@@ -1611,6 +1639,55 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
 
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(dataObjectsReceived, 1);
+
+  /////////////////////////////
+  // No deadlock after SARM received on both path
+  /////////////////////////////
+
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+  server2->popLastFramesReceived();
+
+  // Send a SARM on both path to send them back to SARM loop and make sure no deadlock is happening
+  // by checking that SARM are received and the connection can be established on both path again
+  debug_print("[HNZ Server] Send SARM on Path A and B");
+  server->sendSARM();
+  server2->sendSARM();
+  this_thread::sleep_for(chrono::seconds(10));
+
+  // Find the SARM frame in the list of frames received by servers
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
+  frames = server2->popLastFramesReceived();
+  SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM 2 in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Also stop the servers as they are unable to reconnect on the fly
+  debug_print("[HNZ server] Request servers stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  ASSERT_TRUE(server2->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request servers start...");
+  server->startHNZServer();
+  server2->startHNZServer();
+
+  // Check that the servers are reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
+  server2 = wrapper.server2().get();
+  ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
 }
 
 TEST_F(HNZTest, SendingMessagesTwoPath) {
@@ -2156,21 +2233,16 @@ TEST_F(HNZTest, ReconfigureWhileConnectionActive) {
 }
 
 TEST_F(HNZTest, ReconfigureBadConfig) {
-  ServersWrapper wrapper(0x05, getNextPort());
+  int port = getNextPort();
+  ServersWrapper wrapper(0x05, port);
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
 
-  debug_print("[HNZ south plugin] Send bad plugin configuration");
+  debug_print("[HNZ south plugin] Send bad plugin configuration (exchanged_data)");
   clearReadings();
-  static const std::string badConfig = QUOTE({
-    "exchanged_data" : {
-      "value": 42
-    }
-  });
-  ConfigCategory config("newConfig", badConfig);
-  hnz->reconfigure(config);
+  wrapper.initHNZPlugin("", "42");
 
   // Check that connection was lost
   waitUntil(southEventsReceived, 1, 1000);
@@ -2251,6 +2323,27 @@ TEST_F(HNZTest, ReconfigureBadConfig) {
   });
   if(HasFatalFailure()) return;
 
+  // Send configuration with bad "connections" array definition
+  debug_print("[HNZ south plugin] Send bad plugin configuration (protocol_stack)");
+  clearReadings();
+  const std::string& protocol_stack = "{ \"protocol_stack\" : { \"name\" : \"hnzclient\", \"version\" : "
+         "\"1.0\", \"transport_layer\" : { \"connections\" : 42 } , "
+         "\"application_layer\" : { \"repeat_timeout\" : 3000, \"repeat_path_A\" : 3,"
+         "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2,"
+         "\"anticipation_ratio\" : 5 }, \"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
+  wrapper.initHNZPlugin(protocol_stack);
+
+  // Check that connection was lost
+  waitUntil(southEventsReceived, 1, 1000);
+  // Check that ingestCallback had been called only one time
+  ASSERT_EQ(southEventsReceived, 1);
+  // Validate new connection state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "not connected"},
+  });
+  if(HasFatalFailure()) return;
+
   // Manually stop the server here or we may end up in a deadlock in the HNZServer
   debug_print("[HNZ server] Request server stop 3...");
   ASSERT_TRUE(server->stopHNZServer());
@@ -2266,6 +2359,24 @@ TEST_F(HNZTest, UnknownMessage) {
   // Send an unknown message
   server->sendFrame({0x00}, false);
   debug_print("[HNZ Server] Unknown message sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an TSCE with wrong FCS
+  BasicHNZServer::FrameError fe;
+  fe.fcs = true;
+  server->sendFrame({0x0B, 0x33, 0x28, 0x00, 0x00}, false, fe);
+  debug_print("[HNZ Server] TSCE with bad FCS sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  // Check that no message was received
+  ASSERT_EQ(ingestCallbackCalled, 0);
+
+  // Send an TSCE with wrong address
+  BasicHNZServer::FrameError fe2;
+  fe2.address = true;
+  server->sendFrame({0x0B, 0x33, 0x28, 0x00, 0x00}, false, fe2);
+  debug_print("[HNZ Server] TSCE with bad addr sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that no message was received
   ASSERT_EQ(ingestCallbackCalled, 0);
@@ -2487,13 +2598,18 @@ TEST_F(HNZTest, FrameToStr) {
 }
 
 TEST_F(HNZTest, BackToSARM) {
-  ServersWrapper wrapper(0x05, getNextPort());
+  int port = getNextPort();
+  ServersWrapper wrapper(0x05, port);
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
 
-  // Stop sending automatic ack in response to messages from south plugin
+  /////////////////////////////
+  // Back to SARM after (repeat_timeout * repeat_path_A) due to missing RR
+  /////////////////////////////
+
+  // Stop sending automatic ack (RR) in response to messages from south plugin
   server->disableAcks(true);
 
   // Send 2 TCs so that south plugin has something to send to HNZ server
@@ -2510,11 +2626,316 @@ TEST_F(HNZTest, BackToSARM) {
 
   // Clear messages received from south plugin
   server->popLastFramesReceived();
-  // Wait (repeat_timeout * repeat_path_A) + 1 = (3 * 3) + 1 = 10s
-  this_thread::sleep_for(chrono::seconds(10));
+  // Wait (repeat_timeout * repeat_path_A) + m_repeat_timeout = (3 * 3) + 3 = 12s
+  this_thread::sleep_for(chrono::seconds(12));
   
   // Find the SARM frame in the list of frames received by server
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
   std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
   ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  /////////////////////////////
+  // Back to SARM after inacc_timeout while connected
+  /////////////////////////////
+
+  // Enable acks again
+  server->disableAcks(false);
+
+  // Reconfigure plugin with inacc_timeout = 1s
+  std::string protocol_stack = protocol_stack_generator(port, 0);
+  protocol_stack = std::regex_replace(protocol_stack, std::regex("\"anticipation_ratio\" : 5"), "\"anticipation_ratio\" : 5, \"inacc_timeout\" : 4");
+  wrapper.initHNZPlugin(protocol_stack);
+
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+  // Wait inacc_timeout
+  debug_print("[HNZ server] Waiting for inacc timeout 2...");
+  this_thread::sleep_for(chrono::seconds(10));
+
+  // Find the SARM frame in the list of frames received by server
+  frames = server->popLastFramesReceived();
+  SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM 2 in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  /////////////////////////////
+  // Connection reset after inacc_timeout while connecting
+  /////////////////////////////
+  
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop 3...");
+  ASSERT_TRUE(server->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request server start 3...");
+  server->startHNZServer();
+
+  // Wait for inacc_timeout
+  debug_print("[HNZ server] Waiting for inacc timeout 3...");
+
+  // Establish TCP connection without sending any SARM
+  // Check that the server connection could not be established
+  BasicHNZServer* tmpServer = wrapper.server1(false).get();
+  ASSERT_EQ(tmpServer, nullptr) << "Something went wrong. Connection 3 was established when it shouldn't";
+
+  // Check that normal connection can still be established later
+  debug_print("[HNZ server] Request server stop 4...");
+  ASSERT_TRUE(server->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request server start 4...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 4 is not established in 10s...";
+}
+
+TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Stop sending automatic ack (RR) in response to messages from south plugin
+  server->disableAcks(true);
+
+  // Send a TC while connection established but do not acknoledge it (so it will be resent)
+  std::string operationTC("HNZCommand");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send a TVC while connection established but do not acknoledge it (so it will be resent)
+  std::string operationTVC("HNZCommand");
+  int nbParamsTVC = 3;
+  PLUGIN_PARAMETER paramTVC1 = {"co_type", "TVC"};
+  PLUGIN_PARAMETER paramTVC2 = {"co_addr", "31"};
+  PLUGIN_PARAMETER paramTVC3 = {"co_value", "42"};
+  PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
+  ASSERT_TRUE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  debug_print("[HNZ south plugin] TVC sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TVC frame in the list of frames received by server
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Stop the server to disconnect the path
+  debug_print("[HNZ server] Request server stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  server->disableAcks(false);
+
+  // Wait c_ack_time (10s) for all unanswered TC to expire or it may mess up reconnection by going back to SARM
+  this_thread::sleep_for(chrono::seconds(10));
+
+  // Send a TC while connection is not established (which is rejected as no connection established)
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC 2 sent");
+
+  // Send a TVC while connection is not established (which is rejected as no connection established)
+  ASSERT_FALSE(hnz->operation(operationTVC, nbParamsTVC, paramsTVC));
+  debug_print("[HNZ south plugin] TVC 2 sent");
+
+  // Establish a new connection
+  resetCounters();
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  // Wait for initial CG request
+  waitUntil(southEventsReceived, 2, 1000);
+  resetCounters();
+
+  // Wait more than repeat_timeout (3s)
+  this_thread::sleep_for(chrono::seconds(4));
+
+  // Check that no TC or TVC is automatically sent after reconnection
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "TC was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC was sent after reconnection: " << BasicHNZServer::frameToStr(TVCframe);
+
+  // Stop sending automatic ack (RR) in response to messages from south plugin
+  server->disableAcks(true);
+
+  // Fill list of messages until anticipation_ratio is reached
+  for(int i=0; i<5 ; i++) {
+    ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+    debug_print("[HNZ south plugin] TC %d sent", i+3);
+  }
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  frames = server->popLastFramesReceived();
+
+  // Check that next message is rejected
+  ASSERT_FALSE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC 8 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "TC over anticipation_ratio was sent: " << BasicHNZServer::frameToStr(TCframe);
+
+  // Stop the server to disconnect the path
+  debug_print("[HNZ server] Request server stop 2...");
+  ASSERT_TRUE(server->stopHNZServer());
+  // Wait c_ack_time (10s) for all unanswered TC to expire or it may mess up reconnection by going back to SARM
+  this_thread::sleep_for(chrono::seconds(10));
+  resetCounters();
+  debug_print("[HNZ server] Request server start 2...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
+  // Wait for initial CG request
+  waitUntil(southEventsReceived, 2, 1000);
+  resetCounters();
+
+  // Wait more than repeat_timeout (3s)
+  this_thread::sleep_for(chrono::seconds(4));
+
+  // Check that no TC or TVC is automatically sent after reconnection
+  frames = server->popLastFramesReceived();
+  TCframe = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(TCframe.get(), nullptr) << "TC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
+  TVCframe = findFrameWithId(frames, 0x1a);
+  ASSERT_EQ(TVCframe.get(), nullptr) << "TVC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TVCframe);
+}
+
+TEST_F(HNZTest, MessageRejectedIfInvalidNR) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Clear frames received
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+
+  // Send BULLE with invalid NR (NR-1)
+  BasicHNZServer::FrameError fe;
+  fe.nr_minus_1 = true;
+  server->sendFrame({0x13, 0x04}, false, fe);
+  debug_print("[HNZ Server] BULLE sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that no RR frame was received
+  frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> RRframe = findRR(frames);
+  ASSERT_EQ(RRframe.get(), nullptr) << "RR was sent in response to BULLE with invalid NR: " << BasicHNZServer::frameToStr(RRframe);
+
+  // Send BULLE with valid NR (and repeat flag or else NS is invalid)
+  server->sendFrame({0x13, 0x04}, true);
+  debug_print("[HNZ Server] BULLE 2 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that RR frame was received
+  frames = server->popLastFramesReceived();
+  RRframe = findRR(frames);
+  ASSERT_NE(RRframe.get(), nullptr) << "Could not find RR in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send BULLE with invalid NR (NR+2)
+  BasicHNZServer::FrameError fe2;
+  fe2.nr_plus_2 = true;
+  server->sendFrame({0x13, 0x04}, false, fe2);
+  debug_print("[HNZ Server] BULLE 3 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Check that no RR frame was received
+  frames = server->popLastFramesReceived();
+  RRframe = findRR(frames);
+  ASSERT_EQ(RRframe.get(), nullptr) << "RR was sent in response to BULLE 3 with invalid NR: " << BasicHNZServer::frameToStr(RRframe);
+}
+
+TEST_F(HNZTest, StartAlreadyStarted) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Start plugin again (without config init)
+  debug_print("[HNZ south plugin] Second start");
+  wrapper.startHNZPlugin(false);
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Validate that no message was sent
+  ASSERT_EQ(ingestCallbackCalled, 0);
+}
+
+TEST_F(HNZTest, MultipleMessagesInOne) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  hnz->sendCG();
+  debug_print("[HNZ south plugin] CG request sent");
+  this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
+
+  // Find the CG frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x13, 0x01});
+  if(HasFatalFailure()) return;
+
+  // Send both TSCG in the same frame
+  server->sendFrame({0x16, 0x33, 0x10, 0x00, 0x04, 0x00, 0x16, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
+  debug_print("[HNZ Server] TSCG 2 in 1 sent");
+  this_thread::sleep_for(chrono::milliseconds(1200)); // gi_time + 200ms
+
+  // All TS were received so no more CG should be sent automatically any more
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(frames, 0x13);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after all TS were received, but found: " << BasicHNZServer::frameToStr(CGframe);
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(dataObjectsReceived, 3);
+  resetCounters();
+  std::shared_ptr<Reading> currentReading;
+  for (int i = 0; i < 3; i++) {
+    std::string label("TS" + to_string(i + 1));
+    currentReading = popFrontReadingsUntil(label);
+    validateReading(currentReading, label, {
+      {"do_type", {"string", "TS"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", addrByTS[label]}},
+      {"do_value", {"int64_t", "1"}},
+      {"do_valid", {"int64_t", "0"}},
+      {"do_cg", {"int64_t", "1"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
+    if(HasFatalFailure()) return;
+  }
+}
+
+TEST_F(HNZTest, ConnectIfSARMReceivedAfterUA) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1(true, true).get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
 }

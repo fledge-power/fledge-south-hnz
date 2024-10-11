@@ -115,8 +115,9 @@ class HNZ {
    *
    * @param count Number of parameters
    * @param params Array of parameters
+   * @return 0 if command was sent to HNZ device, 1 if command syntax error, 2 if command could not be sent to HNZ device (connection error)
    */
-  bool processCommandOperation(int count, PLUGIN_PARAMETER** params);
+  int processCommandOperation(int count, PLUGIN_PARAMETER** params);
 
   /**
    * Utility function used to store the content of a frame as a human readable hex string
@@ -172,6 +173,11 @@ class HNZ {
    * Returns the name of the Fledge service instanciating this plugin
    */
   inline const std::string& getServiceName() const { return m_service_name; }
+
+  /**
+   * Setter for the day section (modulo calculation)
+   */
+  inline void setDaySection(unsigned char daySection) { m_daySection = daySection; }
 
  protected:
   /**

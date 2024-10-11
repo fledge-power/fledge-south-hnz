@@ -23,12 +23,21 @@ class BasicHNZServer {
 
   bool waitForTCPConnection(int timeout_s);
   // Timeout = 16 = (5 * 3) + 1 sec = (SARM retries * SARM delay) + 1
-  bool HNZServerIsReady(int timeout_s = 16);
+  bool HNZServerIsReady(int timeout_s = 16, bool sendSarm = true, bool delaySarm = false);
 
   void sendSARM();
 
-  void sendFrame(vector<unsigned char> message, bool repeat);
-  void createAndSendFrame(unsigned char addr, unsigned char *msg, int msgSize);
+  struct FrameError {
+    bool nr_minus_1;
+    bool nr_plus_2;
+    bool fcs;
+    bool address;
+    // Use constructor instead of default values for bracket initializer to work in C++11
+    FrameError(bool _nr_minus_1 = false, bool _nr_plus_2 = false, bool _fcs = false, bool _address = false):
+      nr_minus_1(_nr_minus_1), nr_plus_2(_nr_plus_2), fcs(_fcs), address(_address) {}
+  };
+  void sendFrame(vector<unsigned char> message, bool repeat, const FrameError& frameError = {});
+  void createAndSendFrame(unsigned char addr, unsigned char *msg, int msgSize, const FrameError& frameError = {});
   // Note: return the strcutre by value becase a copy must be done by the caller to remain thread safe
   std::vector<std::shared_ptr<MSG_TRAME>> popLastFramesReceived();
   std::vector<std::shared_ptr<MSG_TRAME>> popLastFramesSent();

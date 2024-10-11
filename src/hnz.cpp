@@ -168,8 +168,7 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
 }
 
 void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
-  if (m_hnz_conf) {
-    // Parent if used only for scope lock
+  {
     std::lock_guard<std::recursive_mutex> guard(m_configMutex);
     if (!m_hnz_conf->is_complete()) {
       return;
@@ -606,12 +605,16 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
   HnzUtility::log_info("%s Operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str());
 
-  // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1239
-  // if (operation == "HNZCommand") {
-  if (endsWith(operation, "Command")) {
-    if(processCommandOperation(count, params)) {
-      // Only return on success so that all parameters are displayed by final error log in case of error
+  if (operation == "HNZCommand") {
+    int res = processCommandOperation(count, params);
+    if(res == 0) {
+      // Only return on success so that all parameters are displayed by final error log in case of syntax error
       return true;
+    }
+    else if (res == 2) {
+      // Network issue, only log a warning
+      HnzUtility::log_warn("%s Connection with HNZ device is not ready, could not send operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str());
+      return false;
     }
   }
   else if (operation == "request_connection_status") {
@@ -624,7 +627,7 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
   return false;
 }
 
-bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
+int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::processCommandOperation -";
   
   std::map<std::string, std::string> commandParams = {
@@ -638,10 +641,6 @@ bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
     const std::string& paramValue = params[i]->value;
     if (commandParams.count(paramName) > 0) {
       commandParams[paramName] = paramValue;
-      // Workaround until the following ticket is fixed: https://github.com/fledge-iot/fledge/issues/1240
-      if(paramValue.at(0) == '"'){
-        commandParams[paramName] = paramValue.substr(1,paramValue.length()-2);
-      }
     }
     else {
       HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());
@@ -651,7 +650,7 @@ bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
   for (const auto &kvp : commandParams) {
     if (kvp.second == "") {
       HnzUtility::log_error("%s Received HNZCommand with missing '%s' parameter", beforeLog.c_str(), kvp.first.c_str());
-      return false;
+      return 1;
     }
   }
 
@@ -664,10 +663,10 @@ bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
     address = std::stoi(addrStr);
   } catch (const std::invalid_argument &e) {
     HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
-    return false;
+    return 1;
   } catch (const std::out_of_range &e) {
     HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
-    return false;
+    return 1;
   }
 
   int value = 0;
@@ -675,22 +674,24 @@ bool HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
     value = std::stoi(valStr);
   } catch (const std::invalid_argument &e) {
     HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
-    return false;
+    return 1;
   } catch (const std::out_of_range &e) {
     HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
-    return false;
+    return 1;
   }
 
   if (type == "TC") {
-    return m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
+    bool success = m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
+    return success ? 0 : 2;
   }
   else if (type == "TVC") {
-    return m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
+    bool success = m_hnz_connection->getActivePath()->sendTVCCommand(static_cast<unsigned char>(address), value);
+    return success ? 0 : 2;
   }
   else {
     HnzUtility::log_error("%s Unknown co_type '%s' in HNZCommand", beforeLog.c_str(), type.c_str());
   }
-  return false;
+  return 1;
 }
 
 std::string HNZ::frameToStr(std::vector<unsigned char> frame) {

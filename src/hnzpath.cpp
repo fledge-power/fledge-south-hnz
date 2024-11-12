@@ -195,9 +195,9 @@ void HNZPath::m_manageHNZProtocolConnection() {
       }
     }
     // lock mutex (preparation to wait in cond. var.)
-    std::unique_lock<std::mutex> lock(m_state_changed_mutex);
+    std::unique_lock<std::mutex> lock3(m_state_changed_mutex);
     // unlock mutex and wait for sleep timeout or signaled state change
-    m_state_changed_cond.wait_for(lock, sleep, [this]() {
+    m_state_changed_cond.wait_for(lock3, sleep, [this]() {
       return m_state_changed || (!m_is_running) || (!m_hnz_connection->isRunning());
     });
     m_state_changed = false;
@@ -314,7 +314,7 @@ void HNZPath::go_to_connection() {
 
   if (state_changed) {
     // Notify m_manageHNZProtocolConnection thread that m_protocol_state changed
-    std::unique_lock<std::mutex> lock2(m_state_changed_mutex);
+    std::unique_lock<std::mutex> lock4(m_state_changed_mutex);
     m_state_changed = true;
     m_state_changed_cond.notify_one();
   }
@@ -356,7 +356,7 @@ void HNZPath::m_go_to_connected() {
 
   if (state_changed) {
     // Notify m_manageHNZProtocolConnection thread that m_protocol_state changed
-    std::unique_lock<std::mutex> lock2(m_state_changed_mutex);
+    std::unique_lock<std::mutex> lock3(m_state_changed_mutex);
     m_state_changed = true;
     m_state_changed_cond.notify_one();
   }

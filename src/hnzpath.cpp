@@ -637,7 +637,7 @@ void HNZPath::m_sendSARM() {
 void HNZPath::m_sendUA() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendUA - " + m_name_log;
   unsigned char msg[1]{UA_CODE};
-  m_sendFrame(msg, sizeof(msg));
+  m_sendFrame(msg, sizeof(msg), true);
   HnzUtility::log_info(beforeLog + " UA sent");
 }
 
@@ -669,13 +669,13 @@ bool HNZPath::m_sendRR(bool repetition, int ns, int nr) {
       HnzUtility::log_info(beforeLog + " RR sent");
     }
 
-    m_sendFrame(msg, sizeof(msg));
+    m_sendFrame(msg, sizeof(msg), true);
   } else {
     if (repetition) {
       // Repeat the last RR
       unsigned char msg[1];
       msg[0] = 0x01 + m_nr * 0x20 + 0x10;
-      m_sendFrame(msg, sizeof(msg));
+      m_sendFrame(msg, sizeof(msg), true);
       HnzUtility::log_info(beforeLog + " Repeat the last RR sent");
     } else {
       HnzUtility::log_warn(beforeLog + " The NS of the received frame is not the expected one");
@@ -904,7 +904,7 @@ std::recursive_mutex& HNZPath::m_getOtherPathProtocolStateMutex() const {
   return otherPath->m_protocol_state_mutex;
 }
 
-void HNZPath::m_sendFrame(unsigned char *msg, int msgSize) {
-  m_hnz_client->createAndSendFr(m_address_ARP, msg, msgSize);
+void HNZPath::m_sendFrame(unsigned char *msg, int msgSize, bool usePAAddr /*= false*/) {
+  m_hnz_client->createAndSendFr(usePAAddr ? m_address_PA : m_address_ARP, msg, msgSize);
   m_last_msg_sent_time = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
 }

@@ -397,8 +397,16 @@ class HNZPath {
    * Send a frame through the HNZ client and record the last send time
    * @param msg Bytes of the frame to send
    * @param msgSize Number of bytes in msg
+   * @param usePAAddr If true, use PA address in the message, else use Center address
+   * Protocol expect the following addresses when sending the following type of messages :
+   * | Type | Expected Addr |
+   * | ---- | ------------- |
+   * | SARM | Center        |
+   * | UA   | PA            |
+   * | RR   | PA            |
+   * | INFO | Center        |
    */
-  void m_sendFrame(unsigned char *msg, int msgSize);
+  void m_sendFrame(unsigned char *msg, int msgSize, bool usePAAddr = false);
 };
 
 #endif

@@ -342,12 +342,21 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
   vector<vector<unsigned char>> messages;
   unsigned char* data = frReceived->aubTrame;
   int size = frReceived->usLgBuffer;
-  unsigned char address = data[0] >> 2;  // remote address
-  unsigned char type = data[1];          // Message type
+  // Original command direction 0 => south to north, 1 => north to south
+  unsigned char directionBit = (data[0] >> 1) & 0x01;
+  unsigned char expectedDirectionBit = 0; // SARM, INFO => 0 | UA, RR => 1
+  unsigned char address = data[0] >> 2;   // remote address
+  unsigned char type = data[1];           // Message type
 
   HnzUtility::log_debug(beforeLog + " " + convert_data_to_str(data, size));
 
   if (m_remote_address == address) {
+    // Branchless check if message is UA or RR (Supervision)
+    expectedDirectionBit = 1*(type == UA_CODE) + 1*(type != SARM_CODE && type != UA_CODE && (type & 0x01) != 0);
+    if(directionBit != expectedDirectionBit){
+      HnzUtility::log_warn(beforeLog + " Invalid direction bit (A/B), found "+ to_string(directionBit) +" (expected "+ to_string(expectedDirectionBit) +").");
+      return messages;
+    }
     switch (type) {
       case UA_CODE:
         HnzUtility::log_info(beforeLog + " Received UA");

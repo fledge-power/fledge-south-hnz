@@ -2939,3 +2939,116 @@ TEST_F(HNZTest, ConnectIfSARMReceivedAfterUA) {
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
 }
+
+TEST_F(HNZTest, SendInvalidDirectionBit) {
+  // Validates the rejection of frames with invalid direction bit (A/B)
+  // The transmission of frames with valid direction bit is guaranteed by the other tests
+  // Outline :
+  //          Send TC
+  //          Send RR   INVALID                 TC re-emission
+  //          Send TC ACK (indirect valid RR)
+  //          Send TSCE INVALID                 No RR received
+  //          Send TSCE VALID
+  //          Send SARM INVALID                 No UA received
+  //          Send SARM VALID
+  //          Send UA   INVALID                 SARM re-emission
+  //          Send UA   VALID
+  //          Send TSCE VALID
+
+  // Init server
+  ServersWrapper wrapper(0x05, getNextPort(), getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  const int sleepTime = 300; // ms
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived(); // Clear stack
+  std::shared_ptr<MSG_TRAME> receivedFrame;
+  unsigned char messageSarm[1] = {0x0F}; // Definition
+  unsigned char messageUA[1]   = {0x63}; // Definition
+  unsigned char messageInfo[6] = {0x00, 0x0B, 0x33, 0x28, 0x36, 0xF2}; // NR << 5 + P << 4 + NS << 1 + 0, Code Fonction (TSCE), payload
+  server->disableAcks(true); // Prevent automatic acks
+
+  //          Send TC
+  std::string operationTC("HNZCommand");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  frames = server->popLastFramesReceived();
+  receivedFrame = findFrameWithId(frames, 0x19);
+  ASSERT_NE(receivedFrame, nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
+  ASSERT_TRUE(receivedFrame->usLgBuffer > 3) << "Unexpected length of TC received: " << std::to_string(receivedFrame->usLgBuffer);
+  unsigned char nr = (receivedFrame->aubTrame[3] >> 1);                        // expected NR of message
+  unsigned char f  = ((receivedFrame->aubTrame[3] >> 4) & 0x1);                // expected F of message
+  unsigned char messageRR[1]    = {(unsigned char)((nr << 5) + (f << 4) + 1)}; // NR << 5 + F << 4 + 1
+  unsigned char messageTCACK[4] = {(unsigned char)(nr << 5), 0x09, 0x0e, 0x49};                 // NR << 5, Code function (ack), TC ID
+
+  //          Send RR   INVALID
+  debug_print("[HNZ Server] Sending RR with direction bit (A/B) = 0 (invalid)");
+  server->createAndSendFrame(0x05, messageRR, sizeof(messageRR));
+  this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
+  frames = server->popLastFramesReceived();
+  receivedFrame = findFrameWithId(frames, 0x19);
+  ASSERT_NE(receivedFrame, nullptr) << "Invalid RR did not cause re-emission of TC.";
+
+  //          Send TC ACK (indirect valid RR)
+  debug_print("[HNZ Server] Sending TC ACK (indirect valid RR)");
+  server->createAndSendFrame(0x05, messageTCACK, sizeof(messageTCACK));
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived(); // Clear stack
+
+  //          Send TSCE INVALID
+  debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 1 (invalid)");
+  server->createAndSendFrame(0x07, messageInfo, sizeof(messageInfo));
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived();
+  receivedFrame = findRR(frames);
+  ASSERT_EQ(receivedFrame, nullptr) << "Invalid INFO (TSCE) caused transmission of RR.";
+
+  //          Send SARM INVALID
+  debug_print("[HNZ Server] Sending SARM with direction bit (A/B) = 1 (invalid)");
+  server->createAndSendFrame(0x07, messageSarm, sizeof(messageSarm));
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived();
+  receivedFrame = findProtocolFrameWithId(frames, 0x63);
+  ASSERT_EQ(receivedFrame, nullptr) << "Invalid SARM caused transmission of UA.";
+
+  //          Send SARM VALID
+  debug_print("[HNZ Server] Sending SARM with direction bit (A/B) = 0 (valid)");
+  server->createAndSendFrame(0x05, messageSarm, sizeof(messageSarm));
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived();
+  receivedFrame = findProtocolFrameWithId(frames, 0x63);
+  ASSERT_NE(receivedFrame, nullptr) << "Valid SARM was not acknowledged by UA.";
+
+  //          Send UA   INVALID
+  debug_print("[HNZ Server] Sending UA with direction bit (A/B) = 0 (invalid)");
+  server->createAndSendFrame(0x05, messageUA, sizeof(messageUA));
+  this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
+  frames = server->popLastFramesReceived();
+  receivedFrame = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_NE(receivedFrame, nullptr) << "Invalid UA did not cause re-emission of SARM.";
+
+  //          Send UA   VALID
+  debug_print("[HNZ Server] Sending UA with direction bit (A/B) = 1 (valid)");
+  server->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived();
+  receivedFrame = findProtocolFrameWithId(frames, 0x0f);
+  ASSERT_EQ(receivedFrame, nullptr) << "SARM was received despite valid UA.";
+
+  //          Send TSCE VALID
+  debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 0 (valid)");
+  server->createAndSendFrame(0x05, messageInfo, sizeof(messageInfo));
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived();
+  receivedFrame = findRR(frames);
+  ASSERT_NE(receivedFrame, nullptr) << "Valid INFO (TSCE) was not acknowledged by RR.";
+}

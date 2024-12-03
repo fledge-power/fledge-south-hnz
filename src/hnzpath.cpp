@@ -212,32 +212,34 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long long now) {
   auto sleep = milliseconds(1000);
   // Must have received a SARM and an UA (in response to our SARM) from
   // the PA to be connected.
-  if (!sarm_ARP_UA || !sarm_PA_received) {
-    if (now - m_last_msg_time <= (m_inacc_timeout * 1000)) {
-      long long ms_since_last_sarm = now - m_last_sarm_sent_time;
-      // Enough time elapsed since last SARM sent, send SARM
-      if (ms_since_last_sarm >= m_repeat_timeout) {
-        if (m_nbr_sarm_sent == m_max_sarm) {
-          HnzUtility::log_warn(beforeLog + " The maximum number of SARM was reached.");
-          // If the path is the active one, switch to passive path if available
-          std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
-          if (m_is_active_path) m_hnz_connection->switchPath();
-          m_nbr_sarm_sent = 0;
-        }
-        // Send SARM and wait
-        m_sendSARM();
-        sleep = milliseconds(m_repeat_timeout);
+  if (sarm_ARP_UA && sarm_PA_received) {
+    return sleep;
+  }
+
+  if (now - m_last_msg_time <= (m_inacc_timeout * 1000)) {
+    long long ms_since_last_sarm = now - m_last_sarm_sent_time;
+    // Enough time elapsed since last SARM sent, send SARM
+    if (ms_since_last_sarm >= m_repeat_timeout) {
+      if (m_nbr_sarm_sent == m_max_sarm) {
+        HnzUtility::log_warn(beforeLog + " The maximum number of SARM was reached.");
+        // If the path is the active one, switch to passive path if available
+        std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+        if (m_is_active_path) m_hnz_connection->switchPath();
+        m_nbr_sarm_sent = 0;
       }
-      // Else wait until enough time passed
-      else {
-        sleep = milliseconds(m_repeat_timeout - ms_since_last_sarm);
-      }
-    } else {
-      // Inactivity timer reached
-      HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
-      m_connected = false;
-      // Reconnection will be done in HNZ::receive
+      // Send SARM and wait
+      m_sendSARM();
+      sleep = milliseconds(m_repeat_timeout);
     }
+    // Else wait until enough time passed
+    else {
+      sleep = milliseconds(m_repeat_timeout - ms_since_last_sarm);
+    }
+  } else {
+    // Inactivity timer reached
+    HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
+    m_connected = false;
+    // Reconnection will be done in HNZ::receive
   }
   return sleep;
 }
@@ -904,7 +906,7 @@ std::recursive_mutex& HNZPath::m_getOtherPathProtocolStateMutex() const {
   return otherPath->m_protocol_state_mutex;
 }
 
-void HNZPath::m_sendFrame(unsigned char *msg, int msgSize, bool usePAAddr /*= false*/) {
-  m_hnz_client->createAndSendFr(usePAAddr ? m_address_PA : m_address_ARP, msg, msgSize);
+void HNZPath::m_sendFrame(unsigned char *msg, unsigned long msgSize, bool usePAAddr /*= false*/) {
+  m_hnz_client->createAndSendFr(usePAAddr ? m_address_PA : m_address_ARP, msg, static_cast<int>(msgSize));
   m_last_msg_sent_time = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
 }

@@ -217,7 +217,7 @@ class HNZPath {
   int m_repeat_timeout = 0;  // time allowed in ms for the receiver to acknowledge a frame
   int m_anticipation_ratio = 0;  // number of frames allowed to be received without
                              // acknowledgement
-  unsigned char m_bulle_time = 0; // time in seconds before sending a BULLE mesage when no message have been sent on this path
+  unsigned int m_bulle_time = 0; // time in seconds before sending a BULLE mesage when no message have been sent on this path
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
   long long c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for a control command (in ms)
@@ -406,7 +406,7 @@ class HNZPath {
    * | RR   | PA            |
    * | INFO | Center        |
    */
-  void m_sendFrame(unsigned char *msg, int msgSize, bool usePAAddr = false);
+  void m_sendFrame(unsigned char *msg, unsigned long msgSize, bool usePAAddr = false);
 };
 
 #endif

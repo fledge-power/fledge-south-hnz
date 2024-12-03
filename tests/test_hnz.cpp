@@ -3102,7 +3102,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   receivedFrame = findFrameWithId(frames, 0x19);
   ASSERT_NE(receivedFrame, nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
   ASSERT_EQ(receivedFrame->usLgBuffer, 7) << "Unexpected length of TC received: " << BasicHNZServer::frameToStr(receivedFrame);
-  unsigned char nr = (receivedFrame->aubTrame[1] >> 1);                        // expected NR of message
+  unsigned char nr = (receivedFrame->aubTrame[1] >> 1) & 0x7;                        // expected NR of message
   unsigned char f  = ((receivedFrame->aubTrame[1] >> 4) & 0x1);                // expected F of message
   unsigned char messageRR[1]    = {(unsigned char)((nr << 5) + (f << 4) + 1)}; // NR << 5 + F << 4 + 1
 

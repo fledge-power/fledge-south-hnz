@@ -51,6 +51,8 @@ class BasicHNZServer {
   static std::string frameToStr(std::shared_ptr<MSG_TRAME> frame);
   static std::string framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames);
 
+  void resetProtocol();
+
   HNZServer* server = nullptr;
   int addr = 0;
 

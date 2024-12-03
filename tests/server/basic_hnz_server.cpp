@@ -102,10 +102,14 @@ bool BasicHNZServer::stopHNZServer() {
   return success;
 }
 
-void BasicHNZServer::receiving_loop() {
-  // Reset NS/NR variables
+void BasicHNZServer::resetProtocol() {
   m_ns = 0;
   m_nr = 0;
+}
+
+void BasicHNZServer::receiving_loop() {
+  // Reset NS/NR variables
+  resetProtocol();
   while (is_running) {
     // Receive an hnz frame, this call is blocking
     MSG_TRAME *frReceived = (server->receiveFr());

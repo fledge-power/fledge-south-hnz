@@ -3056,6 +3056,7 @@ TEST_F(HNZTest, PeriodicBULLE) {
   BULLEframes = findFramesWithId(frames, 0x13);
   ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 5 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
 }
+
 TEST_F(HNZTest, SendInvalidDirectionBit) {
   // Validates the rejection of frames with invalid direction bit (A/B)
   // The transmission of frames with valid direction bit is guaranteed by the other tests
@@ -3072,7 +3073,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   //          Send TSCE VALID
 
   // Init server
-  ServersWrapper wrapper(0x05, getNextPort(), getNextPort());
+  ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   validateAllTIQualityUpdate(true, false);
@@ -3100,11 +3101,10 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   frames = server->popLastFramesReceived();
   receivedFrame = findFrameWithId(frames, 0x19);
   ASSERT_NE(receivedFrame, nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
-  ASSERT_TRUE(receivedFrame->usLgBuffer > 3) << "Unexpected length of TC received: " << std::to_string(receivedFrame->usLgBuffer);
-  unsigned char nr = (receivedFrame->aubTrame[3] >> 1);                        // expected NR of message
-  unsigned char f  = ((receivedFrame->aubTrame[3] >> 4) & 0x1);                // expected F of message
+  ASSERT_EQ(receivedFrame->usLgBuffer, 7) << "Unexpected length of TC received: " << BasicHNZServer::frameToStr(receivedFrame);
+  unsigned char nr = (receivedFrame->aubTrame[1] >> 1);                        // expected NR of message
+  unsigned char f  = ((receivedFrame->aubTrame[1] >> 4) & 0x1);                // expected F of message
   unsigned char messageRR[1]    = {(unsigned char)((nr << 5) + (f << 4) + 1)}; // NR << 5 + F << 4 + 1
-  unsigned char messageTCACK[4] = {(unsigned char)(nr << 5), 0x09, 0x0e, 0x49};                 // NR << 5, Code function (ack), TC ID
 
   //          Send RR   INVALID
   debug_print("[HNZ Server] Sending RR with direction bit (A/B) = 0 (invalid)");
@@ -3114,11 +3114,13 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   receivedFrame = findFrameWithId(frames, 0x19);
   ASSERT_NE(receivedFrame, nullptr) << "Invalid RR did not cause re-emission of TC.";
 
-  //          Send TC ACK (indirect valid RR)
+  //          Send TC ACK (indirect valid RR) 
   debug_print("[HNZ Server] Sending TC ACK (indirect valid RR)");
-  server->createAndSendFrame(0x05, messageTCACK, sizeof(messageTCACK));
-  this_thread::sleep_for(chrono::milliseconds(sleepTime));
-  frames = server->popLastFramesReceived(); // Clear stack
+  server->sendFrame({0x09, 0x0e, 0x49}, false);
+  this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
+  frames = server->popLastFramesReceived();
+  receivedFrame = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(receivedFrame, nullptr) << "Valid TC ACK caused re-emission of TC.";
 
   //          Send TSCE INVALID
   debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 1 (invalid)");
@@ -3127,6 +3129,14 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   frames = server->popLastFramesReceived();
   receivedFrame = findRR(frames);
   ASSERT_EQ(receivedFrame, nullptr) << "Invalid INFO (TSCE) caused transmission of RR.";
+
+  //          Send TSCE VALID
+  debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 0 (valid)");
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived();
+  receivedFrame = findRR(frames);
+  ASSERT_NE(receivedFrame, nullptr) << "Invalid INFO (TSCE) was not acknowledged by RR.";
 
   //          Send SARM INVALID
   debug_print("[HNZ Server] Sending SARM with direction bit (A/B) = 1 (invalid)");
@@ -3155,14 +3165,15 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   //          Send UA   VALID
   debug_print("[HNZ Server] Sending UA with direction bit (A/B) = 1 (valid)");
   server->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
-  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
   frames = server->popLastFramesReceived();
   receivedFrame = findProtocolFrameWithId(frames, 0x0f);
   ASSERT_EQ(receivedFrame, nullptr) << "SARM was received despite valid UA.";
 
   //          Send TSCE VALID
   debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 0 (valid)");
-  server->createAndSendFrame(0x05, messageInfo, sizeof(messageInfo));
+  server->resetProtocol(); // Connection was reinitialized at HNZ protocol level, make sure to also reset variables inside BasicHNZServer (NS/NR)
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   this_thread::sleep_for(chrono::milliseconds(sleepTime));
   frames = server->popLastFramesReceived();
   receivedFrame = findRR(frames);

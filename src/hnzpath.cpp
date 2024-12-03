@@ -678,7 +678,7 @@ bool HNZPath::m_sendRR(bool repetition, int ns, int nr) {
       m_sendFrame(msg, sizeof(msg), true);
       HnzUtility::log_info(beforeLog + " Repeat the last RR sent");
     } else {
-      HnzUtility::log_warn(beforeLog + " The NS of the received frame is not the expected one");
+      HnzUtility::log_warn(beforeLog + " The NS of the received frame (" + std::to_string(ns) + ") is not the expected one (" + std::to_string(m_nr) + ")");
     }
   }
 

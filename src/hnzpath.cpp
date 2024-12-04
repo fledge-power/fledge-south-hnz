@@ -115,15 +115,14 @@ void HNZPath::connect() {
   while (m_is_running && m_hnz_connection->isRunning()) {
     HnzUtility::log_info(beforeLog + " Connecting to PA on " + m_ip + " (" + to_string(m_port) + ")...");
 
-    // Establish TCP connection with the PA
-    m_connected = !(m_hnz_client->connect_Server(m_ip.c_str(), m_port, m_timeoutUs));
+    m_hnz_client->connect_Server(m_ip.c_str(), m_port, m_timeoutUs);
 
     // If shutdown started while waiting for connection, exit
     if(!m_is_running || !m_hnz_connection->isRunning()) {
       HnzUtility::log_info(beforeLog + " Connection shutting down, abort connect");
       return;
     }
-    if (m_connected) {
+    if (isTCPConnected()) {
       HnzUtility::log_info(beforeLog + " Connected to " + m_ip + " (" + to_string(m_port) + ").");
       go_to_connection();
       std::lock_guard<std::mutex> lock(m_connection_thread_mutex);
@@ -152,7 +151,6 @@ void HNZPath::disconnect() {
   go_to_connection();
 
   m_is_running = false;
-  m_connected = false;
   m_hnz_client->stop();
 
   HnzUtility::log_debug(beforeLog + " HNZ client stopped");
@@ -238,7 +236,11 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolConnecting(long long now) 
   } else {
     // Inactivity timer reached
     HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
-    m_connected = false;
+
+    // TODO PMP2-277 Remove
+    if(isTCPConnected() != false) {
+      HnzUtility::log_warn(beforeLog + " Reconnection may not trigger !");
+    }
     // Reconnection will be done in HNZ::receive
   }
   return sleep;

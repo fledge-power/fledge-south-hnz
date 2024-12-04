@@ -195,7 +195,7 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
     // Waiting for data
     messages = hnz_path_in_use->getData();
 
-    if (messages.empty() && !hnz_path_in_use->isConnected()) {
+    if (messages.empty() && !hnz_path_in_use->isTCPConnected()) {
       HnzUtility::log_warn("%s Connection lost, reconnecting active path and switching to other path", beforeLog.c_str());
       // If connection lost, try to switch path
       if (hnz_path_in_use->isActivePath()) m_hnz_connection->switchPath();

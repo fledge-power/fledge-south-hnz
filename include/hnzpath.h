@@ -90,17 +90,11 @@ class HNZPath {
    */
   bool isHNZConnected() {
     std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
-    return (m_protocol_state == CONNECTED) && isConnected();
+    return (m_protocol_state == CONNECTED) && isTCPConnected();
   };
 
   /**
-   * Is the TCP connection with the PA established and still alive?
-   * @return true if connected, false otherwise
-   */
-  bool isConnected() { return m_connected && isTCPConnected(); };
-
-  /**
-   * Is the TCP connection with the PA still alive according to HNZ client?
+   * Is the TCP connection with the PA still alive ?
    * @return true if connected, false otherwise
    */
   bool isTCPConnected();

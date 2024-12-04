@@ -159,7 +159,7 @@ void HNZConnection::m_manageMessages() {
 }
 
 void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
-  if ((path != nullptr) && !path->msg_sent.empty() && path->isConnected()) {
+  if ((path != nullptr) && !path->msg_sent.empty() && path->isTCPConnected()) {
     std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
     Message& msg = path->msg_sent.front();
     if (path->last_sent_time + m_repeat_timeout < m_current) {

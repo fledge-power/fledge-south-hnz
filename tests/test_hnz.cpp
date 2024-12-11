@@ -151,7 +151,7 @@ string protocol_stack_generator(int port, int port2) {
                        : "") +
          " ] } , \"application_layer\" : { \"repeat_timeout\" : 3000, \"repeat_path_A\" : 3,"
          "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2,"
-         "\"anticipation_ratio\" : 5 }, \"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
+         "\"anticipation_ratio\" : 5, \"inacc_timeout\" : 180, \"bulle_time\" : 10  }, \"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
 }
 
 class HNZTestComp : public HNZ {
@@ -398,6 +398,16 @@ class HNZTest : public testing::Test {
     return frameFound;
   }
 
+  static std::vector<std::shared_ptr<MSG_TRAME>> findFramesWithId(const std::vector<std::shared_ptr<MSG_TRAME>>& frames, unsigned char frameId) {
+    std::vector<std::shared_ptr<MSG_TRAME>> framesFound;
+    for(auto frame: frames) {
+      if((frame->usLgBuffer > 2) && (frame->aubTrame[2] == frameId)) {
+        framesFound.push_back(frame);
+      }
+    }
+    return framesFound;
+  }
+
   static std::shared_ptr<MSG_TRAME> findProtocolFrameWithId(const std::vector<std::shared_ptr<MSG_TRAME>>& frames, unsigned char frameId) {
     std::shared_ptr<MSG_TRAME> frameFound = nullptr;
     for(auto frame: frames) {
@@ -443,7 +453,8 @@ class HNZTest : public testing::Test {
     if(!fullFrame) {
       expectedLength += 4;
     }
-    ASSERT_EQ(frameFound->usLgBuffer, expectedLength) << "Unexpected length for frame with id " << BasicHNZServer::toHexStr(frameId);
+    ASSERT_EQ(frameFound->usLgBuffer, expectedLength) << "Unexpected length for frame with id " << BasicHNZServer::toHexStr(frameId) <<
+                                                          " full frame: " << BasicHNZServer::frameToStr(frameFound);
     for(int i=0 ; i<expectedLength ; i++){
       if(!fullFrame){
         // Ignore the first two bytes (NPC + A/B, NR + P + NS) and the last two bytes (FCS x2)
@@ -470,7 +481,7 @@ class HNZTest : public testing::Test {
     waitUntil(dataObjectsReceived, expectedMessages, maxWaitTimeMs);
     ASSERT_EQ(dataObjectsReceived, expectedMessages);
     resetCounters();
-    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     // First 7 messages are from init
     // Those messages are expected to be sent before the CG time frame
     std::string timeRangeStr(to_string(epochMs - (maxWaitTimeMs + 10000)) + ";" + to_string(epochMs - maxWaitTimeMs));
@@ -534,7 +545,7 @@ class HNZTest : public testing::Test {
       ASSERT_EQ(dataObjectsReceived, labels.size());
       resetCounters();
     }
-    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     std::string timeRangeStr(to_string(epochMs - 1000) + ";" + to_string(epochMs));
     std::shared_ptr<Reading> currentReading = nullptr;
     for(const auto& label: labels) {
@@ -713,7 +724,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Validate epoch timestamp encoding
   ///////////////////////////////////////
   // Default is 0
-  std::chrono::time_point<std::chrono::system_clock> dateTime = {};
+  std::chrono::time_point<std::chrono::high_resolution_clock> dateTime = {};
   unsigned char daySection = 0;
   unsigned int ts = 0;
   unsigned long epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
@@ -771,7 +782,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ASSERT_GE(startupModulo, 0);
   ASSERT_LE(startupModulo, 143);
 
-  dateTime = std::chrono::system_clock::now();
+  dateTime = std::chrono::high_resolution_clock::now();
   // Day section is initialized when sending SET TIME message after connection is established
   daySection = startupModulo;
   ts = 14066;
@@ -2643,7 +2654,7 @@ TEST_F(HNZTest, BackToSARM) {
 
   // Reconfigure plugin with inacc_timeout = 1s
   std::string protocol_stack = protocol_stack_generator(port, 0);
-  protocol_stack = std::regex_replace(protocol_stack, std::regex("\"anticipation_ratio\" : 5"), "\"anticipation_ratio\" : 5, \"inacc_timeout\" : 4");
+  protocol_stack = std::regex_replace(protocol_stack, std::regex("\"inacc_timeout\" : 180"), "\"inacc_timeout\" : 4");
   wrapper.initHNZPlugin(protocol_stack);
 
   // Also stop the server as it is unable to reconnect on the fly
@@ -2940,6 +2951,112 @@ TEST_F(HNZTest, ConnectIfSARMReceivedAfterUA) {
   if(HasFatalFailure()) return;
 }
 
+TEST_F(HNZTest, PeriodicBULLE) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Check that no BULLE was received at startup
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  std::vector<std::shared_ptr<MSG_TRAME>> BULLEframes = findFramesWithId(frames, 0x13);
+  for(auto BULLEframe: BULLEframes) {
+    // BULLE and CG request have the same ID, and a CG request was sent after connection init,
+    // so if this ID is found, check if the next byte identifies a BULLE message
+    if (BULLEframe.get() != nullptr) {
+      ASSERT_EQ(BULLEframe->usLgBuffer, 6) << "Invalid BULLE/CG message received: " << BasicHNZServer::frameToStr(BULLEframe);
+      if (BULLEframe->aubTrame[3] == 0x04) {
+        FAIL() << "BULLE message was received too soon: " << BasicHNZServer::frameToStr(BULLEframe);
+      }
+    }
+  }
+
+  // BULLE should be sent exactly bulle_time (10s) after the last message sent,
+  // but we do not have the exact timing of the last message sent during startup so just wait until next bulle is received
+  debug_print("[HNZ south plugin] Waiting for BULLE (10s)...");
+  bool bulleReceived = false;
+  int totalWaitTime = 0;
+  while((!bulleReceived) && (totalWaitTime < 10000)) {
+    this_thread::sleep_for(chrono::milliseconds(100));
+    totalWaitTime += 100;
+    frames = server->popLastFramesReceived();
+    BULLEframes = findFramesWithId(frames, 0x13);
+    bulleReceived = BULLEframes.size() > 0;
+  }
+  ASSERT_EQ(BULLEframes.size(), 1) << "BULLE message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
+  
+  // Repeat test for next BULLE (received at expected time +/-500ms)
+  debug_print("[HNZ south plugin] Waiting for BULLE 2 (10s)...");
+  this_thread::sleep_for(chrono::milliseconds(9500)); // Ends at 10s-500ms
+  // Check that no BULLE was received yet
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 2 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
+
+  this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
+  // Check that BULLE was received
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 2 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
+
+  // Repeat test for next BULLE (received at expected time +/-500ms)
+  debug_print("[HNZ south plugin] Waiting for BULLE 3 (10s)...");
+  this_thread::sleep_for(chrono::milliseconds(9000)); // Ends at 10s-500ms since last sleep ended 500ms after BULLE time
+  // Check that no BULLE was received yet
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 3 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
+
+  this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
+  // Check that BULLE was received
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 3 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
+
+  // Send a TC half way through the BULLE timer, which should reset it
+  this_thread::sleep_for(chrono::milliseconds(5000));
+  std::string operationTC("HNZCommand");
+  int nbParamsTC = 3;
+  PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+  PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
+  PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
+  debug_print("[HNZ south plugin] TC sent");
+  // Send TC ACK from server
+  server->sendFrame({0x09, 0x0e, 0x49}, false);
+  debug_print("[HNZ Server] TC ACK sent");
+
+  // Repeat test for next BULLE (received at expected time +/-500ms)
+  debug_print("[HNZ south plugin] Waiting for BULLE 4 (10s)...");
+  this_thread::sleep_for(chrono::milliseconds(9500)); // Ends at 10s-500ms
+  // Check that no BULLE was received yet
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 4 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
+
+  this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
+  // Check that BULLE was received
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 4 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
+
+  // Repeat test for next BULLE (received at expected time +/-500ms)
+  debug_print("[HNZ south plugin] Waiting for BULLE 5 (10s)...");
+  this_thread::sleep_for(chrono::milliseconds(9000)); // Ends at 10s-500ms since last sleep ended 500ms after BULLE time
+  // Check that no BULLE was received yet
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 5 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
+
+  this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
+  // Check that BULLE was received
+  frames = server->popLastFramesReceived();
+  BULLEframes = findFramesWithId(frames, 0x13);
+  ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 5 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
+}
+
 TEST_F(HNZTest, SendInvalidDirectionBit) {
   // Validates the rejection of frames with invalid direction bit (A/B)
   // The transmission of frames with valid direction bit is guaranteed by the other tests
@@ -2956,7 +3073,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   //          Send TSCE VALID
 
   // Init server
-  ServersWrapper wrapper(0x05, getNextPort(), getNextPort());
+  ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   validateAllTIQualityUpdate(true, false);
@@ -2984,11 +3101,10 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   frames = server->popLastFramesReceived();
   receivedFrame = findFrameWithId(frames, 0x19);
   ASSERT_NE(receivedFrame, nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
-  ASSERT_TRUE(receivedFrame->usLgBuffer > 3) << "Unexpected length of TC received: " << std::to_string(receivedFrame->usLgBuffer);
-  unsigned char nr = (receivedFrame->aubTrame[3] >> 1);                        // expected NR of message
-  unsigned char f  = ((receivedFrame->aubTrame[3] >> 4) & 0x1);                // expected F of message
+  ASSERT_EQ(receivedFrame->usLgBuffer, 7) << "Unexpected length of TC received: " << BasicHNZServer::frameToStr(receivedFrame);
+  unsigned char nr = (receivedFrame->aubTrame[1] >> 1) & 0x7;                        // expected NR of message
+  unsigned char f  = ((receivedFrame->aubTrame[1] >> 4) & 0x1);                // expected F of message
   unsigned char messageRR[1]    = {(unsigned char)((nr << 5) + (f << 4) + 1)}; // NR << 5 + F << 4 + 1
-  unsigned char messageTCACK[4] = {(unsigned char)(nr << 5), 0x09, 0x0e, 0x49};                 // NR << 5, Code function (ack), TC ID
 
   //          Send RR   INVALID
   debug_print("[HNZ Server] Sending RR with direction bit (A/B) = 0 (invalid)");
@@ -2998,11 +3114,13 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   receivedFrame = findFrameWithId(frames, 0x19);
   ASSERT_NE(receivedFrame, nullptr) << "Invalid RR did not cause re-emission of TC.";
 
-  //          Send TC ACK (indirect valid RR)
+  //          Send TC ACK (indirect valid RR) 
   debug_print("[HNZ Server] Sending TC ACK (indirect valid RR)");
-  server->createAndSendFrame(0x05, messageTCACK, sizeof(messageTCACK));
-  this_thread::sleep_for(chrono::milliseconds(sleepTime));
-  frames = server->popLastFramesReceived(); // Clear stack
+  server->sendFrame({0x09, 0x0e, 0x49}, false);
+  this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
+  frames = server->popLastFramesReceived();
+  receivedFrame = findFrameWithId(frames, 0x19);
+  ASSERT_EQ(receivedFrame, nullptr) << "Valid TC ACK caused re-emission of TC.";
 
   //          Send TSCE INVALID
   debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 1 (invalid)");
@@ -3011,6 +3129,14 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   frames = server->popLastFramesReceived();
   receivedFrame = findRR(frames);
   ASSERT_EQ(receivedFrame, nullptr) << "Invalid INFO (TSCE) caused transmission of RR.";
+
+  //          Send TSCE VALID
+  debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 0 (valid)");
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  frames = server->popLastFramesReceived();
+  receivedFrame = findRR(frames);
+  ASSERT_NE(receivedFrame, nullptr) << "Invalid INFO (TSCE) was not acknowledged by RR.";
 
   //          Send SARM INVALID
   debug_print("[HNZ Server] Sending SARM with direction bit (A/B) = 1 (invalid)");
@@ -3039,14 +3165,15 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   //          Send UA   VALID
   debug_print("[HNZ Server] Sending UA with direction bit (A/B) = 1 (valid)");
   server->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
-  this_thread::sleep_for(chrono::milliseconds(sleepTime));
+  this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
   frames = server->popLastFramesReceived();
   receivedFrame = findProtocolFrameWithId(frames, 0x0f);
   ASSERT_EQ(receivedFrame, nullptr) << "SARM was received despite valid UA.";
 
   //          Send TSCE VALID
   debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 0 (valid)");
-  server->createAndSendFrame(0x05, messageInfo, sizeof(messageInfo));
+  server->resetProtocol(); // Connection was reinitialized at HNZ protocol level, make sure to also reset variables inside BasicHNZServer (NS/NR)
+  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
   this_thread::sleep_for(chrono::milliseconds(sleepTime));
   frames = server->popLastFramesReceived();
   receivedFrame = findRR(frames);

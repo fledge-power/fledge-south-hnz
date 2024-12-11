@@ -135,7 +135,7 @@ class HNZ {
    * @param ts Time in group of 10 milliseconds in current section of day
    * @return an epoch timestamp in milliseconds
    */
-  static unsigned long getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
+  static unsigned long getEpochMsTimestamp(std::chrono::time_point<std::chrono::high_resolution_clock> dateTime,
                                             unsigned char daySection, unsigned int ts);
 
   /**

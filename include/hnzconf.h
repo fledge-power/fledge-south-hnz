@@ -43,6 +43,7 @@ constexpr char GI_REPEAT_COUNT[] = "gi_repeat_count";
 constexpr char GI_TIME[] = "gi_time";
 constexpr char C_ACK_TIME[] = "c_ack_time";
 constexpr char CMD_RECV_TIMEOUT[] = "cmd_recv_timeout";
+constexpr char BULLE_TIME[] = "bulle_time";
 constexpr char SOUTH_MONITORING[] = "south_monitoring";
 constexpr char SOUTH_MONITORING_ASSET[] = "asset";
 
@@ -69,6 +70,7 @@ constexpr unsigned int DEFAULT_GI_REPEAT_COUNT = 3;
 constexpr unsigned int DEFAULT_GI_TIME = 255;
 constexpr unsigned int DEFAULT_C_ACK_TIME = 10;
 constexpr long long int DEFAULT_CMD_RECV_TIMEOUT = 100000; // 100ms
+constexpr unsigned int DEFAULT_BULLE_TIME = 10;
 
 constexpr int RETRY_CONN_DELAY = 5;
 
@@ -182,7 +184,7 @@ class HNZConf {
   unsigned int get_remote_station_addr() const { return m_remote_station_addr; }
 
   /**
-   * Get the timeout before declaring the remote server unreachable
+   * Get the timeout in seconds before declaring the remote server unreachable
    *
    * @return unsigned int
    */
@@ -211,7 +213,7 @@ class HNZConf {
   unsigned int get_repeat_path_B() const { return m_repeat_path_B; }
 
   /**
-   * Get the time allowed for the receiver to acknowledge a frame, after this
+   * Get the time in ms allowed for the receiver to acknowledge a frame, after this
    * time, the sender repeats the frame.
    *
    * @return unsigned int
@@ -276,6 +278,13 @@ class HNZConf {
   long long int get_cmd_recv_timeout() const { return m_cmd_recv_timeout; }
 
   /**
+   * Get the time to wait before sending a BULLE message after the previous message sent.
+   *
+   * @return time in seconds
+   */
+  unsigned int get_bulle_time() const { return m_bulle_time; }
+
+  /**
    * Get the "asset" name for south plugin monitoring event
    *
    * @return  string
@@ -331,6 +340,7 @@ class HNZConf {
   unsigned int m_gi_time = 0;
   unsigned int m_c_ack_time = 0;
   long long int m_cmd_recv_timeout = 0;
+  unsigned int m_bulle_time = 0;
 
   std::string m_connx_status = "";
   unsigned int m_lastTSAddr = 0;

@@ -15,6 +15,7 @@
 #include <list>
 #include <queue>
 #include <thread>
+#include <condition_variable>
 
 #include <hnz_client.h>
 
@@ -49,8 +50,6 @@ struct Command_message {
   /// Is the message acknowledged
   bool ack;
 } typedef Command_message;
-
-using namespace std::chrono;
 
 class HNZConnection;
 
@@ -179,7 +178,7 @@ class HNZPath {
   list<Command_message>
       command_sent;  // List of command already sent waiting to be ack
 
-  long last_sent_time = 0;     // Timestamp of the last message sent
+  long long last_sent_time = 0;     // Timestamp of the last information message sent
   int repeat_max = 0;          // max number of authorized repeats
   int gi_repeat = 0;       // number of time a GI is repeated
   long gi_start_time = 0;  // GI start time
@@ -188,6 +187,10 @@ class HNZPath {
   std::mutex m_connection_thread_mutex; // mutex to protect changes in m_connection_thread
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
   atomic<bool> m_connected{false};  // TCP Connection state with the PA
+  
+  std::mutex m_state_changed_mutex; // mutex to use condition variable below
+  std::condition_variable m_state_changed_cond; // Condition variable used to notify changes in m_manageHNZProtocolConnection thread
+  bool m_state_changed = false; // variable set to true when m_protocol_state changed
   // Initializing to CONNECTED ensures that the initial state transition from go_to_connection generates an audit
   int m_protocol_state = CONNECTED; // HNZ Protocol connection state
   mutable std::recursive_mutex m_protocol_state_mutex; // mutex to protect changes in m_protocol_state
@@ -208,21 +211,22 @@ class HNZPath {
 
   int m_max_sarm = 0;  // max number of SARM messages before handing over to the
                    // passive path
-  int m_inacc_timeout = 0;   // timeout before declaring the remote server
-                         // unreachable
-  int m_repeat_timeout = 0;  // time allowed for the receiver to acknowledge a frame
+  int m_inacc_timeout = 0;   // timeout in seconds before declaring the remote server unreachable
+  int m_repeat_timeout = 0;  // time allowed in ms for the receiver to acknowledge a frame
   int m_anticipation_ratio = 0;  // number of frames allowed to be received without
                              // acknowledgement
+  unsigned int m_bulle_time = 0; // time in seconds before sending a BULLE mesage when no message have been sent on this path
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
-  int c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for
-                      // a control command (in ms)
+  long long c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for a control command (in ms)
 
   // HNZ protocol related variable
   int m_nr = 0;   // Number in reception
   int m_ns = 0;   // Number in sending
   int m_NRR = 0;  // Received aquit number
-  long m_last_msg_time = 0;   // Timestamp of the last reception
+  long long m_last_msg_time = 0;   // Timestamp of the last reception in ms
+  long long m_last_msg_sent_time = 0;   // Timestamp of the last sent message in ms
+  long long m_last_sarm_sent_time = 0; // Timestamp of the last sent SARM message in ms
   bool sarm_PA_received = false;  // The SARM sent by the PA was received
   bool sarm_ARP_UA = false;     // The UA sent by the PA (after receiving our SARM) was
                         // received
@@ -237,17 +241,17 @@ class HNZPath {
 
   /**
    * Manage the HNZ protocol when connecting
-   * @param now epoch time in seconds
+   * @param now epoch time in ms
    * @return Number of miliseconds to sleep after this step
    */
-  milliseconds m_manageHNZProtocolConnecting(long now);
+  std::chrono::milliseconds m_manageHNZProtocolConnecting(long long now);
 
   /**
    * Manage the HNZ protocol when connected
-   * @param now epoch time in seconds
+   * @param now epoch time in ms
    * @return Number of miliseconds to sleep after this step
    */
-  milliseconds m_manageHNZProtocolConnected(long now);
+  std::chrono::milliseconds m_manageHNZProtocolConnected(long long now);
 
   /**
    * Analyze a HNZ frame. If the frame is an information frame then we extract
@@ -386,6 +390,21 @@ class HNZPath {
    * @return Mutex protecting m_protocol_state from the other path, or static mutex
    */
   std::recursive_mutex& m_getOtherPathProtocolStateMutex() const;
+
+  /**
+   * Send a frame through the HNZ client and record the last send time
+   * @param msg Bytes of the frame to send
+   * @param msgSize Number of bytes in msg
+   * @param usePAAddr If true, use PA address in the message, else use Center address
+   * Protocol expect the following addresses when sending the following type of messages :
+   * | Type | Expected Addr |
+   * | ---- | ------------- |
+   * | SARM | Center        |
+   * | UA   | PA            |
+   * | RR   | PA            |
+   * | INFO | Center        |
+   */
+  void m_sendFrame(unsigned char *msg, unsigned long msgSize, bool usePAAddr = false);
 };
 
 #endif

@@ -144,6 +144,9 @@ bool HNZConf::m_importApplicationLayer(const Value &conf) {
 
   is_complete &=
       m_retrieve(conf, CMD_RECV_TIMEOUT, &m_cmd_recv_timeout, DEFAULT_CMD_RECV_TIMEOUT);
+
+  is_complete &= m_retrieve(conf, BULLE_TIME, &m_bulle_time,
+                          DEFAULT_BULLE_TIME);
   return is_complete;
 }
 

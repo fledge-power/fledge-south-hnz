@@ -738,6 +738,8 @@ unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::high
 
 void HNZ::updateConnectionStatus(ConnectionStatus newState) {
   std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::string newStateSTR = newState == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
+  std::string m_connStatusSTR = m_connStatus == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
   if (m_connStatus == newState) return;
 
   m_connStatus = newState;

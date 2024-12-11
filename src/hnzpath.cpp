@@ -40,13 +40,55 @@ HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_con
                   c_ack_time_max(hnz_conf->get_c_ack_time() * 1000)
 {
   setActivePath(!secondary);
-  go_to_connection();
+  resolveProtocolStateConnection();
 }
 
 HNZPath::~HNZPath() {
   if (m_is_running) {
     disconnect();
   }
+}
+
+void HNZPath::protocolStateTransition(const ConnectionEvent event){
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::protocolStateTransition - " + m_name_log;
+  if(protocolStateTransitionMap.find({m_protocol_state, event}) == protocolStateTransitionMap.end()){
+    HnzUtility::log_warn(beforeLog + " Invalid protocol transition : event %s from %s", connectionEvent2str[event].c_str(), protocolState2str[m_protocol_state].c_str());
+    return;
+  }
+  std::pair<ProtocolState, std::vector<void (HNZPath::*)()>> resolveTransition = protocolStateTransitionMap[{m_protocol_state, event}];
+
+  HnzUtility::log_info(beforeLog + " Issuing protocol state transition %s : %s -> %s", connectionEvent2str[event].c_str(),
+    protocolState2str[m_protocol_state].c_str(), protocolState2str[resolveTransition.first].c_str());
+  std::recursive_mutex& m_other_path_protocol_state_mutex = m_getOtherPathProtocolStateMutex();
+  // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+  // Same can happen if m_protocol_state_mutex from the other path gets locked later withing this function
+  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex(), m_other_path_protocol_state_mutex); // Lock all mutexes simultaneously
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock3(m_other_path_protocol_state_mutex, std::adopt_lock);
+
+  bool state_changed = (m_protocol_state != resolveTransition.first);
+  m_protocol_state = resolveTransition.first;
+  for (auto triggeredAction: resolveTransition.second)
+  {
+    (this->*triggeredAction)();
+  }
+
+  if (state_changed) {
+    // Notify m_manageHNZProtocolConnection thread that m_protocol_state changed
+    std::unique_lock<std::mutex> lock3(m_state_changed_mutex);
+    m_state_changed = true;
+    m_state_changed_cond.notify_one();
+  }
+}
+
+void HNZPath::stopTCP(){
+  m_hnz_client->stop();
+}
+
+void HNZPath::resetSarmCounters(){
+  m_nbr_sarm_sent = 0;
+  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
 /**
@@ -104,6 +146,65 @@ std::string convert_messages_to_str(const deque<Message>& messages) {
   return msgStr;
 }
 
+void HNZPath::sendAuditSuccess(){
+  std::string activePassive = m_is_active_path ? "active" : "passive";
+  HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
+}
+
+void HNZPath::sendAuditFail(){
+  HnzUtility::audit_fail("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-disconnected");
+}
+
+void HNZPath::resolveProtocolStateConnected(){
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnected - " + m_name_log;
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
+
+  if (m_is_active_path) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
+  }
+  HnzUtility::log_debug(beforeLog + " HNZ Connection initialized !!");
+
+  if (m_is_active_path) {
+    m_send_date_setting();
+    m_send_time_setting();
+    sendGeneralInterrogation();
+  }
+}
+
+void HNZPath::resolveProtocolStateConnection(){
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnection - " + m_name_log;
+  HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
+
+  if (!m_isOtherPathHNZConnected()) {
+    m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
+  }
+
+  // Initialize internal variable
+  m_nr = 0;
+  m_ns = 0;
+  m_NRR = 0;
+  m_nbr_sarm_sent = 0;
+  m_repeat = 0;
+  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  m_last_sarm_sent_time = 0;
+  gi_repeat = 0;
+  gi_start_time = 0;
+}
+
+void HNZPath::discardMessages(){
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::discardMessages - " + m_name_log;
+  if (!msg_sent.empty()) {
+    std::string sentMsgStr = convert_messages_to_str(msg_sent);
+    HnzUtility::log_debug(beforeLog + " Discarded unacknowledged messages sent: " + sentMsgStr);
+    msg_sent.clear();
+  }
+  if (!msg_waiting.empty()) {
+    std::string waitingMsgStr = convert_messages_to_str(msg_waiting);
+    HnzUtility::log_debug(beforeLog + " Discarded messages waiting to be sent: " + waitingMsgStr);
+    msg_waiting.clear();
+  }
+}
+
 void HNZPath::connect() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::connect - " + m_name_log;
   // Reinitialize those variables in case of reconnection
@@ -124,7 +225,6 @@ void HNZPath::connect() {
     }
     if (isTCPConnected()) {
       HnzUtility::log_info(beforeLog + " Connected to " + m_ip + " (" + to_string(m_port) + ").");
-      go_to_connection();
       std::lock_guard<std::mutex> lock(m_connection_thread_mutex);
       if (m_connection_thread == nullptr) {
         // Start the thread that manage the HNZ connection
@@ -148,7 +248,7 @@ void HNZPath::disconnect() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::disconnect - " + m_name_log;
   HnzUtility::log_debug(beforeLog + " HNZ Path stopping...");
   // This ensures that the path is in the correct state for both south_event and audits
-  go_to_connection();
+  protocolStateTransition(ConnectionEvent::TCP_CNX_LOST);
 
   m_is_running = false;
   m_hnz_client->stop();
@@ -183,14 +283,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
       std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
       std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
       long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-      switch (m_protocol_state) {
-        case CONNECTION:
-          sleep = m_manageHNZProtocolConnecting(now);
-          break;
-        case CONNECTED:
-          sleep = m_manageHNZProtocolConnected(now);
-          break;
-      }
+      sleep = m_manageHNZProtocolState(now);
     }
     // lock mutex (preparation to wait in cond. var.)
     std::unique_lock<std::mutex> lock3(m_state_changed_mutex);
@@ -205,52 +298,38 @@ void HNZPath::m_manageHNZProtocolConnection() {
   HnzUtility::log_debug(beforeLog + " HNZ Connection Management thread is shutting down...");
 }
 
-std::chrono::milliseconds HNZPath::m_manageHNZProtocolConnecting(long long now) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_manageHNZProtocolConnecting - " + m_name_log;
+std::chrono::milliseconds HNZPath::m_manageHNZProtocolState(long long now) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_manageHNZProtocolState - " + m_name_log;
   auto sleep = std::chrono::milliseconds(1000);
   // Must have received a SARM and an UA (in response to our SARM) from
   // the PA to be connected.
-  if (sarm_ARP_UA && sarm_PA_received) {
-    return sleep;
-  }
-
-  if (now - m_last_msg_time <= (m_inacc_timeout * 1000)) {
-    long long ms_since_last_sarm = now - m_last_sarm_sent_time;
-    // Enough time elapsed since last SARM sent, send SARM
-    if (ms_since_last_sarm >= m_repeat_timeout) {
-      if (m_nbr_sarm_sent == m_max_sarm) {
-        HnzUtility::log_warn(beforeLog + " The maximum number of SARM was reached.");
-        // If the path is the active one, switch to passive path if available
-        std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
-        if (m_is_active_path) m_hnz_connection->switchPath();
-        m_nbr_sarm_sent = 0;
+  if (m_protocol_state == ProtocolState::CONNECTION || m_protocol_state == ProtocolState::INPUT_CONNECTED) {
+    if (now - m_last_msg_time <= (m_inacc_timeout * 1000)) {
+      long long ms_since_last_sarm = now - m_last_sarm_sent_time;
+      // Enough time elapsed since last SARM sent, send SARM
+      if (ms_since_last_sarm >= m_repeat_timeout) {
+        if (m_nbr_sarm_sent == m_max_sarm) {
+          HnzUtility::log_warn(beforeLog + " The maximum number of SARM was reached.");
+          // If the path is the active one, switch to passive path if available
+          std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
+          if (m_is_active_path) m_hnz_connection->switchPath();
+          m_nbr_sarm_sent = 0;
+        }
+        // Send SARM and wait
+        m_sendSARM();
+        sleep = std::chrono::milliseconds(m_repeat_timeout);
       }
-      // Send SARM and wait
-      m_sendSARM();
-      sleep = std::chrono::milliseconds(m_repeat_timeout);
+      // Else wait until enough time passed
+      else {
+        sleep = std::chrono::milliseconds(m_repeat_timeout - ms_since_last_sarm);
+      }
+    } else {
+      // Inactivity timer reached
+      HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
+      protocolStateTransition(ConnectionEvent::MAX_SARM_SENT);
     }
-    // Else wait until enough time passed
-    else {
-      sleep = std::chrono::milliseconds(m_repeat_timeout - ms_since_last_sarm);
-    }
-  } else {
-    // Inactivity timer reached
-    HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
-
-    // TODO PMP2-277 Remove
-    if(isTCPConnected() != false) {
-      HnzUtility::log_warn(beforeLog + " Reconnection may not trigger !");
-    }
-    // Reconnection will be done in HNZ::receive
-  }
-  return sleep;
-}
-
-std::chrono::milliseconds HNZPath::m_manageHNZProtocolConnected(long long now) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_manageHNZProtocolConnected - " + m_name_log;
-  auto sleep = std::chrono::milliseconds(1000);
-  long long ms_since_last_msg = now - m_last_msg_time;
-  if (ms_since_last_msg <= (m_inacc_timeout * 1000)) {
+  } else if (m_protocol_state == ProtocolState::CONNECTED || m_protocol_state == ProtocolState::OUTPUT_CONNECTED) {
+    long long ms_since_last_msg = now - m_last_msg_time;
     long long ms_since_last_msg_sent = now - m_last_msg_sent_time;
     long long bulle_time_ms = m_bulle_time * 1000;
     // Enough time elapsed since last message sent, send BULLE
@@ -262,66 +341,13 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolConnected(long long now) {
     else {
       sleep = std::chrono::milliseconds(bulle_time_ms - ms_since_last_msg_sent);
     }
-  } else {
-    HnzUtility::log_warn(beforeLog + " Inactivity timer reached, a message or a BULLE were not received on time, back to SARM");
-    go_to_connection();
-    sleep = std::chrono::milliseconds(10);
+    if (ms_since_last_msg <= (m_inacc_timeout * 1000) && m_protocol_state == ProtocolState::CONNECTED) {
+      HnzUtility::log_warn(beforeLog + " Inactivity timer reached, a message or a BULLE were not received on time.");
+      protocolStateTransition(ConnectionEvent::TO_RECV);
+      sleep = std::chrono::milliseconds(10);
+    }
   }
   return sleep;
-}
-
-void HNZPath::go_to_connection() {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::go_to_connection - " + m_name_log;
-  std::recursive_mutex& m_other_path_protocol_state_mutex = m_getOtherPathProtocolStateMutex();
-  // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
-  // Same can happen if m_protocol_state_mutex from the other path gets locked later withing this function
-  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex(), m_other_path_protocol_state_mutex); // Lock all mutexes simultaneously
-  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
-  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
-  std::lock_guard<std::recursive_mutex> lock3(m_other_path_protocol_state_mutex, std::adopt_lock);
-  HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
-  bool state_changed = m_protocol_state != CONNECTION;
-  if (state_changed) {
-    m_protocol_state = CONNECTION;
-    // Send audit for path connection status
-    HnzUtility::audit_fail("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-disconnected");
-  }
-  
-  if (!m_isOtherPathHNZConnected()) {
-    m_hnz_connection->updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
-  }
-
-  // Initialize internal variable
-  sarm_PA_received = false;
-  sarm_ARP_UA = false;
-  m_nr = 0;
-  m_ns = 0;
-  m_NRR = 0;
-  m_nbr_sarm_sent = 0;
-  m_repeat = 0;
-  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  m_last_sarm_sent_time = 0;
-  gi_repeat = 0;
-  gi_start_time = 0;
-
-  // Discard unacknowledged messages and messages waiting to be sent
-  if (!msg_sent.empty()) {
-    std::string sentMsgStr = convert_messages_to_str(msg_sent);
-    HnzUtility::log_debug(beforeLog + " Discarded unacknowledged messages sent: " + sentMsgStr);
-    msg_sent.clear();
-  }
-  if (!msg_waiting.empty()) {
-    std::string waitingMsgStr = convert_messages_to_str(msg_waiting);
-    HnzUtility::log_debug(beforeLog + " Discarded messages waiting to be sent: " + waitingMsgStr);
-    msg_waiting.clear();
-  }  
-
-  if (state_changed) {
-    // Notify m_manageHNZProtocolConnection thread that m_protocol_state changed
-    std::unique_lock<std::mutex> lock4(m_state_changed_mutex);
-    m_state_changed = true;
-    m_state_changed_cond.notify_one();
-  }
 }
 
 void HNZPath::setActivePath(bool active) {
@@ -331,38 +357,7 @@ void HNZPath::setActivePath(bool active) {
   
   if (isHNZConnected()) {
     // Send audit for path connection status
-    HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
-  }
-}
-
-void HNZPath::m_go_to_connected() {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_go_to_connected - " + m_name_log;
-  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
-  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
-  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
-  bool state_changed = m_protocol_state != CONNECTED;
-  if (state_changed) {
-    m_protocol_state = CONNECTED;
-    // Send audit for path connection status
-    std::string activePassive = m_is_active_path ? "active" : "passive";
-    HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
-  }
-  if (m_is_active_path) {
-    m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
-  }
-  HnzUtility::log_debug(beforeLog + " HNZ Connection initialized !!");
-
-  if (m_is_active_path) {
-    m_send_date_setting();
-    m_send_time_setting();
-    sendGeneralInterrogation();
-  }
-
-  if (state_changed) {
-    // Notify m_manageHNZProtocolConnection thread that m_protocol_state changed
-    std::unique_lock<std::mutex> lock3(m_state_changed_mutex);
-    m_state_changed = true;
-    m_state_changed_cond.notify_one();
+    sendAuditSuccess();
   }
 }
 
@@ -422,7 +417,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
         std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
         std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
         std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
-        if (m_protocol_state != CONNECTION) {
+        if (m_protocol_state != ProtocolState::CONNECTION) {
           // Get NR, P/F ans NS field
           int ns = (type >> 1) & 0x07;
           int pf = (type >> 4) & 0x01;
@@ -529,26 +524,12 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data, i
 }
 
 void HNZPath::m_receivedSARM() {
-  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
-  if (m_protocol_state == CONNECTED) {
-    // Reset HNZ protocol variables
-    go_to_connection();
-  }
-  sarm_PA_received = true;
   m_sendUA();
-  if (sarm_ARP_UA) {
-    m_go_to_connected();
-  }
+  protocolStateTransition(ConnectionEvent::RECEIVED_SARM);
 }
 
 void HNZPath::m_receivedUA() {
-  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
-  if (m_protocol_state == CONNECTION) {
-    sarm_ARP_UA = true;
-    if (sarm_PA_received) {
-      m_go_to_connected();
-    }
-  }
+  protocolStateTransition(ConnectionEvent::RECEIVED_UA);
 }
 
 void HNZPath::m_receivedBULLE() {
@@ -694,7 +675,7 @@ bool HNZPath::m_sendRR(bool repetition, int ns, int nr) {
 bool HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_sendInfo - " + m_name_log;
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
-  if (m_protocol_state != CONNECTED) {
+  if (m_protocol_state == ProtocolState::CONNECTION || m_protocol_state == ProtocolState::INPUT_CONNECTED) {
     HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message ["
                         + convert_data_to_str(msg, static_cast<int>(size)) + "]");
     return false;
@@ -719,7 +700,7 @@ bool HNZPath::m_sendInfoImmediately(Message message) {
   unsigned char* msg = &message.payload[0];
   int size = message.payload.size();
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
-  if (m_protocol_state != CONNECTED) {
+  if (m_protocol_state == ProtocolState::CONNECTION || m_protocol_state == ProtocolState::INPUT_CONNECTED) {
     HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message ["
                         + convert_data_to_str(msg, size) + "]");
     return false;

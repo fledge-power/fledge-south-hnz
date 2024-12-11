@@ -71,7 +71,7 @@ const string exchanged_data_def = QUOTE({
 });
 
 std::pair<int, int> getCurrentHoursMinutes() {
-  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   unsigned long totalMinutes = epochMs / 60000;
   unsigned long totalHours = totalMinutes / 60;
   unsigned long totalDays = totalHours / 24;

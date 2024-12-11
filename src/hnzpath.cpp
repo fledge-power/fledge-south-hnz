@@ -108,7 +108,7 @@ void HNZPath::connect() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::connect - " + m_name_log;
   // Reinitialize those variables in case of reconnection
   
-  m_last_msg_time = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
+  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   m_last_msg_sent_time = m_last_msg_time;
   m_is_running = true;
   // Loop until connected (make sure we exit if connection is shutting down)
@@ -174,7 +174,7 @@ void HNZPath::disconnect() {
 
 void HNZPath::m_manageHNZProtocolConnection() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_manageHNZProtocolConnection - " + m_name_log;
-  auto sleep = milliseconds(1000);
+  auto sleep = std::chrono::milliseconds(1000);
 
   HnzUtility::log_debug(beforeLog + " HNZ Connection Management thread running");
 
@@ -184,7 +184,7 @@ void HNZPath::m_manageHNZProtocolConnection() {
       std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
       std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
       std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
-      long long now = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
+      long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
       switch (m_protocol_state) {
         case CONNECTION:
           sleep = m_manageHNZProtocolConnecting(now);
@@ -207,9 +207,9 @@ void HNZPath::m_manageHNZProtocolConnection() {
   HnzUtility::log_debug(beforeLog + " HNZ Connection Management thread is shutting down...");
 }
 
-milliseconds HNZPath::m_manageHNZProtocolConnecting(long long now) {
+std::chrono::milliseconds HNZPath::m_manageHNZProtocolConnecting(long long now) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_manageHNZProtocolConnecting - " + m_name_log;
-  auto sleep = milliseconds(1000);
+  auto sleep = std::chrono::milliseconds(1000);
   // Must have received a SARM and an UA (in response to our SARM) from
   // the PA to be connected.
   if (sarm_ARP_UA && sarm_PA_received) {
@@ -229,11 +229,11 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long long now) {
       }
       // Send SARM and wait
       m_sendSARM();
-      sleep = milliseconds(m_repeat_timeout);
+      sleep = std::chrono::milliseconds(m_repeat_timeout);
     }
     // Else wait until enough time passed
     else {
-      sleep = milliseconds(m_repeat_timeout - ms_since_last_sarm);
+      sleep = std::chrono::milliseconds(m_repeat_timeout - ms_since_last_sarm);
     }
   } else {
     // Inactivity timer reached
@@ -244,9 +244,9 @@ milliseconds HNZPath::m_manageHNZProtocolConnecting(long long now) {
   return sleep;
 }
 
-milliseconds HNZPath::m_manageHNZProtocolConnected(long long now) {
+std::chrono::milliseconds HNZPath::m_manageHNZProtocolConnected(long long now) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_manageHNZProtocolConnected - " + m_name_log;
-  auto sleep = milliseconds(1000);
+  auto sleep = std::chrono::milliseconds(1000);
   long long ms_since_last_msg = now - m_last_msg_time;
   if (ms_since_last_msg <= (m_inacc_timeout * 1000)) {
     long long ms_since_last_msg_sent = now - m_last_msg_sent_time;
@@ -254,16 +254,16 @@ milliseconds HNZPath::m_manageHNZProtocolConnected(long long now) {
     // Enough time elapsed since last message sent, send BULLE
     if (ms_since_last_msg_sent >= bulle_time_ms) {
       m_sendBULLE();
-      sleep = milliseconds(bulle_time_ms);
+      sleep = std::chrono::milliseconds(bulle_time_ms);
     }
     // Else wait until enough time passed
     else {
-      sleep = milliseconds(bulle_time_ms - ms_since_last_msg_sent);
+      sleep = std::chrono::milliseconds(bulle_time_ms - ms_since_last_msg_sent);
     }
   } else {
     HnzUtility::log_warn(beforeLog + " Inactivity timer reached, a message or a BULLE were not received on time, back to SARM");
     go_to_connection();
-    sleep = milliseconds(10);
+    sleep = std::chrono::milliseconds(10);
   }
   return sleep;
 }
@@ -297,7 +297,7 @@ void HNZPath::go_to_connection() {
   m_NRR = 0;
   m_nbr_sarm_sent = 0;
   m_repeat = 0;
-  m_last_msg_time = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
+  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   m_last_sarm_sent_time = 0;
   gi_repeat = 0;
   gi_start_time = 0;
@@ -550,7 +550,7 @@ void HNZPath::m_receivedUA() {
 }
 
 void HNZPath::m_receivedBULLE() {
-  m_last_msg_time = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
+  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
 bool HNZPath::m_receivedRR(int nr, bool repetition) {
@@ -614,8 +614,8 @@ void HNZPath::m_NRAccepted(int nr) {
 
   // Waiting for other RR, set timer
   if (!msg_sent.empty())
-    last_sent_time = std::chrono::duration_cast<milliseconds>(
-                          system_clock::now().time_since_epoch())
+    last_sent_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::high_resolution_clock::now().time_since_epoch())
                           .count();
 
   // Sent message in waiting queue
@@ -633,7 +633,7 @@ void HNZPath::m_sendSARM() {
   m_sendFrame(msg, sizeof(msg));
   HnzUtility::log_info(beforeLog + " SARM sent [" + to_string(m_nbr_sarm_sent + 1) + " / " + to_string(m_max_sarm) + "]");
   m_nbr_sarm_sent++;
-  m_last_sarm_sent_time = std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+  m_last_sarm_sent_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
 void HNZPath::m_sendUA() {
@@ -685,7 +685,7 @@ bool HNZPath::m_sendRR(bool repetition, int ns, int nr) {
   }
 
   // Update timer
-  m_last_msg_time = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
+  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
   return true;
 }
 
@@ -732,7 +732,7 @@ bool HNZPath::m_sendInfoImmediately(Message message) {
   // Set timer if there is not other message sent waiting for confirmation
   if (msg_sent.empty())
     last_sent_time =
-        std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch())
             .count();
 
   message.ns = m_ns;
@@ -759,7 +759,7 @@ void HNZPath::sendBackInfo(Message& message) {
   m_sendFrame(msgWithNrNs, sizeof(msgWithNrNs));
 
   last_sent_time =
-      std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch())
           .count();
   
   HnzUtility::log_debug(beforeLog + " Resent information frame: " +
@@ -783,8 +783,8 @@ void HNZPath::m_send_date_setting() {
 
 void HNZPath::m_send_time_setting() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_send_time_setting - " + m_name_log;
-  long int ms_since_epoch = std::chrono::duration_cast<milliseconds>(
-                          high_resolution_clock::now().time_since_epoch())
+  long int ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::high_resolution_clock::now().time_since_epoch())
                           .count();
   long int ms_today = ms_since_epoch % 86400000;
   long int mod10m = ms_today / 600000;
@@ -812,8 +812,8 @@ void HNZPath::sendGeneralInterrogation() {
     m_hnz_connection->updateGiStatus(GiStatus::STARTED);
   }
   gi_repeat++;
-  gi_start_time = std::chrono::duration_cast<milliseconds>(
-                      high_resolution_clock::now().time_since_epoch())
+  gi_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::high_resolution_clock::now().time_since_epoch())
                       .count();
 }
 
@@ -886,8 +886,8 @@ void HNZPath::m_registerCommandIfSent(const std::string& type, bool sent, unsign
   }
   // Add the command in the list of commend sent (to check ACK later)
   Command_message cmd;
-  cmd.timestamp_max = std::chrono::duration_cast<milliseconds>(
-                          high_resolution_clock::now().time_since_epoch())
+  cmd.timestamp_max = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::high_resolution_clock::now().time_since_epoch())
                           .count() +
                       c_ack_time_max;
   cmd.type = type;
@@ -908,5 +908,5 @@ std::recursive_mutex& HNZPath::m_getOtherPathProtocolStateMutex() const {
 
 void HNZPath::m_sendFrame(unsigned char *msg, unsigned long msgSize, bool usePAAddr /*= false*/) {
   m_hnz_client->createAndSendFr(usePAAddr ? m_address_PA : m_address_ARP, msg, static_cast<int>(msgSize));
-  m_last_msg_sent_time = std::chrono::duration_cast<milliseconds>(high_resolution_clock::now().time_since_epoch()).count();
+  m_last_msg_sent_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }

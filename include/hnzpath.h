@@ -51,8 +51,6 @@ struct Command_message {
   bool ack;
 } typedef Command_message;
 
-using namespace std::chrono;
-
 class HNZConnection;
 
 /**
@@ -246,14 +244,14 @@ class HNZPath {
    * @param now epoch time in ms
    * @return Number of miliseconds to sleep after this step
    */
-  milliseconds m_manageHNZProtocolConnecting(long long now);
+  std::chrono::milliseconds m_manageHNZProtocolConnecting(long long now);
 
   /**
    * Manage the HNZ protocol when connected
    * @param now epoch time in ms
    * @return Number of miliseconds to sleep after this step
    */
-  milliseconds m_manageHNZProtocolConnected(long long now);
+  std::chrono::milliseconds m_manageHNZProtocolConnected(long long now);
 
   /**
    * Analyze a HNZ frame. If the frame is an information frame then we extract

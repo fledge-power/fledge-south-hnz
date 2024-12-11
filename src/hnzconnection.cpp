@@ -154,7 +154,7 @@ void HNZConnection::m_manageMessages() {
     // Manage quality update
     m_update_quality_update_timer();
 
-    this_thread::sleep_for(milliseconds(100));
+    this_thread::sleep_for(std::chrono::milliseconds(100));
   } while (m_is_running);
 }
 
@@ -163,6 +163,7 @@ void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
     std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
     Message& msg = path->msg_sent.front();
     if (path->last_sent_time + m_repeat_timeout < m_current) {
+      HnzUtility::log_debug("%s last_sent_time=%lld, m_repeat_timeout=%d, m_current=%llu", beforeLog.c_str(), path->last_sent_time, m_repeat_timeout, m_current);
       if (path->getRepeat() >= path->repeat_max) {
         // Connection disrupted, back to SARM
         HnzUtility::log_warn("%s Connection disrupted, back to SARM", beforeLog.c_str());
@@ -236,7 +237,7 @@ void HNZConnection::m_check_command_timer() {
 void HNZConnection::m_update_current_time() {
   uint64_t prevTimeMs = m_current;
   m_current =
-      std::chrono::duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch())
           .count();
   m_elapsedTimeMs = m_current - prevTimeMs;
 }

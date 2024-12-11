@@ -481,7 +481,7 @@ class HNZTest : public testing::Test {
     waitUntil(dataObjectsReceived, expectedMessages, maxWaitTimeMs);
     ASSERT_EQ(dataObjectsReceived, expectedMessages);
     resetCounters();
-    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     // First 7 messages are from init
     // Those messages are expected to be sent before the CG time frame
     std::string timeRangeStr(to_string(epochMs - (maxWaitTimeMs + 10000)) + ";" + to_string(epochMs - maxWaitTimeMs));
@@ -545,7 +545,7 @@ class HNZTest : public testing::Test {
       ASSERT_EQ(dataObjectsReceived, labels.size());
       resetCounters();
     }
-    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     std::string timeRangeStr(to_string(epochMs - 1000) + ";" + to_string(epochMs));
     std::shared_ptr<Reading> currentReading = nullptr;
     for(const auto& label: labels) {
@@ -724,7 +724,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Validate epoch timestamp encoding
   ///////////////////////////////////////
   // Default is 0
-  std::chrono::time_point<std::chrono::system_clock> dateTime = {};
+  std::chrono::time_point<std::chrono::high_resolution_clock> dateTime = {};
   unsigned char daySection = 0;
   unsigned int ts = 0;
   unsigned long epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
@@ -782,7 +782,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ASSERT_GE(startupModulo, 0);
   ASSERT_LE(startupModulo, 143);
 
-  dateTime = std::chrono::system_clock::now();
+  dateTime = std::chrono::high_resolution_clock::now();
   // Day section is initialized when sending SET TIME message after connection is established
   daySection = startupModulo;
   ts = 14066;

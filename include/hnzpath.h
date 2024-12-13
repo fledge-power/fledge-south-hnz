@@ -36,7 +36,8 @@ enum class ConnectionEvent : unsigned char {
   RECEIVED_INFO       = 7, // unused
   SEND_TC             = 8, // unused
   TO_UA               = 9, // unused
-  MAX_SARM_SENT       = 10
+  MAX_SARM_SENT       = 10,
+  TO_LASTCG           = 11 // unused
 };
 
 // HNZ protocol state
@@ -439,6 +440,14 @@ class HNZPath {
    */
   void resolveProtocolStateConnection();
 
+  /* Discard unacknowledged messages and messages waiting to be sent
+   */
+  void resetInputVariables();
+
+  /* Discard unacknowledged messages and messages waiting to be sent
+   */
+  void resetOutputVariables();
+
   /**
    * Calls HNZClient to stop the TCP connection
    */
@@ -464,17 +473,17 @@ class HNZPath {
   *  Each entry of this map represents a transition between protocol states, triggered by a ConnectionEvent and resolved by an ordered list of actions.
   */
   std::map<std::pair<ProtocolState, ConnectionEvent>, std::pair<ProtocolState, std::vector<void (HNZPath::*)()>>> protocolStateTransitionMap = {
-    {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {}                                                                                               }},
-    {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_UA   }, {ProtocolState::OUTPUT_CONNECTED, {}                                                                                               }},
+    {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::resetInputVariables}                                                                                               }},
+    {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_UA   }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::resetOutputVariables}                                                                                               }},
     {{ProtocolState::CONNECTION,       ConnectionEvent::MAX_SARM_SENT }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                    }},
-    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::resolveProtocolStateConnection}                              }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::resetInputVariables}                              }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TO_RECV       }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::resolveProtocolStateConnection}                              }},
-    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_UA   }, {ProtocolState::CONNECTED,        {&HNZPath::sendAuditSuccess, &HNZPath::resolveProtocolStateConnected}                            }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_UA   }, {ProtocolState::CONNECTED,        {&HNZPath::resetOutputVariables, &HNZPath::sendAuditSuccess, &HNZPath::resolveProtocolStateConnected}                            }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::MAX_SARM_SENT }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}           }},
-    {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTED,        {&HNZPath::sendAuditSuccess, &HNZPath::resolveProtocolStateConnected}                            }},
+    {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTED,        {&HNZPath::resetInputVariables, &HNZPath::sendAuditSuccess, &HNZPath::resolveProtocolStateConnected}                            }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::MAX_SEND      }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::resolveProtocolStateConnection} }},
     {{ProtocolState::CONNECTED,        ConnectionEvent::MAX_SEND      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::resetSarmCounters, &HNZPath::discardMessages}                                         }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::resolveProtocolStateConnection, &HNZPath::discardMessages}   }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}   }},
     {{ProtocolState::CONNECTED,        ConnectionEvent::TO_RECV       }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::discardMessages}                                                                      }},
     {{ProtocolState::CONNECTION,       ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                       }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::resolveProtocolStateConnection}                              }},

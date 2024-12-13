@@ -88,6 +88,18 @@ void HNZPath::stopTCP(){
 
 void HNZPath::resetSarmCounters(){
   m_nbr_sarm_sent = 0;
+  // Reset time from last message received to prevent instant timeout
+  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+}
+
+void HNZPath::resetOutputVariables(){
+  m_ns = 0;
+  m_NRR = 0;
+  m_repeat = 0;
+}
+
+void HNZPath::resetInputVariables(){
+  m_nr = 0;
   m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
@@ -164,6 +176,9 @@ void HNZPath::resolveProtocolStateConnected(){
   }
   HnzUtility::log_debug(beforeLog + " HNZ Connection initialized !!");
 
+  gi_repeat = 0;
+  gi_start_time = 0;
+
   if (m_is_active_path) {
     m_send_date_setting();
     m_send_time_setting();
@@ -180,12 +195,9 @@ void HNZPath::resolveProtocolStateConnection(){
   }
 
   // Initialize internal variable
-  m_nr = 0;
-  m_ns = 0;
-  m_NRR = 0;
-  m_nbr_sarm_sent = 0;
-  m_repeat = 0;
-  m_last_msg_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  resetInputVariables();
+  resetOutputVariables();
+  resetSarmCounters();
   m_last_sarm_sent_time = 0;
   gi_repeat = 0;
   gi_start_time = 0;
@@ -310,10 +322,7 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolState(long long now) {
       if (ms_since_last_sarm >= m_repeat_timeout) {
         if (m_nbr_sarm_sent == m_max_sarm) {
           HnzUtility::log_warn(beforeLog + " The maximum number of SARM was reached.");
-          // If the path is the active one, switch to passive path if available
-          std::lock_guard<std::recursive_mutex> lock(m_hnz_connection->getPathMutex());
-          if (m_is_active_path) m_hnz_connection->switchPath();
-          m_nbr_sarm_sent = 0;
+          protocolStateTransition(ConnectionEvent::MAX_SARM_SENT);
         }
         // Send SARM and wait
         m_sendSARM();
@@ -326,7 +335,7 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolState(long long now) {
     } else {
       // Inactivity timer reached
       HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
-      protocolStateTransition(ConnectionEvent::MAX_SARM_SENT);
+      protocolStateTransition(ConnectionEvent::TO_RECV);
     }
   } else if (m_protocol_state == ProtocolState::CONNECTED || m_protocol_state == ProtocolState::OUTPUT_CONNECTED) {
     long long ms_since_last_msg = now - m_last_msg_time;
@@ -341,7 +350,7 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolState(long long now) {
     else {
       sleep = std::chrono::milliseconds(bulle_time_ms - ms_since_last_msg_sent);
     }
-    if (ms_since_last_msg <= (m_inacc_timeout * 1000) && m_protocol_state == ProtocolState::CONNECTED) {
+    if (ms_since_last_msg > (m_inacc_timeout * 1000) && m_protocol_state == ProtocolState::CONNECTED) {
       HnzUtility::log_warn(beforeLog + " Inactivity timer reached, a message or a BULLE were not received on time.");
       protocolStateTransition(ConnectionEvent::TO_RECV);
       sleep = std::chrono::milliseconds(10);

@@ -468,6 +468,11 @@ class HNZPath {
    */
   void discardMessages();
 
+  /**
+   * Helper function to evaluate if a message is a BULLE. BULLE can be sent in OUTPUT_CONNECTED and CONNECT states.
+   */
+  bool isBULLE(unsigned char* msg, unsigned long size);
+
   /*! \brief Protocol state automaton
   *
   *  Each entry of this map represents a transition between protocol states, triggered by a ConnectionEvent and resolved by an ordered list of actions.

@@ -40,6 +40,8 @@ HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_con
                   c_ack_time_max(hnz_conf->get_c_ack_time() * 1000)
 {
   setActivePath(!secondary);
+  // Send audit at startup
+  sendAuditFail();
   resolveProtocolStateConnection();
 }
 

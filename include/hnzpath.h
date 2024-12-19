@@ -174,16 +174,19 @@ class HNZPath {
   };
 
   std::map<ConnectionEvent, std::string> connectionEvent2str =  {
-    {ConnectionEvent::RECEIVED_SARM,    "RECEIVED_SARM"   },
-    {ConnectionEvent::RECEIVED_UA,      "RECEIVED_UA"     },
-    {ConnectionEvent::TO_RECV,          "TO_RECV"         },
-    {ConnectionEvent::MAX_SEND,         "MAX_SEND"        },
-    {ConnectionEvent::TCP_CNX_LOST,     "TCP_CNX_LOST"    },
-    {ConnectionEvent::TO_SEND,          "TO_SEND"         },
-    {ConnectionEvent::RECEIVED_INFO,    "RECEIVED_INFO"   },
-    {ConnectionEvent::SEND_TC,          "SEND_TC"         },
-    {ConnectionEvent::TO_UA,            "TO_UA"           },
-    {ConnectionEvent::MAX_SARM_SENT,    "MAX_SARM"        }
+    {ConnectionEvent::TCP_CNX_ESTABLISHED, "TCP_CNX_ESTABLISHED" },
+    {ConnectionEvent::RECEIVED_SARM,       "RECEIVED_SARM"       },
+    {ConnectionEvent::RECEIVED_UA,         "RECEIVED_UA"         },
+    {ConnectionEvent::TO_RECV,             "TO_RECV"             },
+    {ConnectionEvent::MAX_SEND,            "MAX_SEND"            },
+    {ConnectionEvent::TCP_CNX_LOST,        "TCP_CNX_LOST"        },
+    {ConnectionEvent::TO_SEND,             "TO_SEND"             },
+    {ConnectionEvent::RECEIVED_INFO,       "RECEIVED_INFO"       },
+    {ConnectionEvent::SEND_TC,             "SEND_TC"             },
+    {ConnectionEvent::TO_UA,               "TO_UA"               },
+    {ConnectionEvent::MAX_SARM_SENT,       "MAX_SARM_SENT"       },
+    {ConnectionEvent::TO_LASTCG,           "TO_LASTCG"           },
+    {ConnectionEvent::TO_TCACK,            "TO_TCACK"            }
   };
 
   /**

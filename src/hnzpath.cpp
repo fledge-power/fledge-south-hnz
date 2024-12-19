@@ -181,6 +181,8 @@ void HNZPath::resolveProtocolStateConnected(){
   gi_repeat = 0;
   gi_start_time = 0;
 
+  m_last_sarm_recv_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+
   if (m_is_active_path) {
     m_send_date_setting();
     m_send_time_setting();
@@ -539,8 +541,15 @@ vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data, i
 }
 
 void HNZPath::m_receivedSARM() {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_receivedSARM - " + m_name_log;
   m_sendUA();
-  protocolStateTransition(ConnectionEvent::RECEIVED_SARM);
+
+  long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  if(now - m_last_sarm_recv_time > m_repeat_timeout){
+    protocolStateTransition(ConnectionEvent::RECEIVED_SARM);
+  } else {
+    HnzUtility::log_info(beforeLog + "Protocol state transition from CONNECTED ignored, a SARM was received too recently.");
+  }
 }
 
 void HNZPath::m_receivedUA() {

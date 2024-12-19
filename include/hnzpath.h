@@ -37,7 +37,8 @@ enum class ConnectionEvent : unsigned char {
   SEND_TC             = 8, // unused
   TO_UA               = 9, // unused
   MAX_SARM_SENT       = 10,
-  TO_LASTCG           = 11 // unused
+  TO_LASTCG           = 11,// unused
+  TO_TCACK            = 12
 };
 
 // HNZ protocol state
@@ -261,6 +262,7 @@ class HNZPath {
   long long m_last_msg_time = 0;   // Timestamp of the last reception in ms
   long long m_last_msg_sent_time = 0;   // Timestamp of the last sent message in ms
   long long m_last_sarm_sent_time = 0; // Timestamp of the last sent SARM message in ms
+  long long m_last_sarm_recv_time = 0; // Timestamp of the last received SARM message in ms
   int m_nbr_sarm_sent = 0;  // Number of SARM sent
   int m_repeat = 0;         // Number of times the sent message is repeated
 
@@ -488,6 +490,7 @@ class HNZPath {
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTED,        {&HNZPath::resetInputVariables, &HNZPath::sendAuditSuccess, &HNZPath::resolveProtocolStateConnected}             }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::MAX_SEND      }, {ProtocolState::CONNECTION,       {&HNZPath::resetSarmCounters, &HNZPath::resolveProtocolStateConnection}                                          }},
     {{ProtocolState::CONNECTED,        ConnectionEvent::MAX_SEND      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages}                                }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_TCACK      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages}                                }},
     {{ProtocolState::CONNECTED,        ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables} }},
     {{ProtocolState::CONNECTED,        ConnectionEvent::TO_RECV       }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::sendAuditFail, &HNZPath::discardMessages}                                                             }},
     {{ProtocolState::CONNECTION,       ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},

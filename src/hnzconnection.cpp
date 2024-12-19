@@ -224,7 +224,7 @@ void HNZConnection::m_check_command_timer() {
       if (it->timestamp_max < m_current) {
         HnzUtility::log_warn("%s A remote control (%s addr=%d) was not acknowledged in time !", beforeLog.c_str(),
                             it->type.c_str(), it->addr);
-        m_active_path->protocolStateTransition(ConnectionEvent::TO_RECV);
+        m_active_path->protocolStateTransition(ConnectionEvent::TO_TCACK);
         it = m_active_path->command_sent.erase(it);
         // DF.GLOB.TC : nothing to do in HNZ
       } else {

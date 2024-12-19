@@ -332,12 +332,19 @@ void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& da
 }
 
 void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handleTSCE - ";
   string msg_code = "TS";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
     to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
   if (label.empty()) {
+    return;
+  }
+
+  // TSCE discarded in state INPUT_CONNECTED, timestamp mod10 might be uninitialized
+  if(m_hnz_connection->getActivePath() != nullptr && m_hnz_connection->getActivePath()->getProtocolState() == ProtocolState::INPUT_CONNECTED){
+    HnzUtility::log_info("%s TSCE discarded in path protocol state INPUT_CONNECTED.", beforeLog.c_str());
     return;
   }
 

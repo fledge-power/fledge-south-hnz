@@ -1914,6 +1914,7 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
   server->popLastFramesReceived();
   server2->popLastFramesReceived();
 
+  this_thread::sleep_for(chrono::seconds(3));
   // Send a SARM on both path to send them back to SARM loop and make sure no deadlock is happening
   // by checking that SARM are received and the connection can be established on both path again
   debug_print("[HNZ Server] Send SARM on Path A and B");
@@ -2852,16 +2853,18 @@ TEST_F(HNZTest, FrameToStr) {
   ASSERT_STREQ(hnz->frameToStr({0x00, 0xab, 0xcd, 0xff}).c_str(), "\n[0x00, 0xab, 0xcd, 0xff]");
 }
 
-TEST_F(HNZTest, BackToSARM) { // TODO PMP2-277
+TEST_F(HNZTest, BackToPreviousState) {
   int port = getNextPort();
   ServersWrapper wrapper(0x05, port);
-  BasicHNZServer* server = wrapper.server1().get();
+  std::shared_ptr<BasicHNZServer> server = wrapper.server1();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
 
+  ProtocolStateHelper psHelper = ProtocolStateHelper(server);
+
   /////////////////////////////
-  // Back to SARM after (repeat_timeout * repeat_path_A) due to missing RR
+  // Back to INPUT_CONNECTED after (repeat_timeout * repeat_path_A) due to missing RR
   /////////////////////////////
 
   // Stop sending automatic ack (RR) in response to messages from south plugin
@@ -2883,14 +2886,11 @@ TEST_F(HNZTest, BackToSARM) { // TODO PMP2-277
   server->popLastFramesReceived();
   // Wait (repeat_timeout * repeat_path_A) + m_repeat_timeout = (3 * 3) + 3 = 12s
   this_thread::sleep_for(chrono::seconds(12));
-  
-  // Find the SARM frame in the list of frames received by server
-  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
-  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::INPUT_CONNECTED)) << "Expected protocol state INPUT_CONNECTED was not detected or did not match requirements.";
 
   /////////////////////////////
-  // Back to SARM after inacc_timeout while connected
+  // Back to OUTPUT_CONNECTED after inacc_timeout while connected
   /////////////////////////////
 
   // Enable acks again
@@ -2909,7 +2909,7 @@ TEST_F(HNZTest, BackToSARM) { // TODO PMP2-277
   server->startHNZServer();
 
   // Check that the server is reconnected after reconfigure
-  server = wrapper.server1().get();
+  server = wrapper.server1();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
 
   // Clear messages received from south plugin
@@ -2918,12 +2918,7 @@ TEST_F(HNZTest, BackToSARM) { // TODO PMP2-277
   debug_print("[HNZ server] Waiting for inacc timeout 2...");
   this_thread::sleep_for(chrono::seconds(10));
 
-  // TODO 277 -> send SARM and check CONNECTED (south_even started)
-
-  // Find the SARM frame in the list of frames received by server
-  frames = server->popLastFramesReceived();
-  SARMframe = findProtocolFrameWithId(frames, 0x0f);
-  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM 2 in frames received: " << BasicHNZServer::framesToStr(frames);
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::OUTPUT_CONNECTED)) << "Expected protocol state OUTPUT_CONNECTED was not detected or did not match requirements.";
 
   /////////////////////////////
   // Connection reset after inacc_timeout while connecting
@@ -2952,7 +2947,7 @@ TEST_F(HNZTest, BackToSARM) { // TODO PMP2-277
   server->startHNZServer();
 
   // Check that the server is reconnected after reconfigure
-  server = wrapper.server1().get();
+  server = wrapper.server1();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 4 is not established in 10s...";
 }
 
@@ -3443,7 +3438,7 @@ TEST_F(HNZTest, ProtocolStateValidation) {
   //    * BULLE received south
   //    * TC / TVC transit
   //    * BULLE / TM / ACK TC / ACK TVC transit
-  // 4)  Send SARM then UA to go into CONNECTED
+  // 4) Send SARM then UA to go into CONNECTED
 
   int customServerPort = getNextPort();
   std::shared_ptr<BasicHNZServer> customServer = std::make_shared<BasicHNZServer>(customServerPort, 0x05);
@@ -3468,6 +3463,9 @@ TEST_F(HNZTest, ProtocolStateValidation) {
   customServer->createAndSendFrame(0x05, messageSARM, sizeof(messageSARM));
   this_thread::sleep_for(chrono::milliseconds(1000));
   ASSERT_TRUE(psHelper.isInState(ProtocolState::INPUT_CONNECTED)) << "Expected protocol state INPUT_CONNECTED was not detected or did not match requirements.";
+
+  customServer->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  this_thread::sleep_for(chrono::milliseconds(1000));
 
   ASSERT_TRUE(psHelper.restartServer());
   ASSERT_TRUE(psHelper.isInState(ProtocolState::CONNECTION)) << "Expected protocol state CONNECTION was not detected or did not match requirements.";

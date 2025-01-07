@@ -124,6 +124,18 @@ static string exchanged_data_def = QUOTE({
         ]
       },
       {
+        "label" : "TC2",
+        "pivot_id" : "ID222223",
+        "pivot_type" : "DPCTyp",
+        "protocols" : [
+          {
+            "name": "hnzip",
+            "address" : "442",
+            "typeid": "TC"
+          }
+        ]
+      },
+      {
         "label" : "TVC1",
         "pivot_id" : "ID333333",
         "pivot_type" : "DPCTyp",
@@ -1496,6 +1508,38 @@ TEST_F(HNZTest, SendingTCMessages) {
     {"do_addr", {"int64_t", "142"}},
     {"do_value", {"int64_t", "1"}},
     {"do_valid", {"int64_t", "1"}},
+  });
+  if(HasFatalFailure()) return;
+
+  ///////////////////////////////////////
+  // Send TC2 (address > 255)
+  ///////////////////////////////////////
+  PLUGIN_PARAMETER paramTC21 = {"co_type", "TC"};
+  PLUGIN_PARAMETER paramTC22 = {"co_addr", "442"};
+  PLUGIN_PARAMETER paramTC23 = {"co_value", "1"};
+  PLUGIN_PARAMETER* paramsTC2[nbParamsTC] = {&paramTC21, &paramTC22, &paramTC23};
+  ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC2));
+  debug_print("[HNZ south plugin] TC 6 sent");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  // Find the TC frame in the list of frames received by server and validate it
+  validateFrame(server->popLastFramesReceived(), {0x19, 0x2c, 0x48});
+  if(HasFatalFailure()) return;
+
+  // Send TC ACK from server
+  server->sendFrame({0x09, 0x2c, 0x49}, false);
+  debug_print("[HNZ Server] TC ACK 6 sent");
+  waitUntil(dataObjectsReceived, 1, 1000);
+  // Check that ingestCallback had been called
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TC2");
+  validateReading(currentReading, "TC2", {
+    {"do_type", {"string", "TC"}},
+    {"do_station", {"int64_t", "1"}},
+    {"do_addr", {"int64_t", "442"}},
+    {"do_value", {"int64_t", "1"}},
+    {"do_valid", {"int64_t", "0"}},
   });
   if(HasFatalFailure()) return;
 }

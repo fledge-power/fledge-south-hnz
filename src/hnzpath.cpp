@@ -826,11 +826,11 @@ bool HNZPath::sendTVCCommand(unsigned char address, int value) {
   msg[3] = (value >= 0) ? 0 : 0x80;
 
   bool sent = m_sendInfo(msg, sizeof(msg));
-  m_registerCommandIfSent("TVC", sent, address, value, beforeLog);
+  m_registerCommandIfSent("TVC", sent, static_cast<int>(address), value, beforeLog);
   return sent;
 }
 
-bool HNZPath::sendTCCommand(unsigned char address, unsigned char value) {
+bool HNZPath::sendTCCommand(int address, unsigned char value) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::sendTCCommand - " + m_name_log;
   // Add a 0 in the string version to ensure that there is always 2 digits in the address
   string address_str = "0" + to_string(address);
@@ -879,7 +879,7 @@ bool HNZPath::m_isOtherPathHNZConnected() const {
 }
 
 
-void HNZPath::m_registerCommandIfSent(const std::string& type, bool sent, unsigned char address, int value, const std::string& beforeLog) {
+void HNZPath::m_registerCommandIfSent(const std::string& type, bool sent, int address, int value, const std::string& beforeLog) {
   HnzUtility::log_info(beforeLog + " " + type + " " + (sent?"sent":"discarded") + " (address = " + to_string(address) + ", value = " + to_string(value) + ")");
   if (!sent) {
     return;

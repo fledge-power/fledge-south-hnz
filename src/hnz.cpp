@@ -681,7 +681,7 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
   }
 
   if (type == "TC") {
-    bool success = m_hnz_connection->getActivePath()->sendTCCommand(static_cast<unsigned char>(address), static_cast<unsigned char>(value));
+    bool success = m_hnz_connection->getActivePath()->sendTCCommand(address, static_cast<unsigned char>(value));
     return success ? 0 : 2;
   }
   else if (type == "TVC") {

@@ -128,7 +128,7 @@ class HNZPath {
    * @param address ADO + ADB
    * @param value value
    */
-  bool sendTCCommand(unsigned char address, unsigned char value);
+  bool sendTCCommand(int address, unsigned char value);
 
   /**
    * Received a TC or TVC ACK. Remove the command from the list of command sent.
@@ -368,7 +368,7 @@ class HNZPath {
    * @param value Value of the command
    * @param beforeLog Prefix for the log messages produced by this function
    */
-  void m_registerCommandIfSent(const std::string& type, bool sent, unsigned char address, int value, const std::string& beforeLog);
+  void m_registerCommandIfSent(const std::string& type, bool sent, int address, int value, const std::string& beforeLog);
 
   /**
    * Test if a NR is valid

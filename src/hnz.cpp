@@ -342,12 +342,6 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
     return;
   }
 
-  // TSCE discarded in state INPUT_CONNECTED, timestamp mod10 might be uninitialized
-  if(m_hnz_connection->getActivePath() != nullptr && m_hnz_connection->getActivePath()->getProtocolState() == ProtocolState::INPUT_CONNECTED){
-    HnzUtility::log_info("%s TSCE discarded in path protocol state INPUT_CONNECTED.", beforeLog.c_str());
-    return;
-  }
-
   long int value = (data[2] >> 3) & 0x1;  // E bit
   unsigned int valid = (data[2] >> 4) & 0x1;  // V bit
 
@@ -369,6 +363,13 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   params.ts_c = ts_c;
   params.ts_s = ts_s;
   params.cg = false;
+
+  // In stateINPUT_CONNECTED, timestamp mod10 might be uninitialized
+  if(m_hnz_connection->getActivePath() != nullptr && m_hnz_connection->getActivePath()->getProtocolState() == ProtocolState::INPUT_CONNECTED){
+    HnzUtility::log_info("%s TSCE discarded in path protocol state INPUT_CONNECTED.", beforeLog.c_str());
+    params.empty_timestamp = true;
+  }
+
   readings.push_back(m_prepare_reading(params));
 }
 
@@ -556,7 +557,7 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   }
   if (isTSCE) {
     // Casting "unsigned long" into "long" for do_ts in order to match implementation of iec104 plugin
-    measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
+    if(!params.empty_timestamp) measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
     measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));
     measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(params.ts_c)));
     measure_features->push_back(m_createDatapoint("do_ts_s", static_cast<long int>(params.ts_s)));

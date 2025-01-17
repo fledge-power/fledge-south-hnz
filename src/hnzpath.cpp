@@ -178,16 +178,7 @@ void HNZPath::resolveProtocolStateConnected(){
   }
   HnzUtility::log_debug(beforeLog + " HNZ Connection initialized !!");
 
-  gi_repeat = 0;
-  gi_start_time = 0;
-
-  m_last_sarm_recv_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-
-  if (m_is_active_path) {
-    m_send_date_setting();
-    m_send_time_setting();
-    sendGeneralInterrogation();
-  }
+  m_last_connected = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
 void HNZPath::resolveProtocolStateConnection(){
@@ -354,6 +345,7 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolState(long long now) {
     else {
       sleep = std::chrono::milliseconds(bulle_time_ms - ms_since_last_msg_sent);
     }
+
     if (ms_since_last_msg > (m_inacc_timeout * 1000) && m_protocol_state == ProtocolState::CONNECTED) {
       HnzUtility::log_warn(beforeLog + " Inactivity timer reached, a message or a BULLE were not received on time.");
       protocolStateTransition(ConnectionEvent::TO_RECV);
@@ -361,6 +353,15 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolState(long long now) {
     }
   }
   return sleep;
+}
+
+void HNZPath::sendInitMessages(){
+  gi_repeat = 0;
+  gi_start_time = 0;
+  m_send_date_setting();
+  m_send_time_setting();
+  sendGeneralInterrogation();
+  m_last_connected = 0;
 }
 
 void HNZPath::setActivePath(bool active) {
@@ -545,10 +546,10 @@ void HNZPath::m_receivedSARM() {
   m_sendUA();
 
   long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  if(now - m_last_sarm_recv_time > m_repeat_timeout){
+  if(now - m_last_connected > m_repeat_timeout){
     protocolStateTransition(ConnectionEvent::RECEIVED_SARM);
   } else {
-    HnzUtility::log_info(beforeLog + "Protocol state transition from CONNECTED ignored, a SARM was received too recently.");
+    HnzUtility::log_info(beforeLog + " Protocol state transition from CONNECTED ignored, a SARM was received too recently.");
   }
 }
 

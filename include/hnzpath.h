@@ -208,6 +208,10 @@ class HNZPath {
     return m_protocol_state;
   }
 
+  long long getLastConnected() { return m_last_connected;}
+
+  void sendInitMessages();
+
  private:
   std::unique_ptr<HNZClient> m_hnz_client;  // HNZ Client that manage TCP connection
                                             // (receives/assembles and sends TCP frame)
@@ -265,7 +269,8 @@ class HNZPath {
   long long m_last_msg_time = 0;   // Timestamp of the last reception in ms
   long long m_last_msg_sent_time = 0;   // Timestamp of the last sent message in ms
   long long m_last_sarm_sent_time = 0; // Timestamp of the last sent SARM message in ms
-  long long m_last_sarm_recv_time = 0; // Timestamp of the last received SARM message in ms
+  // Timestamp of the last transition to CONNECTED, to prevent a double-SARM reseting connection and tempo init messages
+  long long m_last_connected = 0;
   int m_nbr_sarm_sent = 0;  // Number of SARM sent
   int m_repeat = 0;         // Number of times the sent message is repeated
 
@@ -492,10 +497,10 @@ class HNZPath {
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::MAX_SARM_SENT }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                                    }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTED,        {&HNZPath::resetInputVariables, &HNZPath::sendAuditSuccess, &HNZPath::resolveProtocolStateConnected}             }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::MAX_SEND      }, {ProtocolState::CONNECTION,       {&HNZPath::resetSarmCounters, &HNZPath::resolveProtocolStateConnection}                                          }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::MAX_SEND      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages}                                }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_TCACK      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages}                                }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::MAX_SEND      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_TCACK      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
     {{ProtocolState::CONNECTED,        ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables} }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_RECV       }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::sendAuditFail, &HNZPath::discardMessages}                                                             }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_RECV       }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::sendAuditFail, &HNZPath::discardMessages, &HNZPath::resetOutputVariables}                                                             }},
     {{ProtocolState::CONNECTION,       ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},

@@ -182,6 +182,14 @@ void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
       }
     }
   }
+
+  if((path != nullptr) && path->isActivePath() && path->getProtocolState() == ProtocolState::CONNECTED){
+    long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    long long ms_since_connected = now - path->getLastConnected();
+    if(path->getLastConnected() > 0 && ms_since_connected >= m_repeat_timeout){
+      path->sendInitMessages();
+    }
+  }
 }
 
 void HNZConnection::m_check_GI() {

@@ -195,7 +195,7 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
     // Waiting for data
     messages = hnz_path_in_use->getData();
 
-    if (messages.empty() && !hnz_path_in_use->isConnected()) {
+    if (messages.empty() && !hnz_path_in_use->isTCPConnected()) {
       HnzUtility::log_warn("%s Connection lost, reconnecting active path and switching to other path", beforeLog.c_str());
       // If connection lost, try to switch path
       if (hnz_path_in_use->isActivePath()) m_hnz_connection->switchPath();
@@ -332,6 +332,7 @@ void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& da
 }
 
 void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handleTSCE - ";
   string msg_code = "TS";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
     to_string((int)(data[2] >> 5)));  // AD0 + ADB
@@ -362,6 +363,13 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   params.ts_c = ts_c;
   params.ts_s = ts_s;
   params.cg = false;
+
+  // In stateINPUT_CONNECTED, timestamp mod10 might be uninitialized
+  if(m_hnz_connection->getActivePath() != nullptr && m_hnz_connection->getActivePath()->getProtocolState() == ProtocolState::INPUT_CONNECTED){
+    HnzUtility::log_info("%s TSCE discarded in path protocol state INPUT_CONNECTED.", beforeLog.c_str());
+    params.empty_timestamp = true;
+  }
+
   readings.push_back(m_prepare_reading(params));
 }
 
@@ -549,7 +557,7 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   }
   if (isTSCE) {
     // Casting "unsigned long" into "long" for do_ts in order to match implementation of iec104 plugin
-    measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
+    if(!params.empty_timestamp) measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
     measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));
     measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(params.ts_c)));
     measure_features->push_back(m_createDatapoint("do_ts_s", static_cast<long int>(params.ts_s)));
@@ -738,6 +746,8 @@ unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::high
 
 void HNZ::updateConnectionStatus(ConnectionStatus newState) {
   std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::string newStateSTR = newState == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
+  std::string m_connStatusSTR = m_connStatus == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
   if (m_connStatus == newState) return;
 
   m_connStatus = newState;

@@ -11,6 +11,7 @@
 #include <regex>
 
 #include "hnz.h"
+#include "hnzpath.h"
 #include "server/basic_hnz_server.h"
 
 using namespace std;
@@ -717,6 +718,205 @@ class ServersWrapper {
     std::shared_ptr<BasicHNZServer> m_server2;
     int m_port1 = 0;
     int m_port2 = 0;
+};
+
+class ProtocolStateHelper{
+  public:
+    ProtocolStateHelper(std::shared_ptr<BasicHNZServer> server) : _server(server) {}
+
+    bool isInState(ProtocolState state){
+      _server->popLastFramesReceived();
+      HNZTest::resetCounters();
+      // Clear readings
+      std::shared_ptr<Reading> currentReading = nullptr;
+      currentReading = HNZTest::popFrontReading();
+      while(currentReading != nullptr){
+        HNZTest::debug_print("Clearing reading : " + HNZTest::readingToJson(*currentReading.get()));
+        currentReading = HNZTest::popFrontReading();
+      }
+      switch(state){
+        case ProtocolState::CONNECTION:
+        return !cnxStarted() && !transitTC() && !transitTVC() && !transitTM() &&
+              !transitBULLE() && !transitTCACK() && !transitTVCACK() && !receiveBULLE();
+        case ProtocolState::INPUT_CONNECTED:
+        return !cnxStarted() && !transitTC() && !transitTVC() && transitTM() &&
+              transitBULLE() && transitTCACK() && transitTVCACK() && !receiveBULLE();
+        case ProtocolState::OUTPUT_CONNECTED:
+        return !cnxStarted() && !transitTC() && !transitTVC() && !transitTM() &&
+              !transitBULLE() && !transitTCACK() && !transitTVCACK() && receiveBULLE();
+        case ProtocolState::CONNECTED:
+        return cnxStarted() && transitTC() && transitTVC() && transitTM() &&
+              transitBULLE() && transitTCACK() && transitTVCACK() && receiveBULLE();
+      }
+      return false;
+    }
+
+    bool transitTC(){
+      std::string operationTC("HNZCommand");
+      int nbParamsTC = 3;
+      PLUGIN_PARAMETER paramTC1 = {"co_type", "TC"};
+      PLUGIN_PARAMETER paramTC2 = {"co_addr", "142"};
+      PLUGIN_PARAMETER paramTC3 = {"co_value", "1"};
+      PLUGIN_PARAMETER* paramsTC[nbParamsTC] = {&paramTC1, &paramTC2, &paramTC3};
+      if(!HNZTest::hnz->operation(operationTC, nbParamsTC, paramsTC)) return false;
+      HNZTest::debug_print("[HNZ south plugin] TC sent");
+      this_thread::sleep_for(chrono::milliseconds(2000));
+      // Find the TC frame in the list of frames received by server and validate it
+      HNZTest::validateFrame(_server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+      if(HNZTest::HasFatalFailure()) return false;
+      return true;
+    }
+
+    bool transitTVC(){
+      std::string operationTVC("HNZCommand");
+      int nbParamsTVC = 3;
+      PLUGIN_PARAMETER paramTVC1 = {"co_type", "TVC"};
+      PLUGIN_PARAMETER paramTVC2 = {"co_addr", "31"};
+      PLUGIN_PARAMETER paramTVC3 = {"co_value", "42"};
+      PLUGIN_PARAMETER* paramsTVC[nbParamsTVC] = {&paramTVC1, &paramTVC2, &paramTVC3};
+      if(!HNZTest::hnz->operation(operationTVC, nbParamsTVC, paramsTVC)) return false;
+      HNZTest::debug_print("[HNZ south plugin] TVC sent");
+      this_thread::sleep_for(chrono::milliseconds(2000));
+      // Find the TVC frame in the list of frames received by server and validate it
+      HNZTest::validateFrame(_server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x00});
+      if(HNZTest::HasFatalFailure()) return false;
+      return true;
+    }
+
+    bool transitTM(){
+      int values[] = {-127, -1, 1, 127};
+      unsigned char val0 = static_cast<unsigned char>((-values[0]) ^ 0xFF); // Ones' complement
+      unsigned char val1 = static_cast<unsigned char>((-values[1]) ^ 0xFF); // Ones' complement
+      unsigned char val2 = static_cast<unsigned char>(values[2]);
+      unsigned char val3 = static_cast<unsigned char>(values[3]);
+      _server->sendFrame({0x02, 0x14, val0, val1, val2, val3}, false);
+      HNZTest::debug_print("[HNZ Server] TMA sent");
+      HNZTest::waitUntil(HNZTest::dataObjectsReceived, 4, 1000);
+
+      // Check that ingestCallback had been called 4x times
+      if(HNZTest::dataObjectsReceived != 4) return false;
+      HNZTest::resetCounters();
+      std::shared_ptr<Reading> currentReading = nullptr;
+      for (int i = 0; i < 4; i++) {
+        std::string label("TM" + to_string(i + 1));
+        currentReading = HNZTest::popFrontReadingsUntil(label);
+        HNZTest::validateReading(currentReading, label, {
+          {"do_type", {"string", "TM"}},
+          {"do_station", {"int64_t", "1"}},
+          {"do_addr", {"int64_t", std::to_string(20 + i)}},
+          {"do_value", {"int64_t", std::to_string(values[i])}},
+          {"do_valid", {"int64_t", "0"}},
+          {"do_an", {"string", "TMA"}},
+          {"do_outdated", {"int64_t", "0"}},
+        });
+        if(HNZTest::HasFatalFailure()) return false;
+        HNZTest::debug_print(HNZTest::readingToJson(*currentReading.get()));
+      }
+      return true;
+    }
+
+    bool transitBULLE(){
+      _server->sendFrame({0x13, 0x04}, false);
+      HNZTest::debug_print("[HNZ Server] BULLE sent");
+      this_thread::sleep_for(chrono::milliseconds(1000));
+      // Check that RR frame was received
+      std::shared_ptr<MSG_TRAME> RRframe = HNZTest::findRR(_server->popLastFramesReceived());
+      if(RRframe == nullptr) return false;
+      return true;
+    }
+
+    bool transitTCACK(){
+      _server->sendFrame({0x09, 0x0e, 0x49}, false);
+      HNZTest::debug_print("[HNZ Server] TC ACK sent");
+      HNZTest::waitUntil(HNZTest::dataObjectsReceived, 1, 1000);
+      // Check that ingestCallback had been called once
+      if(HNZTest::dataObjectsReceived != 1) return false;
+      HNZTest::resetCounters();
+      std::shared_ptr<Reading> currentReading = HNZTest::popFrontReadingsUntil("TC1");
+      HNZTest::validateReading(currentReading, "TC1", {
+        {"do_type", {"string", "TC"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", "142"}},
+        {"do_value", {"int64_t", "1"}},
+        {"do_valid", {"int64_t", "0"}},
+      });
+      if(HNZTest::HasFatalFailure()) return false;
+      return true;
+    }
+
+    bool transitTVCACK(){
+      // Send TVC ACK from server
+      _server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
+      HNZTest::debug_print("[HNZ Server] TVC ACK sent");
+      HNZTest::waitUntil(HNZTest::dataObjectsReceived, 1, 1000);
+      // Check that ingestCallback had been called once
+      if(HNZTest::dataObjectsReceived != 1) return false;
+      HNZTest::resetCounters();
+      std::shared_ptr<Reading> currentReading = HNZTest::popFrontReadingsUntil("TVC1");
+      HNZTest::validateReading(currentReading, "TVC1", {
+        {"do_type", {"string", "TVC"}},
+        {"do_station", {"int64_t", "1"}},
+        {"do_addr", {"int64_t", "31"}},
+        {"do_value", {"int64_t", "42"}},
+        {"do_valid", {"int64_t", "0"}},
+      });
+      if(HNZTest::HasFatalFailure()) return false;
+      return true;
+    }
+
+    bool receiveBULLE(){
+      HNZTest::debug_print("[HNZ Server] Waiting for a BULLE ...");
+      HNZTest::resetCounters();
+      _server->popLastFramesReceived();
+      this_thread::sleep_for(chrono::milliseconds(10000)); // Default BULLE delay
+      std::vector<std::shared_ptr<MSG_TRAME>> frames = _server->popLastFramesReceived();
+      if(frames.size() == 0) return false;
+      for(auto& frame : frames){
+        if(frame->usLgBuffer < 4) continue;
+        if(frame->aubTrame[2] == 0x13 && frame->aubTrame[3] == 0x04) return true;
+      }
+      return false;
+    }
+
+    bool cnxStarted(){
+      HNZTest::debug_print("[HNZ Server] Validate connection status");
+      HNZTest::waitUntil(HNZTest::southEventsReceived, 3, 5000);
+      // Check that ingestCallback had been called the expected number of times
+      if(HNZTest::southEventsReceived != 3) return false;
+      HNZTest::resetCounters();
+      // Validate new connection state
+      std::shared_ptr<Reading> currentReading = HNZTest::popFrontReadingsUntil("TEST_STATUS");
+      HNZTest::validateSouthEvent(currentReading, "TEST_STATUS", {
+        {"connx_status", "started"},
+      });
+      if(HNZTest::HasFatalFailure()) return false;
+      // Validate new GI state
+      currentReading = HNZTest::popFrontReadingsUntil("TEST_STATUS");
+      HNZTest::validateSouthEvent(currentReading, "TEST_STATUS", {
+        {"gi_status", "started"},
+      });
+      if(HNZTest::HasFatalFailure()) return false;
+      // Validate new GI state
+      currentReading = HNZTest::popFrontReadingsUntil("TEST_STATUS");
+      HNZTest::validateSouthEvent(currentReading, "TEST_STATUS", {
+        {"gi_status", "failed"},
+      });
+      if(HNZTest::HasFatalFailure()) return false;
+      return true;
+    }
+
+    bool restartServer(){
+      HNZTest::debug_print("[HNZ server] Request server restart ...");
+      if(!_server->stopHNZServer()) return false;
+      _server->startHNZServer();
+      if(!_server->HNZServerForceReady()) return false;
+      _server->resetProtocol();
+      this_thread::sleep_for(chrono::milliseconds(1000));
+      return true;
+    }
+
+  private:
+    std::shared_ptr<BasicHNZServer> _server;
 };
 
 TEST_F(HNZTest, TCPConnectionOnePathOK) {
@@ -1714,6 +1914,7 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
   server->popLastFramesReceived();
   server2->popLastFramesReceived();
 
+  this_thread::sleep_for(chrono::seconds(3));
   // Send a SARM on both path to send them back to SARM loop and make sure no deadlock is happening
   // by checking that SARM are received and the connection can be established on both path again
   debug_print("[HNZ Server] Send SARM on Path A and B");
@@ -2652,16 +2853,18 @@ TEST_F(HNZTest, FrameToStr) {
   ASSERT_STREQ(hnz->frameToStr({0x00, 0xab, 0xcd, 0xff}).c_str(), "\n[0x00, 0xab, 0xcd, 0xff]");
 }
 
-TEST_F(HNZTest, BackToSARM) {
+TEST_F(HNZTest, BackToPreviousState) {
   int port = getNextPort();
   ServersWrapper wrapper(0x05, port);
-  BasicHNZServer* server = wrapper.server1().get();
+  std::shared_ptr<BasicHNZServer> server = wrapper.server1();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
 
+  ProtocolStateHelper psHelper = ProtocolStateHelper(server);
+
   /////////////////////////////
-  // Back to SARM after (repeat_timeout * repeat_path_A) due to missing RR
+  // Back to INPUT_CONNECTED after (repeat_timeout * repeat_path_A) due to missing RR
   /////////////////////////////
 
   // Stop sending automatic ack (RR) in response to messages from south plugin
@@ -2683,14 +2886,11 @@ TEST_F(HNZTest, BackToSARM) {
   server->popLastFramesReceived();
   // Wait (repeat_timeout * repeat_path_A) + m_repeat_timeout = (3 * 3) + 3 = 12s
   this_thread::sleep_for(chrono::seconds(12));
-  
-  // Find the SARM frame in the list of frames received by server
-  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
-  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
+
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::INPUT_CONNECTED)) << "Expected protocol state INPUT_CONNECTED was not detected or did not match requirements.";
 
   /////////////////////////////
-  // Back to SARM after inacc_timeout while connected
+  // Back to OUTPUT_CONNECTED after inacc_timeout while connected
   /////////////////////////////
 
   // Enable acks again
@@ -2709,7 +2909,7 @@ TEST_F(HNZTest, BackToSARM) {
   server->startHNZServer();
 
   // Check that the server is reconnected after reconfigure
-  server = wrapper.server1().get();
+  server = wrapper.server1();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
 
   // Clear messages received from south plugin
@@ -2718,10 +2918,7 @@ TEST_F(HNZTest, BackToSARM) {
   debug_print("[HNZ server] Waiting for inacc timeout 2...");
   this_thread::sleep_for(chrono::seconds(10));
 
-  // Find the SARM frame in the list of frames received by server
-  frames = server->popLastFramesReceived();
-  SARMframe = findProtocolFrameWithId(frames, 0x0f);
-  ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM 2 in frames received: " << BasicHNZServer::framesToStr(frames);
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::OUTPUT_CONNECTED)) << "Expected protocol state OUTPUT_CONNECTED was not detected or did not match requirements.";
 
   /////////////////////////////
   // Connection reset after inacc_timeout while connecting
@@ -2750,7 +2947,7 @@ TEST_F(HNZTest, BackToSARM) {
   server->startHNZServer();
 
   // Check that the server is reconnected after reconfigure
-  server = wrapper.server1().get();
+  server = wrapper.server1();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 4 is not established in 10s...";
 }
 
@@ -3222,4 +3419,84 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   frames = server->popLastFramesReceived();
   receivedFrame = findRR(frames);
   ASSERT_NE(receivedFrame, nullptr) << "Valid INFO (TSCE) was not acknowledged by RR.";
+}
+
+TEST_F(HNZTest, ProtocolStateValidation) {
+  // Validates the behavior of the different protocol states
+  // 1) Send SARM and no UA to go into INPUT_CONNECTED
+  //    * No south event received
+  //    * No BULLE received south
+  //    * TC / TVC do not transit
+  //    * BULLE / TM / ACK TC / ACK TVC transit
+  // 2) Send UA and no SARM to go into OUTPUT_CONNECTED
+  //    * No south event received
+  //    * BULLE received south
+  //    * TC / TVC do not transit
+  //    * BULLE / TM / ACK TC / ACK TVC do not transit
+  // 3) Send SARM then UA to go into CONNECTED
+  //    * south event received ("connx_status", "started")
+  //    * BULLE received south
+  //    * TC / TVC transit
+  //    * BULLE / TM / ACK TC / ACK TVC transit
+  // 4) Send SARM then UA to go into CONNECTED
+
+  int customServerPort = getNextPort();
+  std::shared_ptr<BasicHNZServer> customServer = std::make_shared<BasicHNZServer>(customServerPort, 0x05);
+  std::string protocol_stack = protocol_stack_generator(customServerPort, 0);
+  // Changing max_sarm to prevent the TCP connection reset
+  std::string customProtocolStack = std::regex_replace(protocol_stack, std::regex("\"max_sarm\" : 5"), "\"max_sarm\" : 50");
+  customServer->startHNZServer();
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  HNZTest::initConfig(customServerPort, 0, customProtocolStack, "");
+  HNZTest::startHNZ(customServerPort, 0, customProtocolStack, "");
+
+  ProtocolStateHelper psHelper = ProtocolStateHelper(customServer);
+  ASSERT_TRUE(customServer->HNZServerForceReady());
+
+  std::shared_ptr<Reading> currentReading;
+  unsigned char messageUA[1];
+  messageUA[0] = 0x63;
+  unsigned char messageSARM[1];
+  messageSARM[0] = 0x0F;
+
+  debug_print("[HNZ Server] Sending SARM to go in INPUT_CONNECTED ...");
+  customServer->createAndSendFrame(0x05, messageSARM, sizeof(messageSARM));
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::INPUT_CONNECTED)) << "Expected protocol state INPUT_CONNECTED was not detected or did not match requirements.";
+
+  customServer->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
+  ASSERT_TRUE(psHelper.restartServer());
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::CONNECTION)) << "Expected protocol state CONNECTION was not detected or did not match requirements.";
+
+  customServer->resetProtocol();
+  debug_print("[HNZ Server] Sending UA to go in OUTPUT_CONNECTED ...");
+  customServer->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::OUTPUT_CONNECTED)) << "Expected protocol state OUTPUT_CONNECTED was not detected or did not match requirements.";
+
+  ASSERT_TRUE(psHelper.restartServer());
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::CONNECTION)) << "Expected protocol state CONNECTION was not detected or did not match requirements.";
+
+  customServer->resetProtocol();
+  debug_print("[HNZ Server] Sending SARM/UA ...");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  customServer->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  customServer->createAndSendFrame(0x05, messageSARM, sizeof(messageSARM));
+
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::CONNECTED)) << "Expected protocol state CONNECTED was not detected or did not match requirements.";
+
+  ASSERT_TRUE(psHelper.restartServer());
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::CONNECTION)) << "Expected protocol state CONNECTION was not detected or did not match requirements.";
+
+  customServer->resetProtocol();
+  debug_print("[HNZ Server] Sending UA/SARM ...");
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  customServer->createAndSendFrame(0x05, messageSARM, sizeof(messageSARM));
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  customServer->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
+
+  ASSERT_TRUE(psHelper.isInState(ProtocolState::CONNECTED)) << "Expected protocol state CONNECTED was not detected or did not match requirements.";
 }

@@ -209,6 +209,7 @@ class HNZPath {
   }
 
   long long getLastConnected() { return m_last_connected;}
+  void resetLastConnected() { m_last_connected = 0;}
 
   void sendInitMessages();
 

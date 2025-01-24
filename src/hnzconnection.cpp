@@ -159,8 +159,10 @@ void HNZConnection::m_manageMessages() {
 }
 
 void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
-  if ((path != nullptr) && !path->msg_sent.empty() && path->isTCPConnected()) {
-    std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
+  if(path == nullptr) return;
+
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
+  if (!path->msg_sent.empty() && path->isTCPConnected()) {
     Message& msg = path->msg_sent.front();
     if (path->last_sent_time + m_repeat_timeout < m_current) {
       HnzUtility::log_debug("%s last_sent_time=%lld, m_repeat_timeout=%d, m_current=%llu", beforeLog.c_str(), path->last_sent_time, m_repeat_timeout, m_current);
@@ -183,11 +185,17 @@ void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
     }
   }
 
-  if((path != nullptr) && path->isActivePath() && path->getProtocolState() == ProtocolState::CONNECTED){
+  if(path->getProtocolState() == ProtocolState::CONNECTED){
     long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     long long ms_since_connected = now - path->getLastConnected();
     if(path->getLastConnected() > 0 && ms_since_connected >= m_repeat_timeout){
-      path->sendInitMessages();
+      if(path->isActivePath()){
+        HnzUtility::log_debug("%s Sending init messages", beforeLog.c_str());
+        path->sendInitMessages();
+      } else {
+        HnzUtility::log_debug("%s Discarding init messages", beforeLog.c_str());
+        path->resetLastConnected();
+      }
     }
   }
 }

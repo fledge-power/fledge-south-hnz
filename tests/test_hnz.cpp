@@ -487,7 +487,8 @@ class HNZTest : public testing::Test {
     // We only expect invalid messages at init, and during init we will also receive 3 extra messages for the failed CG request
     int waitCG = invalid && !noCG;
     int expectedMessages = waitCG ? 10 : 7;
-    int maxWaitTimeMs = waitCG ? 3000 : 0; // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000)
+    // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+    int maxWaitTimeMs = waitCG ? 6000 : 0;
     std::string validStr(invalid ? "1" : "0");
     std::string ourdatedStr(outdated ? "1" : "0");
     debug_print("[HNZ Server] Waiting for quality update...");
@@ -734,19 +735,23 @@ class ProtocolStateHelper{
         HNZTest::debug_print("Clearing reading : " + HNZTest::readingToJson(*currentReading.get()));
         currentReading = HNZTest::popFrontReading();
       }
+      std::array<bool, 8> measuredState = {
+        cnxStarted(), transitTC(), transitTVC(), transitTM(),
+        transitBULLE(), transitTCACK(), transitTVCACK(), receiveBULLE()
+      };
+      HNZTest::debug_print("[HNZ south plugin] Measured protocol state: %d %d %d %d %d %d %d %d", measuredState[0], measuredState[1], measuredState[2], measuredState[3], measuredState[4], measuredState[5], measuredState[6], measuredState[7]);
       switch(state){
         case ProtocolState::CONNECTION:
-        return !cnxStarted() && !transitTC() && !transitTVC() && !transitTM() &&
-              !transitBULLE() && !transitTCACK() && !transitTVCACK() && !receiveBULLE();
+        return measuredState == std::array<bool, 8>({ false, false, false, false, false, false, false, false });
+
         case ProtocolState::INPUT_CONNECTED:
-        return !cnxStarted() && !transitTC() && !transitTVC() && transitTM() &&
-              transitBULLE() && transitTCACK() && transitTVCACK() && !receiveBULLE();
+        return measuredState == std::array<bool, 8>({ false, false, false, true, true, true, true, false });
+
         case ProtocolState::OUTPUT_CONNECTED:
-        return !cnxStarted() && !transitTC() && !transitTVC() && !transitTM() &&
-              !transitBULLE() && !transitTCACK() && !transitTVCACK() && receiveBULLE();
+        return measuredState == std::array<bool, 8>({ false, false, false, false, false, false, false, true });
+
         case ProtocolState::CONNECTED:
-        return cnxStarted() && transitTC() && transitTVC() && transitTM() &&
-              transitBULLE() && transitTCACK() && transitTVCACK() && receiveBULLE();
+        return measuredState == std::array<bool, 8>({ true, true, true, true, true, true, true, true });
       }
       return false;
     }
@@ -880,7 +885,7 @@ class ProtocolStateHelper{
 
     bool cnxStarted(){
       HNZTest::debug_print("[HNZ Server] Validate connection status");
-      HNZTest::waitUntil(HNZTest::southEventsReceived, 3, 5000);
+      HNZTest::waitUntil(HNZTest::southEventsReceived, 3, 7000);
       // Check that ingestCallback had been called the expected number of times
       if(HNZTest::southEventsReceived != 3) return false;
       HNZTest::resetCounters();
@@ -2042,8 +2047,8 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   debug_print("[HNZ south plugin] waiting for connection established...");
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
-  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
-  waitUntil(southEventsReceived, 3, 3000);
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  waitUntil(southEventsReceived, 3, 6000);
   // Check that ingestCallback had been called the expected number of times
   ASSERT_EQ(southEventsReceived, 3);
   resetCounters();
@@ -2094,9 +2099,9 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   });
   if(HasFatalFailure()) return;
 
-  // Wait for all CG attempts to expire (gi_time * (gi_repeat_count + initial CG + 1) * 1000)
+  // Wait for all CG attempts to expire (gi_time * (gi_repeat_count + initial CG + 1) * 1000) + repeat_timeout (initial messages tempo, 3s)
   debug_print("[HNZ south plugin] waiting for full CG timeout...");
-  waitUntil(southEventsReceived, 1, 4000);
+  waitUntil(southEventsReceived, 1, 7000);
   // Check that ingestCallback had been called only one time
   ASSERT_EQ(southEventsReceived, 1);
   resetCounters();
@@ -2164,8 +2169,8 @@ TEST_F(HNZTest, ConnectionLossAndGIStatus) {
   debug_print("[HNZ south plugin] waiting for connection 2 established...");
   server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
-  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
-  waitUntil(southEventsReceived, 3, 3000);
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  waitUntil(southEventsReceived, 3, 6000);
   // Check that ingestCallback had been called the expected number of times
   ASSERT_EQ(southEventsReceived, 3);
   resetCounters();
@@ -2251,8 +2256,8 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   BasicHNZServer* server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
-  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
-  waitUntil(southEventsReceived, 3, 3000);
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  waitUntil(southEventsReceived, 3, 6000);
   // Check that ingestCallback had been called the expected number of times
   ASSERT_EQ(southEventsReceived, 3);
   resetCounters();
@@ -2304,8 +2309,8 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
-  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
-  waitUntil(southEventsReceived, 3, 3000);
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  waitUntil(southEventsReceived, 3, 6000);
   // Check that ingestCallback had been called the expected number of times
   ASSERT_EQ(southEventsReceived, 3);
   resetCounters();
@@ -2352,8 +2357,8 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   server2 = wrapper.server2().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection 3 is not established in 10s...";
-  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000)
-  waitUntil(southEventsReceived, 3, 3000);
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  waitUntil(southEventsReceived, 3, 6000);
   // Check that ingestCallback had been called the expected number of times
   ASSERT_EQ(southEventsReceived, 3);
   resetCounters();

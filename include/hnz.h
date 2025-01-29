@@ -179,11 +179,13 @@ class HNZ {
    */
   inline void setDaySection(unsigned char daySection) { m_daySection = daySection; }
 
+#ifdef UNIT_TEST
  protected:
   /**
    * Sends a CG request (reset counters if any was already in progress)
    */
   void sendInitialGI();
+#endif
 
 private:
   // Tells if the plugin is currently running

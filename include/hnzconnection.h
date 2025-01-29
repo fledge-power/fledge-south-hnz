@@ -90,10 +90,12 @@ class HNZConnection {
    */
   void switchPath();
 
+#ifdef UNIT_TEST
   /**
    * Send the initial GI message (reset retry counter if it was in progress)
    */
   void sendInitialGI();
+#endif
 
   /**
    * Called to update the current connection status

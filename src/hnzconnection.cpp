@@ -294,11 +294,13 @@ void HNZConnection::switchPath() {
   }
 }
 
+#ifdef UNIT_TEST
 void HNZConnection::sendInitialGI() {
   std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   m_active_path->gi_repeat = 0;
   m_active_path->sendGeneralInterrogation();
 }
+#endif
 
 void HNZConnection::updateConnectionStatus(ConnectionStatus newState) {
   m_hnz_fledge->updateConnectionStatus(newState);

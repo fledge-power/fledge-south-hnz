@@ -885,9 +885,11 @@ void HNZ::GICompleted(bool success) {
   resetGIQueue();
 }
 
+#ifdef UNIT_TEST
 void HNZ::sendInitialGI() {
   m_hnz_connection->sendInitialGI();
 }
+#endif
 
 void HNZ::m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
   ReadingParameters paramsTemplate;

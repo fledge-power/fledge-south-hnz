@@ -61,34 +61,37 @@ class HNZConnection {
    * commands).
    * @return the active path
    */
-  std::shared_ptr<HNZPath> getActivePath() {
+  HNZPath* getActivePath() {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     return m_active_path;
   };
 
   /**
-   * Get the path in stand-by.
-   * @return the active path
+   * Get a pointer to the first passive path found, if any.
+   * @return a passive path or nullptr
    */
-  std::shared_ptr<HNZPath> getPassivePath() {
+  HNZPath* getPassivePath() {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    return m_passive_path;
+    for (HNZPath* path: m_paths)
+    {
+       if(path != nullptr && path != m_active_path) return path;
+    }
+    return nullptr;
   };
 
   /**
-   * Get both active and passive path (with a single lock)
-   * @return a path pair (active_path, passive_path)
+   * Get both active and passive path as an array of pointers (with a single lock)
+   * @return array of existing paths
    */
-  std::pair<std::shared_ptr<HNZPath>, std::shared_ptr<HNZPath>> getBothPath() {
+  std::array<HNZPath*, MAXPATHS> getPaths() {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    return std::make_pair(m_active_path, m_passive_path);
+    return m_paths;
   };
 
   /**
-   * Switch between the active path and passive path. Must be called in case of
-   * connection problem on the active path.
+   * Manages the connection state of the different paths.
    */
-  void switchPath();
+  void pathConnectionChanged(HNZPath* path, bool isReady);
 
 #ifdef UNIT_TEST
   /**
@@ -127,6 +130,17 @@ class HNZConnection {
   bool isRunning() const { return m_is_running; };
 
   /**
+   * A running path can extract messages only if it is active, or has at least its input connected.
+   *  */
+  bool canPathExtractMessage(HNZPath* path){
+    if(path == nullptr) return false;
+    if(path == m_active_path){
+      return true;
+    }
+    return path == m_first_input_connected;
+  }
+
+  /**
    * Returns the name of the Fledge service instanciating this plugin
    */
   inline const std::string& getServiceName() const { return m_hnz_fledge->getServiceName(); }
@@ -137,9 +151,16 @@ class HNZConnection {
    */
   inline void setDaySection(unsigned char daySection) { m_hnz_fledge->setDaySection(daySection); }
 
+  /**
+   * Allows a path to notify that a GI request has been sent
+   */
+  void notifyGIsent();
+
  private:
-  std::shared_ptr<HNZPath> m_active_path;
-  std::shared_ptr<HNZPath> m_passive_path;
+  HNZPath* m_active_path = nullptr;
+  // First path in protocol state INPUT_CONNECTED, covers edge cases of the protocol
+  HNZPath* m_first_input_connected = nullptr;
+  std::array<HNZPath*, MAXPATHS> m_paths = {nullptr, nullptr};
   std::recursive_mutex m_path_mutex;
   std::shared_ptr<std::thread> m_messages_thread;  // Main thread that monitors messages
   std::atomic<bool> m_is_running{false};  // If false, the connection thread will stop
@@ -148,10 +169,11 @@ class HNZConnection {
   uint64_t m_days_since_epoch = 0;
   bool m_sendInitNexConnection = true; // The init messages (time/date/GI) have to be sent
 
+  int m_gi_repeat = 0;
+  long m_gi_start_time = 0;
   // Plugin configuration
-  int gi_repeat_count_max = 0;  // time to wait for GI completion
-  int gi_time_max = 0;          // repeat GI for this number of times in case it is
-                            // incomplete
+  int m_gi_repeat_count_max = 0;  // time to wait for GI completion
+  int m_gi_time_max = 0;          // repeat GI for this number of times in case it is incomplete
   GIScheduleFormat m_gi_schedule;
 
   int m_repeat_timeout = 0;  // time allowed for the receiver to acknowledge a frame
@@ -172,7 +194,7 @@ class HNZConnection {
    * If a message is not acknowledged, then a retransmission request is sent.
    * @param path the related path
    */
-  void m_check_timer(std::shared_ptr<HNZPath> path);
+  void m_check_timer(HNZPath* path);
 
   /**
    * Check the state of ongoing GI (General Interrogation) and manage scheduled
@@ -184,7 +206,7 @@ class HNZConnection {
    * Checks that sent command messages have been acknowledged and removes them
    * from the sent queue.
    */
-  void m_check_command_timer();
+  void m_check_command_timer(HNZPath* path);
 
   /**
    * Update the current time and time elapsed since last call to this function

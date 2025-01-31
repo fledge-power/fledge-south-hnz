@@ -15,6 +15,8 @@
 #include <memory>
 #include "rapidjson/document.h"
 
+#define MAXPATHS 2
+
 // Local definition of make_unique as it is only available since C++14 and right now fledge-south-hnz is built with C++11
 template<typename T, typename... Args>
 std::unique_ptr<T> make_unique(Args&&... args) {
@@ -149,32 +151,18 @@ class HNZConf {
   unsigned int getLastTSAddress() const;
 
   /**
-   * Get the IP address to remote IEC 104 server (A path)
+   * Get paths ips as an array of string
    *
-   * @return string
+   * @return Array of string containing paths ip
    */
-  string get_ip_address_A() const { return m_ip_A; }
+  std::array<string, MAXPATHS> get_paths_ip() const { return m_paths_ip; }
 
   /**
-   * Get the port number to remote IEC 104 server (A path)
+   * Get paths ports as an array of unsigned int
    *
-   * @return unsigned int
+   * @return Array of int containing paths ip
    */
-  unsigned int get_port_A() const { return m_port_A; }
-
-  /**
-   * Get the IP address to remote IEC 104 server (B path)
-   *
-   * @return string
-   */
-  string get_ip_address_B() const { return m_ip_B; }
-
-  /**
-   * Get the port number to remote IEC 104 server (B path)
-   *
-   * @return unsigned int
-   */
-  unsigned int get_port_B() const { return m_port_B; }
+  std::array<unsigned int, MAXPATHS> get_paths_port() const { return m_paths_port; }
 
   /**
    * Get the remote server station address
@@ -199,18 +187,10 @@ class HNZConf {
   unsigned int get_max_sarm() const { return m_max_sarm; }
 
   /**
-   * Get the max number of authorized repeats for path A
-   *
+   *  Get the max number of authorized repeats for all paths
    * @return unsigned int
    */
-  unsigned int get_repeat_path_A() const { return m_repeat_path_A; }
-
-  /**
-   * Get the max number of authorized repeats for path B
-   *
-   * @return unsigned int
-   */
-  unsigned int get_repeat_path_B() const { return m_repeat_path_B; }
+  std::array<unsigned int, MAXPATHS> get_paths_repeat() const { return m_paths_repeat; }
 
   /**
    * Get the time in ms allowed for the receiver to acknowledge a frame, after this
@@ -323,14 +303,12 @@ class HNZConf {
    */
   bool m_importDatapoint(const Value &msg);
 
-  string m_ip_A, m_ip_B = "";
-  unsigned int m_port_A = 0;
-  unsigned int m_port_B = 0;
+  std::array<string, MAXPATHS> m_paths_ip = {"", ""};
+  std::array<unsigned int, MAXPATHS> m_paths_port = {0, 0};
+  std::array<unsigned int, MAXPATHS> m_paths_repeat = {0, 0};
   unsigned int m_remote_station_addr = 0;
   unsigned int m_inacc_timeout = 0;
   unsigned int m_max_sarm = 0;
-  unsigned int m_repeat_path_A = 0;
-  unsigned int m_repeat_path_B = 0;
   unsigned int m_repeat_timeout = 0;
   unsigned int m_anticipation_ratio = 0;
   BulleFormat m_test_msg_send;

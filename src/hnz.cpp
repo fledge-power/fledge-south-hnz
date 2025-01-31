@@ -50,13 +50,13 @@ void HNZ::start(bool requestedStart /*= false*/) {
   m_sendAllTMQualityReadings(true, false);
   m_sendAllTSQualityReadings(true, false);
 
-  auto pathPair = m_hnz_connection->getBothPath();
-  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, pathPair.first);
-  if (pathPair.second != nullptr) {
+  auto paths = m_hnz_connection->getPaths();
+  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, paths[0]);
+  if (paths[1] != nullptr) {
     // Wait after getting the passive path pointer as connection init of active path may swap path
     this_thread::sleep_for(std::chrono::milliseconds(1000));
     // Path B is defined in the configuration
-    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, pathPair.second);
+    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, paths[1]);
   }
 
   m_hnz_connection->start();
@@ -87,7 +87,7 @@ void HNZ::stop(bool requestedStop /*= false*/) {
     m_receiving_thread_B = nullptr;
   }
   // Connection must be freed after management threads of both path
-  // as HNZ::m_hnz_connection, HNZConnection::m_active_path and HNZConnection::m_passive_path
+  // as HNZ::m_hnz_connection and paths of HNZConnection
   // are used in HNZ::receive running on the threads
   if (m_hnz_connection != nullptr) {
     m_hnz_connection = nullptr;
@@ -167,7 +167,11 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   return true;
 }
 
-void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
+void HNZ::receive(HNZPath* hnz_path_in_use) {
+  if(!hnz_path_in_use){
+    HnzUtility::log_info(HnzUtility::NamePlugin + " - HNZ::receive - No path to use, exit");
+    return;
+  }
   {
     std::lock_guard<std::recursive_mutex> guard(m_configMutex);
     if (!m_hnz_conf->is_complete()) {
@@ -196,9 +200,7 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
     messages = hnz_path_in_use->getData();
 
     if (messages.empty() && !hnz_path_in_use->isTCPConnected()) {
-      HnzUtility::log_warn("%s Connection lost, reconnecting active path and switching to other path", beforeLog.c_str());
-      // If connection lost, try to switch path
-      if (hnz_path_in_use->isActivePath()) m_hnz_connection->switchPath();
+      HnzUtility::log_warn("%s Connection lost, reconnecting path.", beforeLog.c_str());
       // Try to reconnect, unless thread is stopping
       if (m_is_running) {
         hnz_path_in_use->disconnect();
@@ -458,7 +460,13 @@ void HNZ::m_handleATVC(vector<Reading>& readings, const vector<unsigned char>& d
 
   unsigned int msg_address = data[1] & 0x1F;  // AD0
 
-  m_hnz_connection->getActivePath()->receivedCommandACK("TVC", msg_address);
+  // Acknowledge the TVC on the path from which it was sent
+  // Unexpected partial disconnection of the active path can generate ill states if the message is not acknowledged
+  for (auto& path: m_hnz_connection->getPaths())
+  {
+    if(path == nullptr) continue;
+    path->receivedCommandACK("TVC", msg_address);
+  }
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
   if (label.empty()) {
@@ -487,7 +495,13 @@ void HNZ::m_handleATC(vector<Reading>& readings, const vector<unsigned char>& da
   unsigned int msg_address = stoi(to_string((int)data[1]) +
     to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
-  m_hnz_connection->getActivePath()->receivedCommandACK("TC", msg_address);
+  // Acknowledge the TC on the path from which it was sent
+  // Unexpected partial disconnection of the active path can generate ill states if the message is not acknowledged
+  for (auto& path: m_hnz_connection->getPaths())
+  {
+    if(path == nullptr) continue;
+    path->receivedCommandACK("TC", msg_address);
+  }
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
   if (label.empty()) {
@@ -686,6 +700,10 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
   } catch (const std::out_of_range &e) {
     HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
     return 1;
+  }
+
+  if(m_hnz_connection->getActivePath() == nullptr){
+    return 2;
   }
 
   if (type == "TC") {

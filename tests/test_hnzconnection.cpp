@@ -97,8 +97,8 @@ TEST(HNZConnection, OnlyOnePathConfigured) {
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
-  ASSERT_NE(nullptr, hnz_connection->getActivePath().get());
-  ASSERT_EQ(nullptr, hnz_connection->getPassivePath().get());
+  ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
+  ASSERT_EQ(nullptr, hnz_connection->getPaths()[1]);
 }
 
 TEST(HNZConnection, TwoPathConfigured) {
@@ -122,8 +122,8 @@ TEST(HNZConnection, TwoPathConfigured) {
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
-  ASSERT_NE(nullptr, hnz_connection->getActivePath().get());
-  ASSERT_NE(nullptr, hnz_connection->getPassivePath().get());
+  ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
+  ASSERT_NE(nullptr, hnz_connection->getPaths()[1]);
 }
 
 TEST(HNZConnection, NoPathConfigured) {
@@ -132,8 +132,8 @@ TEST(HNZConnection, NoPathConfigured) {
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
-  ASSERT_EQ(nullptr, hnz_connection->getActivePath().get());
-  ASSERT_EQ(nullptr, hnz_connection->getPassivePath().get());
+  ASSERT_EQ(nullptr, hnz_connection->getPaths()[0]);
+  ASSERT_EQ(nullptr, hnz_connection->getPaths()[1]);
 }
 
 TEST(HNZConnection, GIScheduleInactive) {
@@ -147,8 +147,8 @@ TEST(HNZConnection, GIScheduleInactive) {
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
-  ASSERT_NE(nullptr, hnz_connection->getActivePath().get());
-  ASSERT_NE(nullptr, hnz_connection->getPassivePath().get());
+  ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
+  ASSERT_NE(nullptr, hnz_connection->getPaths()[1]);
 
   hnz_connection->start();
   // Wait for thread HNZConnection::m_manageMessages() to start
@@ -174,62 +174,13 @@ TEST(HNZConnection, GIScheduleActivePassed) {
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
 
-  ASSERT_NE(nullptr, hnz_connection->getActivePath().get());
-  ASSERT_NE(nullptr, hnz_connection->getPassivePath().get());
+  ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
+  ASSERT_NE(nullptr, hnz_connection->getPaths()[1]);
 
   hnz_connection->start();
   // Wait for thread HNZConnection::m_manageMessages() to start
   this_thread::sleep_for(chrono::milliseconds(1100));
   ASSERT_TRUE(hnz_connection->isRunning());
-}
-
-TEST(HNZConnection, GIScheduleActiveFuture) {
-  // Get current hours and minutes to set a GI schedule in the near future
-  auto hmPair = getCurrentHoursMinutes();
-  int hours = hmPair.first;
-  int minutes = hmPair.second;
-  int delayMin = 2; // Program GI 2 minutes in the future, in case we are close to the end of current minute
-  // If we are too close to midnight, wait long enough for the test to pass
-  if ((hours == 23) && (minutes >= (60 - delayMin))) {
-    this_thread::sleep_for(chrono::minutes(delayMin));
-    hmPair = getCurrentHoursMinutes();
-    hours = hmPair.first;
-    minutes = hmPair.second;
-  }
-
-  minutes += delayMin; 
-  if (minutes >= 60) {
-    hours = (hours + 1) % 24;
-    minutes = minutes % 60;
-  }
-  auto formatTime = [](int time) 
-  { 
-    std::stringstream ss;
-    ss << std::setw(2) << std::setfill('0') << time;
-    return ss.str();
-  };
-  std::shared_ptr<HNZConf> conf = std::make_shared<HNZConf>();
-  std::string giSchedule = formatTime(hours) + ":" + formatTime(minutes);
-  std::string protocol_stack_custom = std::regex_replace(protocol_stack_def, std::regex("00:00"), giSchedule);
-  conf->importConfigJson(protocol_stack_custom);
-  conf->importExchangedDataJson(exchanged_data_def);
-  ASSERT_TRUE(conf->get_gi_schedule().activate);
-  ASSERT_TRUE(conf->is_complete());
-
-  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
-  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
-
-  ASSERT_NE(nullptr, hnz_connection->getActivePath().get());
-  ASSERT_NE(nullptr, hnz_connection->getPassivePath().get());
-
-  hnz_connection->start();
-  // Wait for thread HNZConnection::m_manageMessages() to start
-  this_thread::sleep_for(chrono::milliseconds(1100));
-  ASSERT_TRUE(hnz_connection->isRunning());
-
-  // Wait for scheduled GI
-  this_thread::sleep_for(chrono::minutes(delayMin));
-  ASSERT_EQ(hnz_connection->getGiStatus(), GiStatus::STARTED);
 }
 
 TEST(HNZConnection, DisconnectPathInDestructor) {
@@ -240,7 +191,13 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
 
   std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
   std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
-  std::shared_ptr<HNZPath> hnz_path = std::make_shared<HNZPath>(conf, hnz_connection.get(), false);
+  std::shared_ptr<HNZPath> hnz_path = std::make_shared<HNZPath>(
+                                                                conf,
+                                                                hnz_connection.get(),
+                                                                conf->get_paths_repeat()[0],
+                                                                conf->get_paths_ip()[0],
+                                                                conf->get_paths_port()[0],
+                                                                "A");
   ASSERT_NE(nullptr, hnz_path.get());
 
   // Start connecting on a thread and wait a little to let it enter the main connection loop

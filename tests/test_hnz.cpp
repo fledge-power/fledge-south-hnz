@@ -2280,6 +2280,9 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   });
   if(HasFatalFailure()) return;
 
+  // Prevent Path B to send its init messages as well, as its timer is the same as Path A
+  this_thread::sleep_for(chrono::milliseconds(1000));
+
   // Disconnect server 1
   ASSERT_TRUE(server->stopHNZServer());
   debug_print("[HNZ Server] Server 1 disconnected");

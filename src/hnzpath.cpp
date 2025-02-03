@@ -78,7 +78,7 @@ void HNZPath::protocolStateTransition(const ConnectionEvent event){
 
   if (state_changed) {
     // Notify m_manageHNZProtocolConnection thread that m_protocol_state changed
-    std::unique_lock<std::mutex> lock3(m_state_changed_mutex);
+    std::unique_lock<std::mutex> lock4(m_state_changed_mutex);
     m_state_changed = true;
     m_state_changed_cond.notify_one();
   }
@@ -313,20 +313,17 @@ std::chrono::milliseconds HNZPath::m_manageHNZProtocolState(long long now) {
   if (m_protocol_state == ProtocolState::CONNECTION || m_protocol_state == ProtocolState::INPUT_CONNECTED) {
     if (now - m_last_msg_time <= (m_inacc_timeout * 1000)) {
       long long ms_since_last_sarm = now - m_last_sarm_sent_time;
+      // Wait the appropriate time
+      sleep = (ms_since_last_sarm >= m_repeat_timeout) * std::chrono::milliseconds(m_repeat_timeout) + 
+              (ms_since_last_sarm < m_repeat_timeout) * std::chrono::milliseconds(m_repeat_timeout - ms_since_last_sarm);
+      if (ms_since_last_sarm < m_repeat_timeout) return sleep;
       // Enough time elapsed since last SARM sent, send SARM
-      if (ms_since_last_sarm >= m_repeat_timeout) {
-        if (m_nbr_sarm_sent == m_max_sarm) {
-          HnzUtility::log_warn(beforeLog + " The maximum number of SARM was reached.");
-          protocolStateTransition(ConnectionEvent::MAX_SARM_SENT);
-        }
-        // Send SARM and wait
-        m_sendSARM();
-        sleep = std::chrono::milliseconds(m_repeat_timeout);
+      if (m_nbr_sarm_sent == m_max_sarm) {
+        HnzUtility::log_warn(beforeLog + " The maximum number of SARM was reached.");
+        protocolStateTransition(ConnectionEvent::MAX_SARM_SENT);
       }
-      // Else wait until enough time passed
-      else {
-        sleep = std::chrono::milliseconds(m_repeat_timeout - ms_since_last_sarm);
-      }
+      // Send SARM and wait
+      m_sendSARM();
     } else {
       // Inactivity timer reached
       HnzUtility::log_warn(beforeLog + " Inacc timeout! Reconnecting...");
@@ -427,42 +424,41 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
         m_receivedSARM();
         break;
       default:
+        if(m_protocol_state == ProtocolState::CONNECTION) break;
         // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
         std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
         std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
         std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
-        if (m_protocol_state != ProtocolState::CONNECTION) {
-          // Get NR, P/F ans NS field
-          int ns = (type >> 1) & 0x07;
-          int pf = (type >> 4) & 0x01;
-          int nr = (type >> 5) & 0x07;
-          if ((type & 0x01) == 0) {
-            if(m_protocol_state == ProtocolState::OUTPUT_CONNECTED){
-              HnzUtility::log_warn(beforeLog + " Unexpected information frame received in partial connection state : OUTPUT_CONNECTED");
-            } else {
-              // Information frame
-              HnzUtility::log_info(beforeLog + " Received an information frame (ns = " + to_string(ns) +
-                                              ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
-              std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getPathMutex());
-              if (m_is_active_path) {
-                // Only the messages on the active path are extracted. The
-                // passive path does not need them.
-                int payloadSize =
-                    size - 4;  // Remove address, type, CRC (2 bytes)
-                messages = m_extract_messages(data + 2, payloadSize);
-              }
-
-              // Computing the frame number & sending RR
-              if (!m_sendRR(pf == 1, ns, nr)) {
-                // If NR was invalid, skip message processing
-                messages.clear();
-              }
-            }
+        // Get NR, P/F ans NS field
+        int ns = (type >> 1) & 0x07;
+        int pf = (type >> 4) & 0x01;
+        int nr = (type >> 5) & 0x07;
+        if ((type & 0x01) == 0) {
+          if(m_protocol_state == ProtocolState::OUTPUT_CONNECTED){
+            HnzUtility::log_warn(beforeLog + " Unexpected information frame received in partial connection state : OUTPUT_CONNECTED");
           } else {
-            // Supervision frame
-            HnzUtility::log_info(beforeLog + " RR received (f = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
-            m_receivedRR(nr, pf == 1);
+            // Information frame
+            HnzUtility::log_info(beforeLog + " Received an information frame (ns = " + to_string(ns) +
+                                            ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
+            std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getPathMutex());
+            if (m_is_active_path) {
+              // Only the messages on the active path are extracted. The
+              // passive path does not need them.
+              int payloadSize =
+                  size - 4;  // Remove address, type, CRC (2 bytes)
+              messages = m_extract_messages(data + 2, payloadSize);
+            }
+
+            // Computing the frame number & sending RR
+            if (!m_sendRR(pf == 1, ns, nr)) {
+              // If NR was invalid, skip message processing
+              messages.clear();
+            }
           }
+        } else {
+          // Supervision frame
+          HnzUtility::log_info(beforeLog + " RR received (f = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
+          m_receivedRR(nr, pf == 1);
         }
 
         break;
@@ -919,6 +915,6 @@ void HNZPath::m_sendFrame(unsigned char *msg, unsigned long msgSize, bool usePAA
   m_last_msg_sent_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
-bool HNZPath::isBULLE(unsigned char* msg, unsigned long size){
+bool HNZPath::isBULLE(const unsigned char* msg, unsigned long size) const{
   return (size == 2) && (msg[0] == m_test_msg_send.first) && (msg[1] == m_test_msg_send.second);
 }

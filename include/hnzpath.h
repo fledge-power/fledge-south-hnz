@@ -166,29 +166,6 @@ class HNZPath {
    */
   void sendGeneralInterrogation();
 
-  std::map<ProtocolState, std::string> protocolState2str =  {
-    {ProtocolState::CONNECTION,       "CONNECTION"       },
-    {ProtocolState::INPUT_CONNECTED,  "INPUT_CONNECTED"  },
-    {ProtocolState::OUTPUT_CONNECTED, "OUTPUT_CONNECTED" },
-    {ProtocolState::CONNECTED,        "CONNECTED"        }
-  };
-
-  std::map<ConnectionEvent, std::string> connectionEvent2str =  {
-    {ConnectionEvent::TCP_CNX_ESTABLISHED, "TCP_CNX_ESTABLISHED" },
-    {ConnectionEvent::RECEIVED_SARM,       "RECEIVED_SARM"       },
-    {ConnectionEvent::RECEIVED_UA,         "RECEIVED_UA"         },
-    {ConnectionEvent::TO_RECV,             "TO_RECV"             },
-    {ConnectionEvent::MAX_SEND,            "MAX_SEND"            },
-    {ConnectionEvent::TCP_CNX_LOST,        "TCP_CNX_LOST"        },
-    {ConnectionEvent::TO_SEND,             "TO_SEND"             },
-    {ConnectionEvent::RECEIVED_INFO,       "RECEIVED_INFO"       },
-    {ConnectionEvent::SEND_TC,             "SEND_TC"             },
-    {ConnectionEvent::TO_UA,               "TO_UA"               },
-    {ConnectionEvent::MAX_SARM_SENT,       "MAX_SARM_SENT"       },
-    {ConnectionEvent::TO_LASTCG,           "TO_LASTCG"           },
-    {ConnectionEvent::TO_TCACK,            "TO_TCACK"            }
-  };
-
   /**
    * Set the state of the path.
    */
@@ -208,7 +185,7 @@ class HNZPath {
     return m_protocol_state;
   }
 
-  long long getLastConnected() { return m_last_connected;}
+  const long long getLastConnected() { return m_last_connected;}
   void resetLastConnected() { m_last_connected = 0;}
 
   void sendInitMessages();
@@ -482,7 +459,7 @@ class HNZPath {
   /**
    * Helper function to evaluate if a message is a BULLE. BULLE can be sent in OUTPUT_CONNECTED and CONNECT states.
    */
-  bool isBULLE(unsigned char* msg, unsigned long size);
+  bool isBULLE(const unsigned char* msg, unsigned long size) const;
 
   /*! \brief Protocol state automaton
   *
@@ -506,6 +483,29 @@ class HNZPath {
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
     {{ProtocolState::CONNECTED,        ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::resolveProtocolStateConnection, &HNZPath::discardMessages}                   }}
+  };
+
+  std::map<ProtocolState, std::string> protocolState2str =  {
+    {ProtocolState::CONNECTION,       "CONNECTION"       },
+    {ProtocolState::INPUT_CONNECTED,  "INPUT_CONNECTED"  },
+    {ProtocolState::OUTPUT_CONNECTED, "OUTPUT_CONNECTED" },
+    {ProtocolState::CONNECTED,        "CONNECTED"        }
+  };
+
+  std::map<ConnectionEvent, std::string> connectionEvent2str =  {
+    {ConnectionEvent::TCP_CNX_ESTABLISHED, "TCP_CNX_ESTABLISHED" },
+    {ConnectionEvent::RECEIVED_SARM,       "RECEIVED_SARM"       },
+    {ConnectionEvent::RECEIVED_UA,         "RECEIVED_UA"         },
+    {ConnectionEvent::TO_RECV,             "TO_RECV"             },
+    {ConnectionEvent::MAX_SEND,            "MAX_SEND"            },
+    {ConnectionEvent::TCP_CNX_LOST,        "TCP_CNX_LOST"        },
+    {ConnectionEvent::TO_SEND,             "TO_SEND"             },
+    {ConnectionEvent::RECEIVED_INFO,       "RECEIVED_INFO"       },
+    {ConnectionEvent::SEND_TC,             "SEND_TC"             },
+    {ConnectionEvent::TO_UA,               "TO_UA"               },
+    {ConnectionEvent::MAX_SARM_SENT,       "MAX_SARM_SENT"       },
+    {ConnectionEvent::TO_LASTCG,           "TO_LASTCG"           },
+    {ConnectionEvent::TO_TCACK,            "TO_TCACK"            }
   };
 };
 

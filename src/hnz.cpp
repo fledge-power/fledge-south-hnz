@@ -373,6 +373,14 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   }
 
   readings.push_back(m_prepare_reading(params));
+
+  if (m_hnz_conf->isTsAddressCgTriggering(msg_address)) {
+    if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
+      m_giInQueue = true;
+    } else {
+      m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+    }
+  }
 }
 
 void HNZ::m_handleTSCG(vector<Reading>& readings, const vector<unsigned char>& data) {
@@ -901,6 +909,11 @@ void HNZ::GICompleted(bool success) {
     updateGiStatus(GiStatus::FAILED);
   }
   resetGIQueue();
+
+  if (m_giInQueue) {
+    m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+    m_giInQueue = false;
+  }
 }
 
 #ifdef UNIT_TEST

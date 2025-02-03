@@ -183,6 +183,18 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   is_complete &= m_check_string(msg, PIVOT_ID);
   is_complete &= m_check_string(msg, PIVOT_TYPE);
 
+  bool isGiTriggeringTs = false;
+  if (m_check_array(msg, PIVOT_SUBTYPES)) {
+    for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
+      if (subtype.IsString()) {
+        if (subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
+          isGiTriggeringTs = true;
+          break;
+        }
+      }
+    }
+  }
+
   if (!m_check_array(msg, PROTOCOLS)) return false;
 
   for (const Value &protocol : msg[PROTOCOLS].GetArray()) {
@@ -221,7 +233,12 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
     if (msg_address > m_lastTSAddr) {
       m_lastTSAddr = msg_address;
     }
+
+    if (isGiTriggeringTs) {
+      m_cgTriggeringTsAdresses.insert(msg_address);
+    }
   }
+
   return is_complete;
 }
 

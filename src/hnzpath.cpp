@@ -425,42 +425,17 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
         break;
       default:
         if(m_protocol_state == ProtocolState::CONNECTION) break;
-        // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
-        std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
-        std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
-        std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
         // Get NR, P/F ans NS field
         int ns = (type >> 1) & 0x07;
         int pf = (type >> 4) & 0x01;
         int nr = (type >> 5) & 0x07;
         if ((type & 0x01) == 0) {
-          if(m_protocol_state == ProtocolState::OUTPUT_CONNECTED){
-            HnzUtility::log_warn(beforeLog + " Unexpected information frame received in partial connection state : OUTPUT_CONNECTED");
-          } else {
-            // Information frame
-            HnzUtility::log_info(beforeLog + " Received an information frame (ns = " + to_string(ns) +
-                                            ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
-            std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getPathMutex());
-            if (m_is_active_path) {
-              // Only the messages on the active path are extracted. The
-              // passive path does not need them.
-              int payloadSize =
-                  size - 4;  // Remove address, type, CRC (2 bytes)
-              messages = m_extract_messages(data + 2, payloadSize);
-            }
-
-            // Computing the frame number & sending RR
-            if (!m_sendRR(pf == 1, ns, nr)) {
-              // If NR was invalid, skip message processing
-              messages.clear();
-            }
-          }
+          m_receivedINFO(data, size, &messages);
         } else {
           // Supervision frame
           HnzUtility::log_info(beforeLog + " RR received (f = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
           m_receivedRR(nr, pf == 1);
         }
-
         break;
     }
   } else {
@@ -468,6 +443,40 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
                         " don't match the configured address: " + to_string(m_remote_address));
   }
   return messages;
+}
+
+void HNZPath::m_receivedINFO(unsigned char* data, int size, vector<vector<unsigned char>>* messages){
+  if(messages == nullptr) return;
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_receivedINFO - " + m_name_log;
+  // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+  unsigned char type = data[1];           // Message type (INFO)
+  // Get NR, P/F ans NS field
+  int ns = (type >> 1) & 0x07;
+  int pf = (type >> 4) & 0x01;
+  int nr = (type >> 5) & 0x07;
+  if(m_protocol_state == ProtocolState::OUTPUT_CONNECTED){
+    HnzUtility::log_warn(beforeLog + " Unexpected information frame received in partial connection state : OUTPUT_CONNECTED");
+  } else {
+    // Information frame
+    HnzUtility::log_info(beforeLog + " Received an information frame (ns = " + to_string(ns) +
+                                    ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
+    std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getPathMutex());
+    if (m_is_active_path) {
+      // Only the messages on the active path are extracted. The
+      // passive path does not need them.
+      int payloadSize = size - 4;  // Remove address, type, CRC (2 bytes)
+      *messages = m_extract_messages(data + 2, payloadSize);
+    }
+
+    // Computing the frame number & sending RR
+    if (!m_sendRR(pf == 1, ns, nr)) {
+      // If NR was invalid, skip message processing
+      messages->clear();
+    }
+  }
 }
 
 vector<vector<unsigned char>> HNZPath::m_extract_messages(unsigned char* data, int payloadSize) {

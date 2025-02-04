@@ -185,7 +185,7 @@ class HNZPath {
     return m_protocol_state;
   }
 
-  const long long getLastConnected() { return m_last_connected;}
+  long long getLastConnected() const { return m_last_connected;}
   void resetLastConnected() { m_last_connected = 0;}
 
   void sendInitMessages();
@@ -344,6 +344,14 @@ class HNZPath {
    * @return True if the message was sent, false if it was discarded
    */
   bool m_sendInfoImmediately(Message message);
+
+  /**
+   * Process an information frame and update the list "messages" accordingly
+   * @param data Raw data
+   * @param int Frame size
+   * @param messages Messages list to be updated
+   */
+  void m_receivedINFO(unsigned char* data, int size, vector<vector<unsigned char>>* messages);
 
   /**
    * Send a date configuration message

@@ -158,7 +158,7 @@ void HNZConnection::m_manageMessages() {
   } while (m_is_running);
 }
 
-void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
+void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) {
   if(path == nullptr) return;
 
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
@@ -189,9 +189,10 @@ void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
     long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     long long ms_since_connected = now - path->getLastConnected();
     if(path->getLastConnected() > 0 && ms_since_connected >= m_repeat_timeout){
-      if(path->isActivePath()){
+      if(path->isActivePath() && m_sendInitNexConnection){
         HnzUtility::log_debug("%s Sending init messages", beforeLog.c_str());
         path->sendInitMessages();
+        m_sendInitNexConnection = false;
       } else {
         HnzUtility::log_debug("%s Discarding init messages", beforeLog.c_str());
         path->resetLastConnected();
@@ -301,6 +302,9 @@ void HNZConnection::sendInitialGI() {
 
 void HNZConnection::updateConnectionStatus(ConnectionStatus newState) {
   m_hnz_fledge->updateConnectionStatus(newState);
+  if(newState == ConnectionStatus::NOT_CONNECTED){
+    m_sendInitNexConnection = true;
+  }
 }
 
 void HNZConnection::updateGiStatus(GiStatus newState) {

@@ -2400,8 +2400,11 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   if(HasFatalFailure()) return;
 
   // Complete CG request by sending all expected TS
+  // Send on both path since we do not know which path is active
   server->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
+  server2->sendFrame({0x16, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
+  server2->sendFrame({0x16, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCG sent");
   waitUntil(southEventsReceived, 2, 1000);
   // Check that ingestCallback had been called only for two GI status updates

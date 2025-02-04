@@ -48,7 +48,12 @@ string exchanged_data_def = QUOTE({
         "pivot_id": "ID114562",
         "pivot_type": "SpsTyp",
         "protocols": [
-          {"name": "iec104", "address": "45-672", "typeid": "M_SP_TB_1"}, {
+          {
+            "name": "iec104",
+            "address": "45-672",
+            "typeid": "M_SP_TB_1"
+          },
+          {
             "name": "tase2",
             "address": "S_114562",
             "typeid": "Data_StateQTimeTagExtended"
@@ -58,6 +63,31 @@ string exchanged_data_def = QUOTE({
             "address": "511",
             "typeid": "TS"
           }
+        ]
+      },
+      {
+        "label": "TS2",
+        "pivot_id": "S_2367_0_2_32",
+        "pivot_type": "SpsTyp",
+        "protocols": [
+          {
+            "name": "iec104",
+            "address": "45-673",
+            "typeid": "M_SP_TB_1"
+          },
+          {
+            "name": "tase2",
+            "address": "S_114563",
+            "typeid": "Data_StateQTimeTagExtended"
+          },
+          {
+            "name": "hnzip",
+            "address": "512",
+            "typeid": "TS"
+          }
+        ],
+        "pivot_subtypes": [
+          "trigger_south_gi"
         ]
       },
       {
@@ -175,7 +205,7 @@ TEST_F(HNZConfTest, GetLabelUnknown) {
 
 TEST_F(HNZConfTest, GetConnxStatusSignal) { ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "TEST_ASSET"); }
 
-TEST_F(HNZConfTest, GetLastTSAddress) { ASSERT_EQ(hnz_conf->getLastTSAddress(), 511); }
+TEST_F(HNZConfTest, GetLastTSAddress) { ASSERT_EQ(hnz_conf->getLastTSAddress(), 512); }
 
 TEST_F(HNZConfTest, GetAllMessages) {
   unsigned int remote_station_addr = 12;
@@ -193,7 +223,7 @@ TEST_F(HNZConfTest, GetAllMessages) {
   ASSERT_EQ(allTMMessages.count(remote_station_addr), 1);
 
   const auto& allTSForRemoteAddr = allTSMessages.at(remote_station_addr);
-  ASSERT_EQ(allTSForRemoteAddr.size(), 1);
+  ASSERT_EQ(allTSForRemoteAddr.size(), 2);
   ASSERT_EQ(allTSForRemoteAddr.count(msg_address), 1);
   ASSERT_STREQ(allTSForRemoteAddr.at(msg_address).c_str(), "TS1");
   const auto& allTMForRemoteAddr = allTMMessages.at(remote_station_addr);
@@ -254,6 +284,10 @@ TEST(HNZCONF, MinimumConf) {
   ASSERT_EQ(hnz_conf->get_bulle_time(), 10);
 
   ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "");
+
+  ASSERT_TRUE(hnz_conf->isTsAddressCgTriggering(512));
+
+  ASSERT_FALSE(hnz_conf->isTsAddressCgTriggering(511));
 }
 
 TEST(HNZCONF, ConfNotComplete) {
@@ -1192,6 +1226,94 @@ TEST(HNZCONF, ExchangedDataImportErrors) {
   });
   hnz_conf->importExchangedDataJson(configValid);
   ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with the wrong type for pivot_subtypes 
+  std::string configPivotSubtypesString = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": "test"
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesString);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with an empty array for pivot_subtypes 
+  std::string configPivotSubtypesEmptyArray = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": []
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesEmptyArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with the wrong array type for pivot_subtypes 
+  std::string configPivotSubtypesIntegerArray = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          42
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesIntegerArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with the string content for pivot_subtypes 
+  std::string configPivotSubtypesWrongStringArray = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          "42"
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesWrongStringArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
 }
 
 TEST(HNZCONF, GetNumberCG) {
@@ -1201,5 +1323,6 @@ TEST(HNZCONF, GetNumberCG) {
 
   conf = std::make_shared<HNZConf>(protocol_stack_def, exchanged_data_def);
   ASSERT_TRUE(conf->is_complete());
-  ASSERT_EQ(conf->getNumberCG(), 1);
+  ASSERT_EQ(conf->getNumberCG(), 2);
 }
+

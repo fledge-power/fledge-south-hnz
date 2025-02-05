@@ -2976,7 +2976,7 @@ TEST_F(HNZTest, ConnectIfSARMReceivedAfterUA) {
   if(HasFatalFailure()) return;
 }
 
-TEST_F(HNZTest, ReceiveGiTriggeringTsWhileNoCurrentGi) {
+TEST_F(HNZTest, ReceiveGiTriggeringTsResultInNoGi) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
@@ -3005,12 +3005,43 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsWhileNoCurrentGi) {
   std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(server->popLastFramesReceived(), GI_FUNCTION_CODE);
   ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after a normal TS : " << BasicHNZServer::frameToStr(CGframe);
   if(HasFatalFailure()) return;
-
+  
   // ############################################################
-  // Then we check that receiving a TS with a "trigger_south_gi" in "pivot_subtypes" triggers a GI
+  // Then we check that receiving a TS with a "trigger_south_gi" in "pivot_subtypes" with 1 as value don't triggers a GI
   // ############################################################
   debug_print("[TEST STEP] Second case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  frames = server->popLastFramesReceived();
   server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x2C, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that no GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 0);
+  resetCounters();
+  if(HasFatalFailure()) return;
+
+  // Find the CG frame in the list of frames received by server and validate it
+  CGframe = findFrameWithId(server->popLastFramesReceived(), GI_FUNCTION_CODE);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after a normal TS : " << BasicHNZServer::frameToStr(CGframe);
+  if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, ReceiveGiTriggeringTsResultInGi) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+  
+  // ############################################################
+  // First we check that receiving a TS with a "trigger_south_gi" in "pivot_subtypes" triggers a GI
+  // ############################################################
+  debug_print("[TEST STEP] Fisrt case");
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x24, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCE sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -3020,7 +3051,7 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsWhileNoCurrentGi) {
   if(HasFatalFailure()) return;
 
   // Check that there is exactly one CG frame in the list of frames received by server and validate it
-  frames = server->popLastFramesReceived();
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
   ASSERT_EQ(getFrameIdOccurenceCount(frames, GI_FUNCTION_CODE), 1);
   if(HasFatalFailure()) return;
   
@@ -3032,17 +3063,23 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsWhileNoCurrentGi) {
   // Clear messages received from south plugin
   clearReadings();
   server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
-  server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x01, 0x10, 0x00}, false);
+  server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
 
   waitUntil(dataObjectsReceived, 4, 1000);
   ASSERT_EQ(dataObjectsReceived, 4);
+  waitUntil(southEventsReceived, 2, 1000);
+  ASSERT_EQ(southEventsReceived, 2);
   resetCounters();
 
-  std::shared_ptr<Reading> currentReading;
+  std::shared_ptr<Reading> currentReading = popFrontReading();
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 2; i++) {
     std::string label("TS" + to_string(i + 1));
-    currentReading = popFrontReadingsUntil(label);
+    currentReading = popFrontReading();
     validateReading(currentReading, label, {
       {"do_type", {"string", "TS"}},
       {"do_station", {"int64_t", "1"}},
@@ -3055,10 +3092,31 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsWhileNoCurrentGi) {
     if(HasFatalFailure()) return;
   }
 
+  for (int i = 0; i < 2; i++) {
+    std::string label("TS" + to_string(i + 3));
+    currentReading = popFrontReading();
+    validateReading(currentReading, label, {
+      {"do_type", {"string", "TS"}},
+      {"do_station", {"int64_t", "1"}},
+      {"do_addr", {"int64_t", addrByTS[label]}},
+      {"do_value", {"int64_t", i == 0 ? "1" : "0"}},
+      {"do_valid", {"int64_t", "0"}},
+      {"do_cg", {"int64_t", "1"}},
+      {"do_outdated", {"int64_t", "0"}},
+    });
+    if(HasFatalFailure()) return;
+  }
+
+  currentReading = popFrontReading();
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  clearReadings();
+
   // ############################################################
   // Then we check that receiving a TS with a "trigger_south_gi" in "pivot_subtypes" during a GI wait for the end of the GI to trigger another one
   // ############################################################
-  debug_print("[TEST STEP] Third case");
+  debug_print("[TEST STEP] Second case");
   clearStoreReadings();
   hnz->sendCG();
   waitUntil(southEventsReceived, 1, 1000);
@@ -3066,7 +3124,7 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsWhileNoCurrentGi) {
   resetCounters();
 
   // Send TS that triggers the GI if no GI is running
-  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x2C, 0x00, 0x00}, false);
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x24, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCE sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -3131,11 +3189,11 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsWhileNoCurrentGi) {
   // ############################################################
   // Then we check that receiving multiples TS with a "trigger_south_gi" in "pivot_subtypes" during a GI wait for the end of the GI to trigger only one more
   // ############################################################
-  debug_print("[TEST STEP] Fourth case");
+  debug_print("[TEST STEP] Third case");
   resetCounters();
-  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x2C, 0x00, 0x00}, false);
-  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x2C, 0x00, 0x00}, false);
-  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x2C, 0x00, 0x00}, false);
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x24, 0x00, 0x00}, false);
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x24, 0x00, 0x00}, false);
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x24, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCE sent");
   waitUntil(dataObjectsReceived, 3, 1000);
   ASSERT_EQ(dataObjectsReceived, 3);

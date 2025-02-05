@@ -235,6 +235,7 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
     }
 
     if (isGiTriggeringTs) {
+      HnzUtility::log_debug(beforeLog + " Storing address " + to_string(msg_address) + " for GI triggering");
       m_cgTriggeringTsAdresses.insert(msg_address);
     }
   }

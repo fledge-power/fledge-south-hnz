@@ -374,10 +374,12 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
 
   readings.push_back(m_prepare_reading(params));
 
-  if (m_hnz_conf->isTsAddressCgTriggering(msg_address)) {
+  if (params.value == 0 && m_hnz_conf->isTsAddressCgTriggering(msg_address)) {
     if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
+      HnzUtility::log_debug(beforeLog + "GI triggering TS received but GI running, keeping a flag up to restart a GI after the current one");
       m_giInQueue = true;
     } else {
+      HnzUtility::log_debug(beforeLog + "GI triggering TS received, start a GI");
       m_hnz_connection->getActivePath()->sendGeneralInterrogation();
     }
   }

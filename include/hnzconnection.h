@@ -137,7 +137,7 @@ class HNZConnection {
     if(path == m_active_path){
       return true;
     }
-    return path == m_first_input_connected;
+    return path == m_first_input_connected && m_active_path == nullptr;
   }
 
   /**

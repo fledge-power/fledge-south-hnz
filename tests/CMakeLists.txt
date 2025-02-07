@@ -49,7 +49,7 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIR})
 
 # Find source files
 file(GLOB SOURCES ../src/*.cpp ./server/*.cpp)
-file(GLOB unittests test_hnz.cpp main.cpp)
+file(GLOB unittests *.cpp)
 
 # Find Fledge includes and libs, by including FindFledge.cmak file
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/..)

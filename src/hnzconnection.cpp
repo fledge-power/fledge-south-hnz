@@ -312,9 +312,10 @@ void HNZConnection::pathConnectionChanged(HNZPath* path, bool isReady) {
   if(!path) return;
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::pathConnectionChanged -";
   std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-  HnzUtility::log_debug("%s Path %s changed connection state, isReady : %d", beforeLog.c_str(), path->getName().c_str(), (int)isReady);
+  HnzUtility::log_debug("%s Path %s changed connection state : %s.", beforeLog.c_str(), path->getName().c_str(), isReady ? "ready" : "not ready");
 
   if(m_first_input_connected == nullptr && (path->getProtocolState() == ProtocolState::INPUT_CONNECTED || path->getProtocolState() == ProtocolState::CONNECTED)){
+    HnzUtility::log_debug("%s Path %s has INPUT_CONNECTED first.", beforeLog.c_str(), path->getName().c_str());
     m_first_input_connected = path;
   } else if (m_first_input_connected == path && (path->getProtocolState() == ProtocolState::CONNECTION || path->getProtocolState() == ProtocolState::OUTPUT_CONNECTED)) {
     m_first_input_connected = nullptr;
@@ -323,6 +324,7 @@ void HNZConnection::pathConnectionChanged(HNZPath* path, bool isReady) {
   if(isReady){
     if(!m_active_path){
       m_active_path = path;
+      HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
       path->setConnectionState(ConnectionState::ACTIVE);
       updateConnectionStatus(ConnectionStatus::STARTED);
     }

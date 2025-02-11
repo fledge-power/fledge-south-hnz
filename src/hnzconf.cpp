@@ -186,11 +186,9 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   bool isGiTriggeringTs = false;
   if (m_check_array(msg, PIVOT_SUBTYPES)) {
     for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
-      if (subtype.IsString()) {
-        if (subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
-          isGiTriggeringTs = true;
-          break;
-        }
+      if (subtype.IsString() && subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
+        isGiTriggeringTs = true;
+        break;
       }
     }
   }

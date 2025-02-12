@@ -25,6 +25,9 @@ class BasicHNZServer {
   // Timeout = 16 = (5 * 3) + 1 sec = (SARM retries * SARM delay) + 1
   bool HNZServerIsReady(int timeout_s = 16, bool sendSarm = true, bool delaySarm = false);
 
+  // Start server without performing the SARM/UA loop
+  bool HNZServerForceReady(int timeout_s = 16);
+
   void sendSARM();
 
   struct FrameError {

@@ -144,6 +144,7 @@ class HNZConnection {
   uint64_t m_current = 0;         // Store the last time requested
   uint64_t m_elapsedTimeMs = 0;   // Store elapsed time in milliseconds every time m_current is updated
   uint64_t m_days_since_epoch = 0;
+  bool m_sendInitNexConnection = true; // The init messages (time/date/GI) have to be sent
 
   // Plugin configuration
   int gi_repeat_count_max = 0;  // time to wait for GI completion
@@ -169,7 +170,7 @@ class HNZConnection {
    * If a message is not acknowledged, then a retransmission request is sent.
    * @param path the related path
    */
-  void m_check_timer(std::shared_ptr<HNZPath> path) const;
+  void m_check_timer(std::shared_ptr<HNZPath> path);
 
   /**
    * Check the state of ongoing GI (General Interrogation) and manage scheduled

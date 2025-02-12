@@ -288,6 +288,7 @@ private:
     unsigned int ts_iv = 0;
     unsigned int ts_c = 0;
     unsigned int ts_s = 0;
+    bool empty_timestamp = false; // TSCE with no timestamp, the module HNZtoPivot will fill it artificially
     // TS only
     bool cg = false;
     // TM only

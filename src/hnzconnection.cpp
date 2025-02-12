@@ -158,9 +158,11 @@ void HNZConnection::m_manageMessages() {
   } while (m_is_running);
 }
 
-void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
-  if ((path != nullptr) && !path->msg_sent.empty() && path->isConnected()) {
-    std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
+void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) {
+  if(path == nullptr) return;
+
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
+  if (!path->msg_sent.empty() && path->isTCPConnected()) {
     Message& msg = path->msg_sent.front();
     if (path->last_sent_time + m_repeat_timeout < m_current) {
       HnzUtility::log_debug("%s last_sent_time=%lld, m_repeat_timeout=%d, m_current=%llu", beforeLog.c_str(), path->last_sent_time, m_repeat_timeout, m_current);
@@ -168,7 +170,7 @@ void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
         // Connection disrupted, back to SARM
         HnzUtility::log_warn("%s Connection disrupted, back to SARM", beforeLog.c_str());
 
-        path->go_to_connection();
+        path->protocolStateTransition(ConnectionEvent::MAX_SEND);
       } else {
         // Repeat the message
         HnzUtility::log_warn("%s Timeout, sending back first unacknowledged message", beforeLog.c_str());
@@ -179,6 +181,21 @@ void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) const {
           path->msg_waiting.push_front(path->msg_sent.back());
           path->msg_sent.pop_back();
         }
+      }
+    }
+  }
+
+  if(path->getProtocolState() == ProtocolState::CONNECTED){
+    long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    long long ms_since_connected = now - path->getLastConnected();
+    if(path->getLastConnected() > 0 && ms_since_connected >= m_repeat_timeout){
+      if(path->isActivePath() && m_sendInitNexConnection){
+        HnzUtility::log_debug("%s Sending init messages", beforeLog.c_str());
+        path->sendInitMessages();
+        m_sendInitNexConnection = false;
+      } else {
+        HnzUtility::log_debug("%s Discarding init messages", beforeLog.c_str());
+        path->resetLastConnected();
       }
     }
   }
@@ -224,7 +241,7 @@ void HNZConnection::m_check_command_timer() {
       if (it->timestamp_max < m_current) {
         HnzUtility::log_warn("%s A remote control (%s addr=%d) was not acknowledged in time !", beforeLog.c_str(),
                             it->type.c_str(), it->addr);
-        m_active_path->go_to_connection();
+        m_active_path->protocolStateTransition(ConnectionEvent::TO_TCACK);
         it = m_active_path->command_sent.erase(it);
         // DF.GLOB.TC : nothing to do in HNZ
       } else {
@@ -285,6 +302,9 @@ void HNZConnection::sendInitialGI() {
 
 void HNZConnection::updateConnectionStatus(ConnectionStatus newState) {
   m_hnz_fledge->updateConnectionStatus(newState);
+  if(newState == ConnectionStatus::NOT_CONNECTED){
+    m_sendInitNexConnection = true;
+  }
 }
 
 void HNZConnection::updateGiStatus(GiStatus newState) {

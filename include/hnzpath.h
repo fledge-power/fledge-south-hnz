@@ -93,6 +93,7 @@ class HNZPath {
 
   /**
    * Triggers a transition from the protocol state automaton according to a ConnectionEvent.
+   * @param event Connection event triggering a transition
    */
   void protocolStateTransition(const ConnectionEvent event);
 
@@ -179,13 +180,22 @@ class HNZPath {
 
   /**
    * Gets the state of the HNZ protocol (CONNECTION, INPUT_CONNECTED, OUTPUT_CONNECTED, CONNECTED)
+   * @return Current protocol state
    */
   ProtocolState getProtocolState() const {
     std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
     return m_protocol_state;
   }
 
+  /**
+   * Getter for property m_last_connected
+   * @return timestamp of the last transition to protocol state CONNECTED
+   */
   long long getLastConnected() const { return m_last_connected;}
+
+  /**
+   * Resets the timestamp of the last transition to protocol state CONNECTED
+   */
   void resetLastConnected() { m_last_connected = 0;}
 
   void sendInitMessages();
@@ -466,6 +476,9 @@ class HNZPath {
 
   /**
    * Helper function to evaluate if a message is a BULLE. BULLE can be sent in OUTPUT_CONNECTED and CONNECT states.
+   * @param msg Raw frame
+   * @param size Size of the frame
+   * @return true if the message is a BULLE
    */
   bool isBULLE(const unsigned char* msg, unsigned long size) const;
 

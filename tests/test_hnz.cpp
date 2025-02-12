@@ -163,7 +163,7 @@ string protocol_stack_generator(int port, int port2) {
                              to_string(port2) + "}"
                        : "") +
          " ] } , \"application_layer\" : { \"repeat_timeout\" : 3000, \"repeat_path_A\" : 3,"
-         "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_repeat_count\" : 2,"
+         "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_schedule\": \"00:00\", \"gi_repeat_count\" : 2,"
          "\"anticipation_ratio\" : 5, \"inacc_timeout\" : 180, \"bulle_time\" : 10  }, \"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
 }
 
@@ -2258,6 +2258,10 @@ TEST_F(HNZTest, ConnectionLossTwoPath) {
   ASSERT_NE(server2, nullptr) << "Something went wrong. Connection is not established in 10s...";
   // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
   waitUntil(southEventsReceived, 3, 6000);
+
+  // Wait one additionnal second in order not to disconnect the path too quickly after init :
+  // the other path may not have time to realize init messages have already been sent
+  this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had been called the expected number of times
   ASSERT_EQ(southEventsReceived, 3);
   resetCounters();
@@ -3510,4 +3514,48 @@ TEST_F(HNZTest, ProtocolStateValidation) {
   customServer->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
 
   ASSERT_TRUE(psHelper.isInState(ProtocolState::CONNECTED)) << "Expected protocol state CONNECTED was not detected or did not match requirements.";
+}
+
+TEST_F(HNZTest, GIScheduleActiveFuture) {
+  int port = getNextPort();
+  ServersWrapper wrapper(0x05, port);
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  unsigned long totalMinutes = epochMs / 60000;
+  unsigned long totalHours = totalMinutes / 60;
+  unsigned long totalDays = totalHours / 24;
+  int hours = static_cast<int>(totalHours - (totalDays * 24));
+  int minutes = static_cast<int>(totalMinutes - (totalHours * 60));
+  int delayMin = 2; // Program GI 2 minutes in the future, in case we are close to the end of current minute
+
+  // If we are too close to midnight, wait long enough for the test to pass
+  if ((hours == 23) && (minutes >= (60 - delayMin))) {
+    this_thread::sleep_for(chrono::minutes(delayMin));
+    minutes += delayMin;
+  }
+
+  minutes += delayMin;
+  if (minutes >= 60) {
+    hours = (hours + 1) % 24;
+    minutes = minutes % 60;
+  }
+  auto formatTime = [](int time)
+  {
+    std::stringstream ss;
+    ss << std::setw(2) << std::setfill('0') << time;
+    return ss.str();
+  };
+  std::string giSchedule = formatTime(hours) + ":" + formatTime(minutes);
+  std::string protocol_stack = protocol_stack_generator(port, 0);
+  std::string protocol_stack_custom = std::regex_replace(protocol_stack, std::regex("00:00"), giSchedule);
+  wrapper.initHNZPlugin(protocol_stack_custom);
+  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  // Wait for scheduled GI
+  this_thread::sleep_for(chrono::minutes(delayMin));
+  this_thread::sleep_for(chrono::milliseconds(3000));
 }

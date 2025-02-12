@@ -19,30 +19,44 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
   this->m_hnz_conf = hnz_conf;
   this->m_hnz_fledge = hnz_fledge;
 
+  bool ip_configured = false;
+  for(auto& ip: m_hnz_conf->get_paths_ip()){
+    if(ip != ""){
+      ip_configured = true;
+      break;
+    }
+  }
+  if(!ip_configured) {
+    HnzUtility::log_fatal("%s Attempted to start HNZ connection with no IP configured, aborting", beforeLog.c_str());
+    return;
+  }
+
   // Create the path needed
-  if (m_hnz_conf->get_ip_address_A() != "") {
-    // Parent if is mostly here for scope lock
+  for (int i = 0; i < MAXPATHS; i++)
+  {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    m_active_path = std::make_shared<HNZPath>(m_hnz_conf, this, false);
-    if (m_hnz_conf->get_ip_address_B() != "") {
-      m_passive_path = std::make_shared<HNZPath>(m_hnz_conf, this, true);
+    std::string pathLetter = i == 0 ? "A" : "B";
+    if (m_hnz_conf->get_paths_ip()[i] != "") {
+      m_paths[i] = new HNZPath(
+                        m_hnz_conf,
+                        this,
+                        m_hnz_conf->get_paths_repeat()[i],
+                        m_hnz_conf->get_paths_ip()[i],
+                        m_hnz_conf->get_paths_port()[i],
+                        pathLetter);
     }
     else {
       // Send initial path connection status audit
-      HnzUtility::audit_info("SRVFL", hnz_fledge->getServiceName() + "-B-unused");
+      HnzUtility::audit_info("SRVFL", hnz_fledge->getServiceName() + "-" + pathLetter + "-unused");
     }
-  }
-  else {
-    HnzUtility::log_fatal("%s Attempted to start HNZ connection with no IP configured, aborting", beforeLog.c_str());
-    return;
   }
 
   // Send initial connection status audit
   HnzUtility::audit_fail("SRVFL", hnz_fledge->getServiceName() + "-disconnected");
 
   // Set settings for GI
-  this->gi_repeat_count_max = m_hnz_conf->get_gi_repeat_count();
-  this->gi_time_max = m_hnz_conf->get_gi_time() * 1000;
+  this->m_gi_repeat_count_max = m_hnz_conf->get_gi_repeat_count();
+  this->m_gi_time_max = m_hnz_conf->get_gi_time() * 1000;
   this->m_gi_schedule = m_hnz_conf->get_gi_schedule();
   this->m_gi_schedule_already_sent = false;
 
@@ -54,6 +68,11 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
 HNZConnection::~HNZConnection() {
   if (m_is_running) {
     stop();
+  }
+
+  for (HNZPath* path: m_paths)
+  {
+    delete path;
   }
 }
 
@@ -73,8 +92,12 @@ void HNZConnection::stop() {
   // manage HNZ connections)
   {
     std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    if (m_active_path != nullptr) m_active_path->disconnect();
-    if (m_passive_path != nullptr) m_passive_path->disconnect();
+    for (HNZPath* path: m_paths)
+    {
+      if(path != nullptr){
+        path->disconnect();
+      }
+    }
   }
 
   // Wait for the end of the thread that manage the messages
@@ -98,22 +121,36 @@ void HNZConnection::checkGICompleted(bool success) {
     return;
   }
   // GI not completed in time or last TS received with other missing TS
-  if (m_active_path->gi_repeat > gi_repeat_count_max) {
+  if (m_gi_repeat > m_gi_repeat_count_max) {
     // GI failed
-    HnzUtility::log_warn("%s Maximum GI repeat reached (%d)", beforeLog.c_str(), gi_repeat_count_max);
+    HnzUtility::log_warn("%s Maximum GI repeat reached (%d)", beforeLog.c_str(), m_gi_repeat_count_max);
     m_hnz_fledge->GICompleted(false);
   } else {
     HnzUtility::log_warn("%s General Interrogation Timeout, repeat GI", beforeLog.c_str());
     // Clean queue in HNZ class
     m_hnz_fledge->resetGIQueue();
+
+    if(!m_active_path){
+      HnzUtility::log_warn("%s No active path was found to send a GI.", beforeLog.c_str());
+      return;
+    }
     // Send a new GI
     m_active_path->sendGeneralInterrogation();
   }
 }
 
 void HNZConnection::onGICompleted() { 
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-  m_active_path->gi_repeat = 0;
+  m_gi_repeat = 0;
+}
+
+void HNZConnection::notifyGIsent(){
+  if ((m_gi_repeat == 0) || (getGiStatus() != GiStatus::IN_PROGRESS)) {
+    updateGiStatus(GiStatus::STARTED);
+  }
+  m_gi_repeat++;
+  m_gi_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::high_resolution_clock::now().time_since_epoch())
+                      .count();
 }
 
 void HNZConnection::m_manageMessages() {
@@ -141,15 +178,19 @@ void HNZConnection::m_manageMessages() {
     // Manage repeat/timeout for each path
     {
       std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-      m_check_timer(m_active_path);
-      m_check_timer(m_passive_path);
+      for (HNZPath* path: m_paths)
+      {
+        if(path != nullptr){
+          m_check_timer(path);
+
+          // Manage command ACK
+          m_check_command_timer(path);
+        }
+      }
     }
 
     // GI support
     m_check_GI();
-
-    // Manage command ACK
-    m_check_command_timer();
 
     // Manage quality update
     m_update_quality_update_timer();
@@ -158,7 +199,7 @@ void HNZConnection::m_manageMessages() {
   } while (m_is_running);
 }
 
-void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) {
+void HNZConnection::m_check_timer(HNZPath* path) {
   if(path == nullptr) return;
 
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
@@ -189,7 +230,7 @@ void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) {
     long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     long long ms_since_connected = now - path->getLastConnected();
     if(path->getLastConnected() > 0 && ms_since_connected >= m_repeat_timeout){
-      if(path->isActivePath() && m_sendInitNexConnection){
+      if(path->getConnectionState() == ConnectionState::ACTIVE && m_sendInitNexConnection){
         HnzUtility::log_debug("%s Sending init messages", beforeLog.c_str());
         path->sendInitMessages();
         m_sendInitNexConnection = false;
@@ -205,9 +246,9 @@ void HNZConnection::m_check_GI() {
   std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_GI -";
   // Check the status of an ongoing GI
-  if (m_active_path->gi_repeat != 0) {
-    if (m_active_path->gi_start_time + gi_time_max < m_current) {
-      HnzUtility::log_warn("%s GI timeout (%d ms)", beforeLog.c_str(), gi_time_max);
+  if (m_gi_repeat != 0) {
+    if (m_gi_start_time + m_gi_time_max < m_current) {
+      HnzUtility::log_warn("%s GI timeout (%d ms)", beforeLog.c_str(), m_gi_time_max);
       checkGICompleted(false);
     }
   }
@@ -226,23 +267,27 @@ void HNZConnection::m_check_GI() {
   // Scheduled GI
   if (m_gi_schedule.activate && !m_gi_schedule_already_sent &&
       (m_gi_scheduled_time <= m_current)) {
+    if(m_active_path == nullptr){
+      HnzUtility::log_warn("%s No active path on which to send scheduled GI.", beforeLog.c_str());
+      return;
+    }
     HnzUtility::log_warn("%s It's %dh%d. Executing scheduled GI.", beforeLog.c_str(), m_gi_schedule.hour, m_gi_schedule.min);
     m_active_path->sendGeneralInterrogation();
     m_gi_schedule_already_sent = true;
   }
 }
 
-void HNZConnection::m_check_command_timer() {
+void HNZConnection::m_check_command_timer(HNZPath* path) {
+  if(path == nullptr) return;
   std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_command_timer -";
-  if (!m_active_path->command_sent.empty()) {
-    list<Command_message>::iterator it = m_active_path->command_sent.begin();
-    while (it != m_active_path->command_sent.end()) {
+  if (!path->command_sent.empty()) {
+    list<Command_message>::iterator it = path->command_sent.begin();
+    while (it != path->command_sent.end()) {
       if (it->timestamp_max < m_current) {
         HnzUtility::log_warn("%s A remote control (%s addr=%d) was not acknowledged in time !", beforeLog.c_str(),
                             it->type.c_str(), it->addr);
-        m_active_path->protocolStateTransition(ConnectionEvent::TO_TCACK);
-        it = m_active_path->command_sent.erase(it);
+        it = path->command_sent.erase(it);
         // DF.GLOB.TC : nothing to do in HNZ
       } else {
         ++it;
@@ -263,42 +308,62 @@ void HNZConnection::m_update_quality_update_timer() {
   m_hnz_fledge->updateQualityUpdateTimer(m_elapsedTimeMs);
 }
 
-void HNZConnection::switchPath() {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::switchPath -";
-  // No path switch during shutdown
-  if (!m_is_running) {
-    return;
+void HNZConnection::pathConnectionChanged(HNZPath* path, bool isReady) {
+  if(!path) return;
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::pathConnectionChanged -";
+  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+  HnzUtility::log_debug("%s Path %s changed connection state : %s.", beforeLog.c_str(), path->getName().c_str(), isReady ? "ready" : "not ready");
+
+  if(m_first_input_connected == nullptr && (path->getProtocolState() == ProtocolState::INPUT_CONNECTED || path->getProtocolState() == ProtocolState::CONNECTED)){
+    HnzUtility::log_debug("%s Path %s has INPUT_CONNECTED first.", beforeLog.c_str(), path->getName().c_str());
+    m_first_input_connected = path;
+  } else if (m_first_input_connected == path && (path->getProtocolState() == ProtocolState::CONNECTION || path->getProtocolState() == ProtocolState::OUTPUT_CONNECTED)) {
+    m_first_input_connected = nullptr;
   }
-  if (m_passive_path != nullptr) {
-    HnzUtility::log_warn("%s Switching active and passive path.", beforeLog.c_str());
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    // Permute path
-    std::shared_ptr<HNZPath> temp = m_active_path;
-    m_active_path = m_passive_path;
-    m_passive_path = temp;
-    m_active_path->setActivePath(true);
-    m_passive_path->setActivePath(false);
 
-    HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
-
-    // When switching path, update connection status accordingly
-    if (m_active_path->isHNZConnected()) {
+  if(isReady){
+    if(!m_active_path){
+      m_active_path = path;
+      HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
+      path->setConnectionState(ConnectionState::ACTIVE);
       updateConnectionStatus(ConnectionStatus::STARTED);
     }
-    else {
+  } else {
+    if(path == m_active_path){
+      // We lost the connection on the active path
+      m_active_path = nullptr;
+      m_gi_repeat = 0;
+      // Check for other available paths
+      for (HNZPath* otherPath: m_paths)
+      {
+        if(otherPath != nullptr && otherPath != path && otherPath->getConnectionState() == ConnectionState::PASSIVE){
+          m_active_path = otherPath;
+          otherPath->setConnectionState(ConnectionState::ACTIVE);
+          HnzUtility::log_warn("%s Switching active and passive path.", beforeLog.c_str());
+          HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
+          updateConnectionStatus(ConnectionStatus::STARTED);
+          return;
+        }
+      }
+      // No suitable path found !
       updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
     }
-  } else {
-    // Redundancy isn't enable, can't switch to the other path
-    HnzUtility::log_warn("%s Redundancy isn't enabled, can't switch to the other path", beforeLog.c_str());
+    // else : we lost the connection on a passive path, do nothing
   }
 }
 
+#ifdef UNIT_TEST
 void HNZConnection::sendInitialGI() {
   std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-  m_active_path->gi_repeat = 0;
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::sendInitialGI -";
+  if(!m_active_path){
+    HnzUtility::log_error("%s No active path was found !", beforeLog.c_str());
+    return;
+  }
+  m_gi_repeat = 0;
   m_active_path->sendGeneralInterrogation();
 }
+#endif
 
 void HNZConnection::updateConnectionStatus(ConnectionStatus newState) {
   m_hnz_fledge->updateConnectionStatus(newState);

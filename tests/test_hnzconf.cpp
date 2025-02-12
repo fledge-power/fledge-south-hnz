@@ -105,13 +105,13 @@ TEST(HNZCONF, ConstructorWithParam) {
 TEST_F(HNZConfTest, ConfComplete) { EXPECT_TRUE(hnz_conf->is_complete()); }
 
 TEST_F(HNZConfTest, GetIPAdress) {
-  ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "192.168.0.10");
-  ASSERT_STREQ(hnz_conf->get_ip_address_B().c_str(), "192.168.0.12");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[0].c_str(), "192.168.0.10");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[1].c_str(), "192.168.0.12");
 }
 
 TEST_F(HNZConfTest, GetPort) {
-  ASSERT_EQ(hnz_conf->get_port_A(), 6001);
-  ASSERT_EQ(hnz_conf->get_port_B(), 6002);
+  ASSERT_EQ(hnz_conf->get_paths_port()[0], 6001);
+  ASSERT_EQ(hnz_conf->get_paths_port()[1], 6002);
 }
 
 TEST_F(HNZConfTest, GetRemoteStationAddr) {
@@ -125,8 +125,8 @@ TEST_F(HNZConfTest, GetInaccTimeout) {
 TEST_F(HNZConfTest, GetMaxSARM) { ASSERT_EQ(hnz_conf->get_max_sarm(), 40); }
 
 TEST_F(HNZConfTest, GetRepeatPathAB) {
-  ASSERT_EQ(hnz_conf->get_repeat_path_A(), 5);
-  ASSERT_EQ(hnz_conf->get_repeat_path_B(), 2);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[0], 5);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[1], 2);
 }
 
 TEST_F(HNZConfTest, GetRepeatTimeout) {
@@ -218,11 +218,11 @@ TEST(HNZCONF, MinimumConf) {
 
   ASSERT_TRUE(hnz_conf->is_complete());
 
-  ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "0.0.0.0");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[0].c_str(), "0.0.0.0");
 
-  ASSERT_STREQ(hnz_conf->get_ip_address_B().c_str(), "");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[1].c_str(), "");
 
-  ASSERT_EQ(hnz_conf->get_port_A(), 6001);
+  ASSERT_EQ(hnz_conf->get_paths_port()[0], 6001);
 
   ASSERT_EQ(hnz_conf->get_remote_station_addr(), 18);
 
@@ -230,8 +230,8 @@ TEST(HNZCONF, MinimumConf) {
 
   ASSERT_EQ(hnz_conf->get_max_sarm(), 30);
 
-  ASSERT_EQ(hnz_conf->get_repeat_path_A(), 3);
-  ASSERT_EQ(hnz_conf->get_repeat_path_B(), 3);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[0], 3);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[1], 3);
 
   ASSERT_EQ(hnz_conf->get_repeat_timeout(), 3000);
 

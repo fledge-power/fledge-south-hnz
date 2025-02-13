@@ -16,9 +16,19 @@
 
 using namespace std;
 
+constexpr int SARM_ID = 0x0f;
+constexpr int UA_ID = 0x63;
 constexpr int GI_FUNCTION_CODE = 0x13;
+constexpr int BULLE_FUNCTION_CODE = 0x13;
+constexpr int MODULO_FUNCTION_CODE = 0x0f;
 constexpr int TSCE_FUNCTION_CODE = 0x0B;
 constexpr int TSCG_FUNCTION_CODE = 0x16;
+constexpr int TMA_FUNCTION_CODE = 0x02;
+constexpr int TMN_FUNCTION_CODE = 0x0c;
+constexpr int TC_FUNCTION_CODE = 0x19;
+constexpr int TVC_FUNCTION_CODE = 0x1a;
+constexpr int TC_ACK_FUNCTION_CODE = 0x09;
+constexpr int TVC_ACK_FUNCTION_CODE = 0x0a;
 
 static string exchanged_data_def = QUOTE({
   "exchanged_data" : {
@@ -802,7 +812,7 @@ class ProtocolStateHelper{
       HNZTest::debug_print("[HNZ south plugin] TC sent");
       this_thread::sleep_for(chrono::milliseconds(2000));
       // Find the TC frame in the list of frames received by server and validate it
-      HNZTest::validateFrame(_server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+      HNZTest::validateFrame(_server->popLastFramesReceived(), {TC_FUNCTION_CODE, 0x0e, 0x48});
       if(HNZTest::HasFatalFailure()) return false;
       return true;
     }
@@ -818,7 +828,7 @@ class ProtocolStateHelper{
       HNZTest::debug_print("[HNZ south plugin] TVC sent");
       this_thread::sleep_for(chrono::milliseconds(2000));
       // Find the TVC frame in the list of frames received by server and validate it
-      HNZTest::validateFrame(_server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x00});
+      HNZTest::validateFrame(_server->popLastFramesReceived(), {TVC_FUNCTION_CODE, 0x1f, 0x2a, 0x00});
       if(HNZTest::HasFatalFailure()) return false;
       return true;
     }
@@ -829,7 +839,7 @@ class ProtocolStateHelper{
       unsigned char val1 = static_cast<unsigned char>((-values[1]) ^ 0xFF); // Ones' complement
       unsigned char val2 = static_cast<unsigned char>(values[2]);
       unsigned char val3 = static_cast<unsigned char>(values[3]);
-      _server->sendFrame({0x02, 0x14, val0, val1, val2, val3}, false);
+      _server->sendFrame({TMA_FUNCTION_CODE, 0x14, val0, val1, val2, val3}, false);
       HNZTest::debug_print("[HNZ Server] TMA sent");
       HNZTest::waitUntil(HNZTest::dataObjectsReceived, 4, 1000);
 
@@ -856,7 +866,7 @@ class ProtocolStateHelper{
     }
 
     bool transitBULLE(){
-      _server->sendFrame({0x13, 0x04}, false);
+      _server->sendFrame({BULLE_FUNCTION_CODE, 0x04}, false);
       HNZTest::debug_print("[HNZ Server] BULLE sent");
       this_thread::sleep_for(chrono::milliseconds(1000));
       // Check that RR frame was received
@@ -866,7 +876,7 @@ class ProtocolStateHelper{
     }
 
     bool transitTCACK(){
-      _server->sendFrame({0x09, 0x0e, 0x49}, false);
+      _server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x49}, false);
       HNZTest::debug_print("[HNZ Server] TC ACK sent");
       HNZTest::waitUntil(HNZTest::dataObjectsReceived, 1, 1000);
       // Check that ingestCallback had been called once
@@ -886,7 +896,7 @@ class ProtocolStateHelper{
 
     bool transitTVCACK(){
       // Send TVC ACK from server
-      _server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
+      _server->sendFrame({TVC_ACK_FUNCTION_CODE, 0x9f, 0x2a, 0x00}, false);
       HNZTest::debug_print("[HNZ Server] TVC ACK sent");
       HNZTest::waitUntil(HNZTest::dataObjectsReceived, 1, 1000);
       // Check that ingestCallback had been called once
@@ -913,7 +923,7 @@ class ProtocolStateHelper{
       if(frames.size() == 0) return false;
       for(auto& frame : frames){
         if(frame->usLgBuffer < 4) continue;
-        if(frame->aubTrame[2] == 0x13 && frame->aubTrame[3] == 0x04) return true;
+        if(frame->aubTrame[2] == BULLE_FUNCTION_CODE && frame->aubTrame[3] == 0x04) return true;
       }
       return false;
     }
@@ -1095,7 +1105,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ///////////////////////////////////////
   daySection = (daySection + 12) % 144;
   expectedEpochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
-  server->sendFrame({0x0F, daySection}, false);
+  server->sendFrame({MODULO_FUNCTION_CODE, daySection}, false);
   server->sendFrame({TSCE_FUNCTION_CODE, 0x33, 0x38, msb, lsb}, false);
   debug_print("[HNZ Server] TSCE 3 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
@@ -1414,7 +1424,7 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   unsigned char val1 = static_cast<unsigned char>((-values[1]) ^ 0xFF); // Ones' complement
   unsigned char val2 = static_cast<unsigned char>(values[2]);
   unsigned char val3 = static_cast<unsigned char>(values[3]);
-  server->sendFrame({0x02, 0x14, val0, val1, val2, val3}, false);
+  server->sendFrame({TMA_FUNCTION_CODE, 0x14, val0, val1, val2, val3}, false);
   debug_print("[HNZ Server] TMA sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
@@ -1441,7 +1451,7 @@ TEST_F(HNZTest, ReceivingTMAMessages) {
   ///////////////////////////////////////
   // Send TMA with invalid flag for the last one
   ///////////////////////////////////////
-  server->sendFrame({0x02, 0x14, val0, val1, val2, 0xFF}, false);
+  server->sendFrame({TMA_FUNCTION_CODE, 0x14, val0, val1, val2, 0xFF}, false);
   debug_print("[HNZ Server] TMA 2 sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
@@ -1482,7 +1492,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   unsigned char val1 = static_cast<unsigned char>(values[1]);
   unsigned char val2 = static_cast<unsigned char>(values[2]);
   unsigned char val3 = static_cast<unsigned char>(values[3]);
-  server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x80}, false);
+  server->sendFrame({TMN_FUNCTION_CODE, 0x14, val0, val1, val2, val3, 0x80}, false);
   debug_print("[HNZ Server] TM8 sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
@@ -1509,7 +1519,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   ///////////////////////////////////////
   // Send TMN 8 bits with invalid flag for the last one
   ///////////////////////////////////////
-  server->sendFrame({0x0c, 0x14, val0, val1, val2, val3, 0x88}, false);
+  server->sendFrame({TMN_FUNCTION_CODE, 0x14, val0, val1, val2, val3, 0x88}, false);
   debug_print("[HNZ Server] TM8 2 sent");
   waitUntil(dataObjectsReceived, 4, 1000);
 
@@ -1542,7 +1552,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   unsigned char msb1 = static_cast<unsigned char>(val11 >> 8);
   unsigned char lsb2 = static_cast<unsigned char>(val12 & 0xFF);
   unsigned char msb2 = static_cast<unsigned char>(val12 >> 8);
-  server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x00}, false);
+  server->sendFrame({TMN_FUNCTION_CODE, 0x14, lsb1, msb1, lsb2, msb2, 0x00}, false);
   debug_print("[HNZ Server] TM16 sent");
   waitUntil(dataObjectsReceived, 2, 1000);
 
@@ -1576,7 +1586,7 @@ TEST_F(HNZTest, ReceivingTMNMessages) {
   ///////////////////////////////////////
   // Send TMN 16 bits with invalid flag for the last one
   ///////////////////////////////////////
-  server->sendFrame({0x0c, 0x14, lsb1, msb1, lsb2, msb2, 0x04}, false);
+  server->sendFrame({TMN_FUNCTION_CODE, 0x14, lsb1, msb1, lsb2, msb2, 0x04}, false);
   debug_print("[HNZ Server] TM16 2 sent");
   waitUntil(dataObjectsReceived, 2, 1000);
 
@@ -1629,11 +1639,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  validateFrame(server->popLastFramesReceived(), {TC_FUNCTION_CODE, 0x0e, 0x48});
   if(HasFatalFailure()) return;
 
   // Send TC ACK from server
-  server->sendFrame({0x09, 0x0e, 0x49}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x49}, false);
   debug_print("[HNZ Server] TC ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1657,11 +1667,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  validateFrame(server->popLastFramesReceived(), {TC_FUNCTION_CODE, 0x0e, 0x48});
   if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 011b
-  server->sendFrame({0x09, 0x0e, 0x4b}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x4b}, false);
   debug_print("[HNZ Server] TC ACK 2 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1686,11 +1696,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  validateFrame(server->popLastFramesReceived(), {TC_FUNCTION_CODE, 0x0e, 0x48});
   if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 101b
-  server->sendFrame({0x09, 0x0e, 0x4d}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x4d}, false);
   debug_print("[HNZ Server] TC ACK 3 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1714,11 +1724,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  validateFrame(server->popLastFramesReceived(), {TC_FUNCTION_CODE, 0x0e, 0x48});
   if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 111b
-  server->sendFrame({0x09, 0x0e, 0x4f}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x4f}, false);
   debug_print("[HNZ Server] TC ACK 4 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1742,11 +1752,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x19, 0x0e, 0x48});
+  validateFrame(server->popLastFramesReceived(), {TC_FUNCTION_CODE, 0x0e, 0x48});
   if(HasFatalFailure()) return;
 
   // Send TC ACK from server with CR bit = 010b
-  server->sendFrame({0x09, 0x0e, 0x4a}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x4a}, false);
   debug_print("[HNZ Server] TC ACK 5 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1774,11 +1784,11 @@ TEST_F(HNZTest, SendingTCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x19, 0x2c, 0x48});
+  validateFrame(server->popLastFramesReceived(), {TC_FUNCTION_CODE, 0x2c, 0x48});
   if(HasFatalFailure()) return;
 
   // Send TC ACK from server
-  server->sendFrame({0x09, 0x2c, 0x49}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x2c, 0x49}, false);
   debug_print("[HNZ Server] TC ACK 6 sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1816,11 +1826,11 @@ TEST_F(HNZTest, SendingTVCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x00});
+  validateFrame(server->popLastFramesReceived(), {TVC_FUNCTION_CODE, 0x1f, 0x2a, 0x00});
   if(HasFatalFailure()) return;
 
   // Send TVC ACK from server
-  server->sendFrame({0x0a, 0x9f, 0x2a, 0x00}, false);
+  server->sendFrame({TVC_ACK_FUNCTION_CODE, 0x9f, 0x2a, 0x00}, false);
   debug_print("[HNZ Server] TVC ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1845,11 +1855,11 @@ TEST_F(HNZTest, SendingTVCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x80});
+  validateFrame(server->popLastFramesReceived(), {TVC_FUNCTION_CODE, 0x1f, 0x2a, 0x80});
   if(HasFatalFailure()) return;
 
   // Send TVC ACK from server
-  server->sendFrame({0x0a, 0x9f, 0x2a, 0x80}, false);
+  server->sendFrame({TVC_ACK_FUNCTION_CODE, 0x9f, 0x2a, 0x80}, false);
   debug_print("[HNZ Server] TVC 2 ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1873,11 +1883,11 @@ TEST_F(HNZTest, SendingTVCMessages) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   // Find the TVC frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {0x1a, 0x1f, 0x2a, 0x80});
+  validateFrame(server->popLastFramesReceived(), {TVC_FUNCTION_CODE, 0x1f, 0x2a, 0x80});
   if(HasFatalFailure()) return;
 
   // Send TVC ACK from server with A bit = 1
-  server->sendFrame({0x0a, 0xdf, 0x2a, 0x80}, false);
+  server->sendFrame({TVC_ACK_FUNCTION_CODE, 0xdf, 0x2a, 0x80}, false);
   debug_print("[HNZ Server] TVC 3 ACK sent");
   waitUntil(dataObjectsReceived, 1, 1000);
   // Check that ingestCallback had been called
@@ -1964,10 +1974,10 @@ TEST_F(HNZTest, ReceivingMessagesTwoPath) {
 
   // Find the SARM frame in the list of frames received by servers
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  std::shared_ptr<MSG_TRAME> SARMframe = findProtocolFrameWithId(frames, SARM_ID);
   ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM in frames received: " << BasicHNZServer::framesToStr(frames);
   frames = server2->popLastFramesReceived();
-  SARMframe = findProtocolFrameWithId(frames, 0x0f);
+  SARMframe = findProtocolFrameWithId(frames, SARM_ID);
   ASSERT_NE(SARMframe.get(), nullptr) << "Could not find SARM 2 in frames received: " << BasicHNZServer::framesToStr(frames);
 
   // Also stop the servers as they are unable to reconnect on the fly
@@ -2008,16 +2018,16 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Find the TC frame in the list of frames received by server
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
+  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
   // Check that TC is only received on active path (server) and not on passive path (server2)
   frames = server2->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "No TC frame should be received by server2, found: " << BasicHNZServer::frameToStr(TCframe);
 
   // Send TC ACK from servers
-  server->sendFrame({0x09, 0x0e, 0x49}, false);
-  server2->sendFrame({0x09, 0x0e, 0x49}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x49}, false);
+  server2->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x49}, false);
   debug_print("[HNZ Server] TC ACK sent on both path");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had been called only one time
@@ -2040,15 +2050,15 @@ TEST_F(HNZTest, SendingMessagesTwoPath) {
 
   // Find the TC frame in the list of frames received by server2
   frames = server2->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
   // Check that TC is only received on active path (server2) and not on passive path (server)
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "No TC frame should be received by server, found: " << BasicHNZServer::frameToStr(TCframe);
 
   // Send TC ACK from server2 only
-  server2->sendFrame({0x09, 0x0e, 0x49}, false);
+  server2->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x49}, false);
   debug_print("[HNZ Server] TC ACK sent on path B");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that ingestCallback had been called only one time
@@ -2703,35 +2713,35 @@ TEST_F(HNZTest, UnknownMessage) {
   ASSERT_EQ(ingestCallbackCalled, 0);
 
   // Send an unknown TMA
-  server->sendFrame({0x02, 0xff, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({TMA_FUNCTION_CODE, 0xff, 0x00, 0x00, 0x00, 0x00}, false);
   debug_print("[HNZ Server] Unknown TMA sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that no message was received
   ASSERT_EQ(ingestCallbackCalled, 0);
 
   // Send an unknown TM8
-  server->sendFrame({0x0c, 0xff, 0x00, 0x00, 0x00, 0x00, 0x80}, false);
+  server->sendFrame({TMN_FUNCTION_CODE, 0xff, 0x00, 0x00, 0x00, 0x00, 0x80}, false);
   debug_print("[HNZ Server] Unknown TM8 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that no message was received
   ASSERT_EQ(ingestCallbackCalled, 0);
 
   // Send an unknown TM16
-  server->sendFrame({0x0c, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00}, false);
+  server->sendFrame({TMN_FUNCTION_CODE, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00}, false);
   debug_print("[HNZ Server] Unknown TM16 sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that no message was received
   ASSERT_EQ(ingestCallbackCalled, 0);
 
   // Send an unknown TC ACK
-  server->sendFrame({0x09, 0x00, 0x49}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x00, 0x49}, false);
   debug_print("[HNZ Server] Unknown TC ACK sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that no message was received
   ASSERT_EQ(ingestCallbackCalled, 0);
 
   // Send an unknown TVC ACK
-  server->sendFrame({0x0a, 0x00, 0x2a, 0x00}, false);
+  server->sendFrame({TVC_ACK_FUNCTION_CODE, 0x00, 0x2a, 0x00}, false);
   debug_print("[HNZ Server] Unknown TVC ACK sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   // Check that no message was received
@@ -2750,7 +2760,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] Invalid operation sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
+  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send invalid command type
@@ -2770,7 +2780,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] Invalid command sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TC with extra parameter
@@ -2780,7 +2790,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TC with extra param sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
 
   // Send TC with missing parameter
@@ -2790,7 +2800,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TC with missing param sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TC with invalid address
@@ -2800,7 +2810,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TC with invalid address sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TC with address out of bounds
@@ -2809,7 +2819,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TC with address out of bounds sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TC with invalid value
@@ -2818,7 +2828,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TC with invalid value sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TC with value out of bounds
@@ -2827,7 +2837,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TC with value out of bounds sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "Found unexpected TC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TVC with extra parameter
@@ -2847,7 +2857,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TVC with extra param sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
+  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << BasicHNZServer::framesToStr(frames);
 
   // Send TVC with missing parameter
@@ -2857,7 +2867,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TVC with missing param sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TVCframe = findFrameWithId(frames, 0x1a);
+  TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TVC with invalid address
@@ -2867,7 +2877,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TVC with invalid address sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TVCframe = findFrameWithId(frames, 0x1a);
+  TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TVC with address out of bounds
@@ -2876,7 +2886,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TVC with address out of bounds sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TVCframe = findFrameWithId(frames, 0x1a);
+  TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TVC with invalid value
@@ -2885,7 +2895,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TVC with invalid value sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TVCframe = findFrameWithId(frames, 0x1a);
+  TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
 
   // Send TVC with value out of bounds
@@ -2894,7 +2904,7 @@ TEST_F(HNZTest, InvalidOperations) {
   debug_print("[HNZ south plugin] TVC with value out of bounds sent");
   this_thread::sleep_for(chrono::milliseconds(1000));
   frames = server->popLastFramesReceived();
-  TVCframe = findFrameWithId(frames, 0x1a);
+  TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_EQ(TVCframe.get(), nullptr) << "Found unexpected TVC frame: " << BasicHNZServer::framesToStr(frames);
 }
 
@@ -3025,7 +3035,7 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
 
   // Find the TC frame in the list of frames received by server
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, 0x19);
+  std::shared_ptr<MSG_TRAME> TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_NE(TCframe.get(), nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
 
   // Send a TVC while connection established but do not acknoledge it (so it will be resent)
@@ -3041,7 +3051,7 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
 
   // Find the TVC frame in the list of frames received by server
   frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, 0x1a);
+  std::shared_ptr<MSG_TRAME> TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_NE(TVCframe.get(), nullptr) << "Could not find TVC in frames received: " << BasicHNZServer::framesToStr(frames);
 
   // Stop the server to disconnect the path
@@ -3077,9 +3087,9 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
 
   // Check that no TC or TVC is automatically sent after reconnection
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "TC was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
-  TVCframe = findFrameWithId(frames, 0x1a);
+  TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_EQ(TVCframe.get(), nullptr) << "TVC was sent after reconnection: " << BasicHNZServer::frameToStr(TVCframe);
 
   // Stop sending automatic ack (RR) in response to messages from south plugin
@@ -3099,7 +3109,7 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "TC over anticipation_ratio was sent: " << BasicHNZServer::frameToStr(TCframe);
 
   // Stop the server to disconnect the path
@@ -3123,9 +3133,9 @@ TEST_F(HNZTest, NoMessageBufferedIfConnectionLost) {
 
   // Check that no TC or TVC is automatically sent after reconnection
   frames = server->popLastFramesReceived();
-  TCframe = findFrameWithId(frames, 0x19);
+  TCframe = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(TCframe.get(), nullptr) << "TC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TCframe);
-  TVCframe = findFrameWithId(frames, 0x1a);
+  TVCframe = findFrameWithId(frames, TVC_FUNCTION_CODE);
   ASSERT_EQ(TVCframe.get(), nullptr) << "TVC 2 was sent after reconnection: " << BasicHNZServer::frameToStr(TVCframe);
 }
 
@@ -3252,7 +3262,7 @@ TEST_F(HNZTest, PeriodicBULLE) {
 
   // Check that no BULLE was received at startup
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::vector<std::shared_ptr<MSG_TRAME>> BULLEframes = findFramesWithId(frames, 0x13);
+  std::vector<std::shared_ptr<MSG_TRAME>> BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   for(auto BULLEframe: BULLEframes) {
     // BULLE and CG request have the same ID, and a CG request was sent after connection init,
     // so if this ID is found, check if the next byte identifies a BULLE message
@@ -3273,7 +3283,7 @@ TEST_F(HNZTest, PeriodicBULLE) {
     this_thread::sleep_for(chrono::milliseconds(100));
     totalWaitTime += 100;
     frames = server->popLastFramesReceived();
-    BULLEframes = findFramesWithId(frames, 0x13);
+    BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
     bulleReceived = BULLEframes.size() > 0;
   }
   ASSERT_EQ(BULLEframes.size(), 1) << "BULLE message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
@@ -3283,13 +3293,13 @@ TEST_F(HNZTest, PeriodicBULLE) {
   this_thread::sleep_for(chrono::milliseconds(9500)); // Ends at 10s-500ms
   // Check that no BULLE was received yet
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 2 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
 
   this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
   // Check that BULLE was received
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 2 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
 
   // Repeat test for next BULLE (received at expected time +/-500ms)
@@ -3297,13 +3307,13 @@ TEST_F(HNZTest, PeriodicBULLE) {
   this_thread::sleep_for(chrono::milliseconds(9000)); // Ends at 10s-500ms since last sleep ended 500ms after BULLE time
   // Check that no BULLE was received yet
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 3 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
 
   this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
   // Check that BULLE was received
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 3 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
 
   // Send a TC half way through the BULLE timer, which should reset it
@@ -3317,7 +3327,7 @@ TEST_F(HNZTest, PeriodicBULLE) {
   ASSERT_TRUE(hnz->operation(operationTC, nbParamsTC, paramsTC));
   debug_print("[HNZ south plugin] TC sent");
   // Send TC ACK from server
-  server->sendFrame({0x09, 0x0e, 0x49}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x49}, false);
   debug_print("[HNZ Server] TC ACK sent");
 
   // Repeat test for next BULLE (received at expected time +/-500ms)
@@ -3325,13 +3335,13 @@ TEST_F(HNZTest, PeriodicBULLE) {
   this_thread::sleep_for(chrono::milliseconds(9500)); // Ends at 10s-500ms
   // Check that no BULLE was received yet
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 4 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
 
   this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
   // Check that BULLE was received
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 4 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
 
   // Repeat test for next BULLE (received at expected time +/-500ms)
@@ -3339,13 +3349,13 @@ TEST_F(HNZTest, PeriodicBULLE) {
   this_thread::sleep_for(chrono::milliseconds(9000)); // Ends at 10s-500ms since last sleep ended 500ms after BULLE time
   // Check that no BULLE was received yet
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 0) << "BULLE 5 message was received too soon: " << BasicHNZServer::framesToStr(BULLEframes);
 
   this_thread::sleep_for(chrono::milliseconds(1000)); // Ends at 10s+500ms
   // Check that BULLE was received
   frames = server->popLastFramesReceived();
-  BULLEframes = findFramesWithId(frames, 0x13);
+  BULLEframes = findFramesWithId(frames, BULLE_FUNCTION_CODE);
   ASSERT_EQ(BULLEframes.size(), 1) << "BULLE 5 message was not received in time, or too many were received: " << BasicHNZServer::framesToStr(frames);
 }
 
@@ -3374,9 +3384,9 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   const int sleepTime = 300; // ms
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived(); // Clear stack
   std::shared_ptr<MSG_TRAME> receivedFrame;
-  unsigned char messageSarm[1] = {0x0F}; // Definition
-  unsigned char messageUA[1]   = {0x63}; // Definition
-  unsigned char messageInfo[6] = {0x00, 0x0B, 0x33, 0x28, 0x36, 0xF2}; // NR << 5 + P << 4 + NS << 1 + 0, Code Fonction (TSCE), payload
+  unsigned char messageSarm[1] = {SARM_ID}; // Definition
+  unsigned char messageUA[1]   = {UA_ID}; // Definition
+  unsigned char messageInfo[6] = {0x00, TSCE_FUNCTION_CODE, 0x33, 0x28, 0x36, 0xF2}; // NR << 5 + P << 4 + NS << 1 + 0, Code Fonction (TSCE), payload
   server->disableAcks(true); // Prevent automatic acks
 
   //          Send TC
@@ -3391,7 +3401,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   frames = server->popLastFramesReceived();
-  receivedFrame = findFrameWithId(frames, 0x19);
+  receivedFrame = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_NE(receivedFrame, nullptr) << "Could not find TC in frames received: " << BasicHNZServer::framesToStr(frames);
   ASSERT_EQ(receivedFrame->usLgBuffer, 7) << "Unexpected length of TC received: " << BasicHNZServer::frameToStr(receivedFrame);
   unsigned char nr = (receivedFrame->aubTrame[1] >> 1) & 0x7;                        // expected NR of message
@@ -3403,15 +3413,15 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   server->createAndSendFrame(0x05, messageRR, sizeof(messageRR));
   this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
   frames = server->popLastFramesReceived();
-  receivedFrame = findFrameWithId(frames, 0x19);
+  receivedFrame = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_NE(receivedFrame, nullptr) << "Invalid RR did not cause re-emission of TC.";
 
   //          Send TC ACK (indirect valid RR) 
   debug_print("[HNZ Server] Sending TC ACK (indirect valid RR)");
-  server->sendFrame({0x09, 0x0e, 0x49}, false);
+  server->sendFrame({TC_ACK_FUNCTION_CODE, 0x0e, 0x49}, false);
   this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
   frames = server->popLastFramesReceived();
-  receivedFrame = findFrameWithId(frames, 0x19);
+  receivedFrame = findFrameWithId(frames, TC_FUNCTION_CODE);
   ASSERT_EQ(receivedFrame, nullptr) << "Valid TC ACK caused re-emission of TC.";
 
   //          Send TSCE INVALID
@@ -3424,7 +3434,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
 
   //          Send TSCE VALID
   debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 0 (valid)");
-  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x33, 0x28, 0x36, 0xF2}, false);
   this_thread::sleep_for(chrono::milliseconds(sleepTime));
   frames = server->popLastFramesReceived();
   receivedFrame = findRR(frames);
@@ -3435,7 +3445,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   server->createAndSendFrame(0x07, messageSarm, sizeof(messageSarm));
   this_thread::sleep_for(chrono::milliseconds(sleepTime));
   frames = server->popLastFramesReceived();
-  receivedFrame = findProtocolFrameWithId(frames, 0x63);
+  receivedFrame = findProtocolFrameWithId(frames, UA_ID);
   ASSERT_EQ(receivedFrame, nullptr) << "Invalid SARM caused transmission of UA.";
 
   //          Send SARM VALID
@@ -3443,7 +3453,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   server->createAndSendFrame(0x05, messageSarm, sizeof(messageSarm));
   this_thread::sleep_for(chrono::milliseconds(sleepTime));
   frames = server->popLastFramesReceived();
-  receivedFrame = findProtocolFrameWithId(frames, 0x63);
+  receivedFrame = findProtocolFrameWithId(frames, UA_ID);
   ASSERT_NE(receivedFrame, nullptr) << "Valid SARM was not acknowledged by UA.";
 
   //          Send UA   INVALID
@@ -3451,7 +3461,7 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   server->createAndSendFrame(0x05, messageUA, sizeof(messageUA));
   this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
   frames = server->popLastFramesReceived();
-  receivedFrame = findProtocolFrameWithId(frames, 0x0f);
+  receivedFrame = findProtocolFrameWithId(frames, SARM_ID);
   ASSERT_NE(receivedFrame, nullptr) << "Invalid UA did not cause re-emission of SARM.";
 
   //          Send UA   VALID
@@ -3459,13 +3469,13 @@ TEST_F(HNZTest, SendInvalidDirectionBit) {
   server->createAndSendFrame(0x07, messageUA, sizeof(messageUA));
   this_thread::sleep_for(chrono::seconds(4)); // 3 seconds before re-emission
   frames = server->popLastFramesReceived();
-  receivedFrame = findProtocolFrameWithId(frames, 0x0f);
+  receivedFrame = findProtocolFrameWithId(frames, SARM_ID);
   ASSERT_EQ(receivedFrame, nullptr) << "SARM was received despite valid UA.";
 
   //          Send TSCE VALID
   debug_print("[HNZ Server] Sending INFO (TSCE) with direction bit (A/B) = 0 (valid)");
   server->resetProtocol(); // Connection was reinitialized at HNZ protocol level, make sure to also reset variables inside BasicHNZServer (NS/NR)
-  server->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x33, 0x28, 0x36, 0xF2}, false);
   this_thread::sleep_for(chrono::milliseconds(sleepTime));
   frames = server->popLastFramesReceived();
   receivedFrame = findRR(frames);
@@ -3506,16 +3516,16 @@ TEST_F(HNZTest, ProtocolStateValidation) {
 
   std::shared_ptr<Reading> currentReading;
   unsigned char messageUA[1];
-  messageUA[0] = 0x63;
+  messageUA[0] = UA_ID;
   unsigned char messageSARM[1];
-  messageSARM[0] = 0x0F;
+  messageSARM[0] = SARM_ID;
 
   debug_print("[HNZ Server] Sending SARM to go in INPUT_CONNECTED ...");
   customServer->createAndSendFrame(0x05, messageSARM, sizeof(messageSARM));
   this_thread::sleep_for(chrono::milliseconds(1000));
   ASSERT_TRUE(psHelper.isInState(ProtocolState::INPUT_CONNECTED)) << "Expected protocol state INPUT_CONNECTED was not detected or did not match requirements.";
 
-  customServer->sendFrame({0x0B, 0x33, 0x28, 0x36, 0xF2}, false);
+  customServer->sendFrame({TSCE_FUNCTION_CODE, 0x33, 0x28, 0x36, 0xF2}, false);
   this_thread::sleep_for(chrono::milliseconds(1000));
 
   ASSERT_TRUE(psHelper.restartServer());

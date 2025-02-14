@@ -16,10 +16,15 @@
 
 using namespace std;
 
+// HNZ protocol key frame values
 constexpr int SARM_ID = 0x0f;
 constexpr int UA_ID = 0x63;
+constexpr int SET_DATE_FUNCTION_CODE = 0x1c;
+constexpr int SET_TIME_FUNCTION_CODE = 0x1d;
 constexpr int GI_FUNCTION_CODE = 0x13;
+constexpr int GI_BIT = 0x01;
 constexpr int BULLE_FUNCTION_CODE = 0x13;
+constexpr int BULLE_BIT = 0x04;
 constexpr int MODULO_FUNCTION_CODE = 0x0f;
 constexpr int TSCE_FUNCTION_CODE = 0x0B;
 constexpr int TSCG_FUNCTION_CODE = 0x16;
@@ -530,7 +535,7 @@ class HNZTest : public testing::Test {
   }
 
   static void validateAllTIQualityUpdate(bool invalid, bool outdated, bool noCG = false) {
-    // We only expect invalid messages at init, and during init we will also receive 3 extra messages for the failed CG request
+    // We only expect invalid messages at init, and during init we will also receive 4 extra messages for the failed CG request
     int waitCG = invalid && !noCG;
     int expectedMessages = waitCG ? 12 : 8;
     // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
@@ -866,7 +871,7 @@ class ProtocolStateHelper{
     }
 
     bool transitBULLE(){
-      _server->sendFrame({BULLE_FUNCTION_CODE, 0x04}, false);
+      _server->sendFrame({BULLE_FUNCTION_CODE, BULLE_BIT}, false);
       HNZTest::debug_print("[HNZ Server] BULLE sent");
       this_thread::sleep_for(chrono::milliseconds(1000));
       // Check that RR frame was received
@@ -923,7 +928,7 @@ class ProtocolStateHelper{
       if(frames.size() == 0) return false;
       for(auto& frame : frames){
         if(frame->usLgBuffer < 4) continue;
-        if(frame->aubTrame[2] == BULLE_FUNCTION_CODE && frame->aubTrame[3] == 0x04) return true;
+        if(frame->aubTrame[2] == BULLE_FUNCTION_CODE && frame->aubTrame[3] == BULLE_BIT) return true;
       }
       return false;
     }
@@ -1037,7 +1042,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ///////////////////////////////////////
   // Find SET TIME message sent at startup and extract modulo value from it
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
-  std::shared_ptr<MSG_TRAME> TIMEframe = findFrameWithId(frames, 0x1d);
+  std::shared_ptr<MSG_TRAME> TIMEframe = findFrameWithId(frames, SET_TIME_FUNCTION_CODE);
   ASSERT_NE(TIMEframe.get(), nullptr) << "Could not find SET TIME in frames received: " << BasicHNZServer::framesToStr(frames);
   ASSERT_EQ(TIMEframe->usLgBuffer, 9);
   unsigned char startupModulo = TIMEframe->aubTrame[3];
@@ -1178,7 +1183,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   for(int i=0 ; i<totalCG ; i++) {
     // Find the CG frame in the list of frames received by server and validate it
     debug_print("Validating CG frame %d", i);
-    validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+    validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
     if(HasFatalFailure()) return;
     this_thread::sleep_for(chrono::milliseconds(1000)); // gi_time
   }
@@ -1197,7 +1202,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   this_thread::sleep_for(chrono::milliseconds(500)); // must be < gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
   if(HasFatalFailure()) return;
 
   // Send only first of the two expected TS
@@ -1225,7 +1230,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   }
 
   // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
-  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
   if(HasFatalFailure()) return;
 
   // Send only second of the two expected TS (new CG was sent so the TS received earlier are ignored)
@@ -1268,7 +1273,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
   if(HasFatalFailure()) return;
 
   // Send both TS this time (new CG was sent so the TS received earlier are ignored)
@@ -1308,7 +1313,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
   if(HasFatalFailure()) return;
 
   server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
@@ -1343,7 +1348,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
   if(HasFatalFailure()) return;
 
   // Abort the first two of the 3 CG requests by sending the first TS only
@@ -1372,7 +1377,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
     }
 
     // Extra CG messages should have been sent automatically because some TS are missing and gi_time was reached
-    validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+    validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
     if(HasFatalFailure()) return;
   }
 
@@ -2501,7 +2506,7 @@ TEST_F(HNZTest, ReconfigureWhileConnectionActive) {
   // Also stop the server as it is unable to reconnect on the fly
   debug_print("[HNZ server] Request server stop...");
   ASSERT_TRUE(server->stopHNZServer());
-  debug_print("[HNZ south plugin] Waiting for outdated TI emission...");
+  debug_print("[HNZ server] Waiting for outdated TI emission...");
   this_thread::sleep_for(chrono::milliseconds(1000));
   validateAllTIQualityUpdate(false, true);
   debug_print("[HNZ server] Request server start...");
@@ -3212,7 +3217,7 @@ TEST_F(HNZTest, MultipleMessagesInOne) {
   this_thread::sleep_for(chrono::milliseconds(500)); // must not be too close to a multiple of gi_time
 
   // Find the CG frame in the list of frames received by server and validate it
-  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, 0x01});
+  validateFrame(server->popLastFramesReceived(), {GI_FUNCTION_CODE, GI_BIT});
   if(HasFatalFailure()) return;
 
   // Send both TSCG in the same frame
@@ -3683,10 +3688,9 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsResultInGi) {
   // Check that there is exactly one CG frame in the list of frames received by server and validate it
   std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
   ASSERT_EQ(getFrameIdOccurenceCount(frames, GI_FUNCTION_CODE), 1);
-  if(HasFatalFailure()) return;
   
   // Find the CG frame in the list of frames received by server and validate it
-  validateFrame(frames, {GI_FUNCTION_CODE, 0x01});
+  validateFrame(frames, {GI_FUNCTION_CODE, GI_BIT});
   if(HasFatalFailure()) return;
 
   // Send both TS this time

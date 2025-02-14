@@ -268,11 +268,14 @@ void HNZConnection::m_check_GI() {
   if (m_gi_schedule.activate && !m_gi_schedule_already_sent &&
       (m_gi_scheduled_time <= m_current)) {
     if(m_active_path == nullptr){
-      HnzUtility::log_warn("%s No active path on which to send scheduled GI.", beforeLog.c_str());
-      return;
+      HnzUtility::log_warn("%s No active path on which to send scheduled GI => GI skipped", beforeLog.c_str());
     }
-    HnzUtility::log_warn("%s It's %dh%d. Executing scheduled GI.", beforeLog.c_str(), m_gi_schedule.hour, m_gi_schedule.min);
-    m_active_path->sendGeneralInterrogation();
+    else {
+      HnzUtility::log_warn("%s It's %dh%d. Executing scheduled GI.", beforeLog.c_str(), m_gi_schedule.hour, m_gi_schedule.min);
+      m_active_path->sendGeneralInterrogation();
+    }
+    // Make sure to always set this flag or it will attempt to send GI each tick,
+    // and if no active path is present those attempts are useless as a GI will trigger when a first path become active
     m_gi_schedule_already_sent = true;
   }
 }

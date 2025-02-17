@@ -233,7 +233,7 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   return is_complete;
 }
 
-bool HNZConf::m_isGiTriggeringTs(const Value &msg) {
+bool HNZConf::m_isGiTriggeringTs(const Value &msg) const {
   if (msg.HasMember(PIVOT_SUBTYPES) && msg[PIVOT_SUBTYPES].IsArray()) {
     for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
       if (subtype.IsString() && subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {

@@ -319,7 +319,7 @@ class HNZConf {
    * @param msg json configuration object
    * @return True if the configuration is present, else false
    */
-  bool m_isGiTriggeringTs(const Value &msg);
+  bool m_isGiTriggeringTs(const Value &msg) const;
 
   std::array<string, MAXPATHS> m_paths_ip = {"", ""};
   std::array<unsigned int, MAXPATHS> m_paths_port = {0, 0};

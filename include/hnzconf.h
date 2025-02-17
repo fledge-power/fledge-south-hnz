@@ -313,6 +313,14 @@ class HNZConf {
    */
   bool m_importDatapoint(const Value &msg);
 
+  /**
+   * Tells if the current datapoint has the configuration to trigger a GI
+   * 
+   * @param msg json configuration object
+   * @return True if the configuration is present, else false
+   */
+  bool m_isGiTriggeringTs(const Value &msg);
+
   std::array<string, MAXPATHS> m_paths_ip = {"", ""};
   std::array<unsigned int, MAXPATHS> m_paths_port = {0, 0};
   std::array<unsigned int, MAXPATHS> m_paths_repeat = {0, 0};

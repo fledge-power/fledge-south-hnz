@@ -183,15 +183,7 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   is_complete &= m_check_string(msg, PIVOT_ID);
   is_complete &= m_check_string(msg, PIVOT_TYPE);
 
-  bool isGiTriggeringTs = false;
-  if (msg.HasMember(PIVOT_SUBTYPES) && msg[PIVOT_SUBTYPES].IsArray()) {
-    for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
-      if (subtype.IsString() && subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
-        isGiTriggeringTs = true;
-        break;
-      }
-    }
-  }
+  bool isGiTriggeringTs = m_isGiTriggeringTs(msg);
 
   if (!m_check_array(msg, PROTOCOLS)) return false;
 
@@ -239,6 +231,17 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   }
 
   return is_complete;
+}
+
+bool HNZConf::m_isGiTriggeringTs(const Value &msg) {
+  if (msg.HasMember(PIVOT_SUBTYPES) && msg[PIVOT_SUBTYPES].IsArray()) {
+    for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
+      if (subtype.IsString() && subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 string HNZConf::getLabel(const string &msg_code, const int msg_address) const {

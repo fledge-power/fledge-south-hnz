@@ -39,6 +39,7 @@ HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_con
                   // Command settings
                   c_ack_time_max(hnz_conf->get_c_ack_time() * 1000)
 {
+  m_refreshNameLog();
   // Send "dosconnected" audit at startup as there is no transition happening to trigger it here
   sendAuditFail();
   resolveProtocolStateConnection();
@@ -167,11 +168,14 @@ void HNZPath::sendAuditFail(){
 }
 
 void HNZPath::resolveProtocolStateConnected(){
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnected - " + m_name_log;
+  std::string beforeLogRoot = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnected - ";
+  std::string beforeLog = beforeLogRoot + m_name_log;
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
 
   // Ask to be active, HNZConnection will decide if this path can be active or passive
   m_hnz_connection->requestConnectionState(this, ConnectionState::ACTIVE);
+  // m_name_log may have changed here so update log prefix
+  beforeLog = beforeLogRoot + m_name_log;
 
   HnzUtility::log_debug(beforeLog + " HNZ Connection initialized !!");
 
@@ -240,10 +244,13 @@ void HNZPath::connect() {
 }
 
 void HNZPath::disconnect() {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::disconnect - " + m_name_log;
+  std::string beforeLogRoot = HnzUtility::NamePlugin + " - HNZPath::disconnect - ";
+  std::string beforeLog = beforeLogRoot + m_name_log;
   HnzUtility::log_debug(beforeLog + " HNZ Path stopping...");
   // This ensures that the path is in the correct state for both south_event and audits
   protocolStateTransition(ConnectionEvent::TCP_CNX_LOST);
+  // m_name_log may have changed here so update log prefix
+  beforeLog = beforeLogRoot + m_name_log;
 
   m_is_running = false;
   m_hnz_client->stop();
@@ -353,7 +360,7 @@ void HNZPath::setConnectionState(ConnectionState newState) {
   if (newState != m_connection_state) {
     ConnectionState oldState = m_connection_state;
     m_connection_state = newState;
-    m_name_log = "[" + m_path_name + " - " + connectionState2str(m_connection_state) + "]";
+    m_refreshNameLog();
     HnzUtility::log_debug(beforeLog + " => " + m_name_log);
 
     // Transitions to ACTIVE or PASSIVE generate a success audit

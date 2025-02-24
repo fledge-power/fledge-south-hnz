@@ -305,6 +305,10 @@ class HNZPath {
   int m_nbr_sarm_sent = 0;  // Number of SARM sent
   int m_repeat = 0;         // Number of times the sent message is repeated
 
+
+  void m_refreshNameLog() {
+    m_name_log = "[" + m_path_name + " - " + connectionState2str(m_connection_state) + "]";
+  }
   /**
    * Manage the HNZ protocol connection with the PA. Be careful, it doesn't
    * manage the TCP connection.

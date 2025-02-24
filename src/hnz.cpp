@@ -353,7 +353,11 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   unsigned int ts_iv = (data[2] >> 2) & 0x1;  // HNV bit
   unsigned int ts_s = data[2] & 0x1;          // S bit
   unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
-  unsigned long epochMs = getEpochMsTimestamp(std::chrono::high_resolution_clock::now(), m_daySection, ts);
+  // Using C time (C++11 limitations conversion to local time)
+  time_t now = time(0);
+  tm* time_struct = new tm();
+  m_hnz_conf->get_use_utc() ? gmtime_r(&now, time_struct) : localtime_r(&now, time_struct);
+  unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::from_time_t(mktime(time_struct)), m_daySection, ts);
 
   ReadingParameters params;
   params.label = label;
@@ -750,7 +754,7 @@ std::string HNZ::frameToStr(std::vector<unsigned char> frame) {
   return stream.str();
 }
 
-unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::high_resolution_clock> dateTime,
+unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
   unsigned char daySection, unsigned int ts)
 {
   // Convert timestamp to epoch milliseconds
@@ -945,7 +949,7 @@ void HNZ::m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<u
 
 void HNZ::m_sendAllTSQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
   ReadingParameters paramsTemplate;
-  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   paramsTemplate.msg_code = "TS";
   paramsTemplate.station_addr = m_remote_address;
   paramsTemplate.valid = static_cast<unsigned int>(invalid);

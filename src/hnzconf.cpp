@@ -51,6 +51,8 @@ void HNZConf::importConfigJson(const string &json) {
   if (m_check_object(info, APP_LAYER)) {
     const Value &conf = info[APP_LAYER];
     is_complete &= m_importApplicationLayer(conf);
+    // Use UTC time instead of local time, default false.
+    m_retrieve(conf, MODULO_USE_UTC, &m_use_utc, false);
   } else {
     is_complete = false;
   }
@@ -456,6 +458,21 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, long long int *targ
       return false;
     }
     *target = json[key].GetInt64();
+  }
+  return true;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key, bool *target, bool def) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
+  if (!json.HasMember(key)) {
+    *target = def;
+  } else {
+    if (!json[key].IsBool()) {
+      string s = key;
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not a bool.");
+      return false;
+    }
+    *target = json[key].GetBool();
   }
   return true;
 }

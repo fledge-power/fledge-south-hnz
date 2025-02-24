@@ -49,6 +49,7 @@ constexpr char CMD_RECV_TIMEOUT[] = "cmd_recv_timeout";
 constexpr char BULLE_TIME[] = "bulle_time";
 constexpr char SOUTH_MONITORING[] = "south_monitoring";
 constexpr char SOUTH_MONITORING_ASSET[] = "asset";
+constexpr char MODULO_USE_UTC[] = "modulo_use_utc";
 
 constexpr char JSON_EXCHANGED_DATA_NAME[] = "exchanged_data";
 constexpr char DATAPOINTS[] = "datapoints";
@@ -267,6 +268,13 @@ class HNZConf {
    */
   unsigned int get_bulle_time() const { return m_bulle_time; }
 
+    /**
+   * Get the prefered reference time for messages timestamps (UTC or local time)
+   *
+   * @return wheter to use UTC time or local time
+   */
+  bool get_use_utc() const { return m_use_utc; }
+
   /**
    * Get the "asset" name for south plugin monitoring event
    *
@@ -337,6 +345,7 @@ class HNZConf {
   unsigned int m_c_ack_time = 0;
   long long int m_cmd_recv_timeout = 0;
   unsigned int m_bulle_time = 0;
+  bool m_use_utc = false;
 
   std::string m_connx_status = "";
   unsigned int m_lastTSAddr = 0;
@@ -360,6 +369,7 @@ class HNZConf {
   static bool m_retrieve(const Value &json, const char *key, BulleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, GIScheduleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, long long int *target, long long int def);
+  static bool m_retrieve(const Value &json, const char *key, bool *target, bool def);
 };
 
 #endif

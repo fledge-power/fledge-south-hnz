@@ -149,7 +149,7 @@ void HNZConnection::notifyGIsent(){
   }
   m_gi_repeat++;
   m_gi_start_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::high_resolution_clock::now().time_since_epoch())
+                      std::chrono::system_clock::now().time_since_epoch())
                       .count();
 }
 
@@ -227,7 +227,7 @@ void HNZConnection::m_check_timer(HNZPath* path) {
   }
 
   if(path->getProtocolState() == ProtocolState::CONNECTED){
-    long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     long long ms_since_connected = now - path->getLastConnected();
     if(path->getLastConnected() > 0 && ms_since_connected >= m_repeat_timeout){
       if(path->getConnectionState() == ConnectionState::ACTIVE && m_sendInitNexConnection){
@@ -299,7 +299,7 @@ void HNZConnection::m_check_command_timer(HNZPath* path) {
 void HNZConnection::m_update_current_time() {
   uint64_t prevTimeMs = m_current;
   m_current =
-      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch())
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
           .count();
   m_elapsedTimeMs = m_current - prevTimeMs;
 }

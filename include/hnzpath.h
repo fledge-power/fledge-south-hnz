@@ -262,6 +262,7 @@ class HNZPath {
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
   long long c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for a control command (in ms)
+  bool m_use_utc = false;
 
   // HNZ protocol related variable
   int m_nr = 0;   // Number in reception

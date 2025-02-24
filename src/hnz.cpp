@@ -200,6 +200,8 @@ void HNZ::receive(HNZPath* hnz_path_in_use) {
     messages = hnz_path_in_use->getData();
 
     if (messages.empty() && !hnz_path_in_use->isTCPConnected()) {
+      // Refresh beforeLog as path state will change over time
+      beforeLog = HnzUtility::NamePlugin + " - HNZ::receive - " + hnz_path_in_use->getName();
       HnzUtility::log_warn("%s Connection lost, reconnecting path.", beforeLog.c_str());
       // Try to reconnect, unless thread is stopping
       if (m_is_running) {
@@ -333,7 +335,7 @@ void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& da
   }
 }
 
-void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const {
+void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handleTSCE - ";
   string msg_code = "TS";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
@@ -373,6 +375,21 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   }
 
   readings.push_back(m_prepare_reading(params));
+
+  if (params.value == 0 && m_hnz_conf->isTsAddressCgTriggering(msg_address)) {
+    if(m_hnz_connection->getActivePath() == nullptr) {
+      HnzUtility::log_debug(beforeLog + "GI triggering TS received but no active path available => GI skipped");
+    }
+    else {
+      if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
+        HnzUtility::log_debug(beforeLog + "GI triggering TS received but GI already running, scheduling another GI after the current one");
+        m_giInQueue = true;
+      } else {
+        HnzUtility::log_info(beforeLog + "GI triggering TS received, start a GI");
+        m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+      }
+    }
+  }
 }
 
 void HNZ::m_handleTSCG(vector<Reading>& readings, const vector<unsigned char>& data) {
@@ -901,6 +918,12 @@ void HNZ::GICompleted(bool success) {
     updateGiStatus(GiStatus::FAILED);
   }
   resetGIQueue();
+
+  if (m_giInQueue) {
+    HnzUtility::log_info("%s Starting delayed GI", beforeLog.c_str());
+    m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+    m_giInQueue = false;
+  }
 }
 
 #ifdef UNIT_TEST

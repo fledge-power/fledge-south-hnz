@@ -13,6 +13,7 @@
 
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include "rapidjson/document.h"
 
 #define MAXPATHS 2
@@ -54,6 +55,8 @@ constexpr char DATAPOINTS[] = "datapoints";
 constexpr char LABEL[] = "label";
 constexpr char PIVOT_ID[] = "pivot_id";
 constexpr char PIVOT_TYPE[] = "pivot_type";
+constexpr char PIVOT_SUBTYPES[] = "pivot_subtypes";
+constexpr char TRIGGER_SOUTH_GI_PIVOT_SUBTYPE[] = "trigger_south_gi";
 constexpr char PROTOCOLS[] = "protocols";
 constexpr char HNZ_NAME[] = "hnzip";
 constexpr char MESSAGE_CODE[] = "typeid";
@@ -278,6 +281,13 @@ class HNZConf {
    */
   const map<string, map<unsigned int, map<unsigned int, string>>>& get_all_messages() const { return m_msg_list; }
 
+  /**
+   * Check if an address is in the CG triggering TS address set
+   *
+   * @return True if the given address is present in the address set
+   */
+  bool isTsAddressCgTriggering(int address) { return m_cgTriggeringTsAdresses.find(address) != m_cgTriggeringTsAdresses.end(); }
+
  private:
   /**
    * Import data from a json value representing the transport_layer
@@ -303,6 +313,14 @@ class HNZConf {
    */
   bool m_importDatapoint(const Value &msg);
 
+  /**
+   * Tells if the current datapoint has the configuration to trigger a GI
+   * 
+   * @param msg json configuration object
+   * @return True if the configuration is present, else false
+   */
+  bool m_isGiTriggeringTs(const Value &msg) const;
+
   std::array<string, MAXPATHS> m_paths_ip = {"", ""};
   std::array<unsigned int, MAXPATHS> m_paths_port = {0, 0};
   std::array<unsigned int, MAXPATHS> m_paths_repeat = {0, 0};
@@ -324,6 +342,9 @@ class HNZConf {
   unsigned int m_lastTSAddr = 0;
   // Nested map of msg_code, remote_station_addr and msg_address
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
+
+  // Set of TS addresses that triggers a CG if the TS value is 0
+  std::unordered_set<int> m_cgTriggeringTsAdresses;
 
   bool m_config_is_complete = false;
   bool m_exchange_data_is_complete = false;

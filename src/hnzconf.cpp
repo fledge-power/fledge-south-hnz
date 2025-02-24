@@ -183,6 +183,8 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   is_complete &= m_check_string(msg, PIVOT_ID);
   is_complete &= m_check_string(msg, PIVOT_TYPE);
 
+  bool isGiTriggeringTs = m_isGiTriggeringTs(msg);
+
   if (!m_check_array(msg, PROTOCOLS)) return false;
 
   for (const Value &protocol : msg[PROTOCOLS].GetArray()) {
@@ -221,8 +223,25 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
     if (msg_address > m_lastTSAddr) {
       m_lastTSAddr = msg_address;
     }
+
+    if (isGiTriggeringTs) {
+      HnzUtility::log_debug(beforeLog + " Storing address " + to_string(msg_address) + " for GI triggering");
+      m_cgTriggeringTsAdresses.insert(msg_address);
+    }
   }
+
   return is_complete;
+}
+
+bool HNZConf::m_isGiTriggeringTs(const Value &msg) const {
+  if (msg.HasMember(PIVOT_SUBTYPES) && msg[PIVOT_SUBTYPES].IsArray()) {
+    for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
+      if (subtype.IsString() && subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 string HNZConf::getLabel(const string &msg_code, const int msg_address) const {

@@ -219,6 +219,8 @@ private:
   // Connection and GI status management
   ConnectionStatus m_connStatus = ConnectionStatus::NOT_CONNECTED;
   GiStatus m_giStatus = GiStatus::IDLE;
+  // Boolean saying if a gi asking is waiting to be send. If true, as soon as the current gi will end a new one will be triggered and this will be set to false.
+  bool m_giInQueue = false;
   std::recursive_mutex m_connexionGiMutex;
   long m_qualityUpdateTimer = 0;
   long m_qualityUpdateTimeoutMs = 500;
@@ -248,7 +250,7 @@ private:
    * Handle TSCE messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const;
+  void m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data);
 
   /**
    * Handle TSCG messages: analyse them and returns one reading for export to

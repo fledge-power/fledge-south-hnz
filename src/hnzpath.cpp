@@ -39,8 +39,7 @@ HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_con
                   // Command settings
                   c_ack_time_max(hnz_conf->get_c_ack_time() * 1000)
 {
-  setConnectionState(ConnectionState::DISCONNECTED);
-  // Send audit at startup
+  // Send "dosconnected" audit at startup as there is no transition happening to trigger it here
   sendAuditFail();
   resolveProtocolStateConnection();
 }
@@ -53,14 +52,14 @@ HNZPath::~HNZPath() {
 
 void HNZPath::protocolStateTransition(const ConnectionEvent event){
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::protocolStateTransition - " + m_name_log;
-  if(protocolStateTransitionMap.find({m_protocol_state, event}) == protocolStateTransitionMap.end()){
-    HnzUtility::log_warn(beforeLog + " Invalid protocol transition : event %s from %s", connectionEvent2str[event].c_str(), protocolState2str[m_protocol_state].c_str());
+  if(m_protocolStateTransitionMap.find({m_protocol_state, event}) == m_protocolStateTransitionMap.end()){
+    HnzUtility::log_warn(beforeLog + " Invalid protocol transition : event %s from %s", connectionEvent2str(event).c_str(), protocolState2str(m_protocol_state).c_str());
     return;
   }
-  std::pair<ProtocolState, std::vector<void (HNZPath::*)()>> resolveTransition = protocolStateTransitionMap[{m_protocol_state, event}];
+  std::pair<ProtocolState, std::vector<void (HNZPath::*)()>> resolveTransition = m_protocolStateTransitionMap[{m_protocol_state, event}];
 
-  HnzUtility::log_info(beforeLog + " Issuing protocol state transition %s : %s -> %s", connectionEvent2str[event].c_str(),
-    protocolState2str[m_protocol_state].c_str(), protocolState2str[resolveTransition.first].c_str());
+  HnzUtility::log_info(beforeLog + " Issuing protocol state transition %s : %s -> %s", connectionEvent2str(event).c_str(),
+    protocolState2str(m_protocol_state).c_str(), protocolState2str(resolveTransition.first).c_str());
   // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
   // Same can happen if m_protocol_state_mutex from the other path gets locked later withing this function
   std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock all mutexes simultaneously
@@ -171,13 +170,9 @@ void HNZPath::resolveProtocolStateConnected(){
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnected - " + m_name_log;
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
 
-  // Be passive by default, HNZConnection will switch to ACTIVE if needed
-  setConnectionState(ConnectionState::PASSIVE);
-  m_hnz_connection->pathConnectionChanged(this, true);
+  // Ask to be active, HNZConnection will decide if this path can be active or passive
+  m_hnz_connection->requestConnectionState(this, ConnectionState::ACTIVE);
 
-  if (m_connection_state == ConnectionState::ACTIVE) {
-    m_hnz_connection->updateConnectionStatus(ConnectionStatus::STARTED);
-  }
   HnzUtility::log_debug(beforeLog + " HNZ Connection initialized !!");
 
   m_last_connected = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -187,8 +182,7 @@ void HNZPath::resolveProtocolStateConnection(){
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnection - " + m_name_log;
   HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
 
-  setConnectionState(ConnectionState::DISCONNECTED);
-  m_hnz_connection->pathConnectionChanged(this, false);
+  m_hnz_connection->requestConnectionState(this, ConnectionState::DISCONNECTED);
 
   // Initialize internal variable
   resetInputVariables();
@@ -354,18 +348,28 @@ void HNZPath::sendInitMessages(){
 }
 
 void HNZPath::setConnectionState(ConnectionState newState) {
-  bool sendAudit = (isHNZConnected() && 
-    (m_connection_state == ConnectionState::PASSIVE && newState == ConnectionState::ACTIVE) ||
-    (m_connection_state == ConnectionState::ACTIVE && newState == ConnectionState::PASSIVE));
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::setConnectionState - " + m_name_log;
+  // Only process updates (especially audits) when state changed
+  if (newState != m_connection_state) {
+    ConnectionState oldState = m_connection_state;
+    m_connection_state = newState;
+    m_name_log = "[" + m_path_name + " - " + connectionState2str(m_connection_state) + "]";
+    HnzUtility::log_debug(beforeLog + " => " + m_name_log);
 
-  m_connection_state = newState;
-  m_name_log = "[" + m_path_name + " - " + connectionState2str[m_connection_state] + "]";
-  if(sendAudit) sendAuditSuccess(); // A new audit is required in case of a transition active/passive
+    // Transitions to ACTIVE or PASSIVE generate a success audit
+    if ((newState == ConnectionState::PASSIVE) || (newState == ConnectionState::ACTIVE)) {
+      sendAuditSuccess();
+    }
+    // Any other transition except those between DISCONNECTED and PENDING_HNZ generate a failure audit
+    else if (((oldState != ConnectionState::PENDING_HNZ) && (newState == ConnectionState::DISCONNECTED))
+          || ((oldState != ConnectionState::DISCONNECTED) && (newState == ConnectionState::PENDING_HNZ))) {
+      sendAuditFail();
+    }
+  }
 }
 
 void HNZPath::setConnectionPending(){
-  setConnectionState(ConnectionState::PENDING_HNZ);
-  m_hnz_connection->pathConnectionChanged(this, false);
+  m_hnz_connection->requestConnectionState(this, ConnectionState::PENDING_HNZ);
 }
 
 vector<vector<unsigned char>> HNZPath::getData() {

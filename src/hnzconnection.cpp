@@ -311,11 +311,11 @@ void HNZConnection::m_update_quality_update_timer() {
   m_hnz_fledge->updateQualityUpdateTimer(m_elapsedTimeMs);
 }
 
-void HNZConnection::pathConnectionChanged(HNZPath* path, bool isReady) {
+void HNZConnection::requestConnectionState(HNZPath* path, ConnectionState newState) {
   if(!path) return;
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::pathConnectionChanged -";
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::requestConnectionState -";
   std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-  HnzUtility::log_debug("%s Path %s changed connection state : %s.", beforeLog.c_str(), path->getName().c_str(), isReady ? "ready" : "not ready");
+  HnzUtility::log_debug("%s Path %s request connection state change to %s", beforeLog.c_str(), path->getName().c_str(), path->connectionState2str(newState).c_str());
 
   if(m_first_input_connected == nullptr && (path->getProtocolState() == ProtocolState::INPUT_CONNECTED || path->getProtocolState() == ProtocolState::CONNECTED)){
     HnzUtility::log_debug("%s Path %s has INPUT_CONNECTED first.", beforeLog.c_str(), path->getName().c_str());
@@ -324,28 +324,35 @@ void HNZConnection::pathConnectionChanged(HNZPath* path, bool isReady) {
     m_first_input_connected = nullptr;
   }
 
-  if(isReady){
+  if(newState == ConnectionState::ACTIVE || newState == ConnectionState::PASSIVE){
+    // Transition to ACTIVE/PASSIVE requested, check if path can become ACTIVE or should be PASSIVE
     if(!m_active_path){
       m_active_path = path;
-      HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
       path->setConnectionState(ConnectionState::ACTIVE);
       updateConnectionStatus(ConnectionStatus::STARTED);
     }
+    else {
+      path->setConnectionState(ConnectionState::PASSIVE);
+    }
   } else {
+    // Accept other tansitions immediately
+    path->setConnectionState(newState);
     if(path == m_active_path){
       // We lost the connection on the active path
       m_active_path = nullptr;
       m_gi_repeat = 0;
-      // Check for other available paths
-      for (HNZPath* otherPath: m_paths)
-      {
-        if(otherPath != nullptr && otherPath != path && otherPath->getConnectionState() == ConnectionState::PASSIVE){
-          m_active_path = otherPath;
-          otherPath->setConnectionState(ConnectionState::ACTIVE);
-          HnzUtility::log_warn("%s Switching active and passive path.", beforeLog.c_str());
-          HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
-          updateConnectionStatus(ConnectionStatus::STARTED);
-          return;
+      // If we are not shutting down the whole connection
+      if (m_is_running) {
+        // Check for other available paths
+        for (HNZPath* otherPath: m_paths)
+        {
+          if(otherPath != nullptr && otherPath != path && otherPath->getConnectionState() == ConnectionState::PASSIVE){
+            m_active_path = otherPath;
+            HnzUtility::log_warn("%s Connection lost on active path : Switching activity to other path", beforeLog.c_str());
+            otherPath->setConnectionState(ConnectionState::ACTIVE);
+            updateConnectionStatus(ConnectionStatus::STARTED);
+            return;
+          }
         }
       }
       // No suitable path found !

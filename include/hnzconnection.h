@@ -21,6 +21,7 @@ class HNZ;
 class HNZPath;
 enum class ConnectionStatus;
 enum class GiStatus;
+enum class ConnectionState : unsigned char;
 
 /**
  * @brief Class used to manage the HNZ connection. Manage one path (or two path,
@@ -90,8 +91,9 @@ class HNZConnection {
 
   /**
    * Manages the connection state of the different paths.
+   * HNZConnection decide if transition is allowed or not and make the actual state update.
    */
-  void pathConnectionChanged(HNZPath* path, bool isReady);
+  void requestConnectionState(HNZPath* path, ConnectionState newState);
 
 #ifdef UNIT_TEST
   /**

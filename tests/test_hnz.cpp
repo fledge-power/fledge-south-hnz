@@ -9,6 +9,8 @@
 #include <mutex>
 #include <sstream>
 #include <regex>
+#include <time.h>
+#include <stdlib.h>
 
 #include "hnz.h"
 #include "hnzpath.h"
@@ -196,7 +198,7 @@ string protocol_stack_generator(int port, int port2) {
          ((port2 != 0) ? ",{ \"srv_ip\" : \"0.0.0.0\", \"port\" : " +
                              to_string(port2) + "}"
                        : "") +
-         " ] } , \"application_layer\" : { \"repeat_timeout\" : 3000, \"repeat_path_A\" : 3,"
+         " ] } , \"application_layer\" : { \"repeat_timeout\" : 3000, \"repeat_path_A\" : 3, \"modulo_use_utc\" : false,"
          "\"remote_station_addr\" : 1, \"max_sarm\" : 5, \"gi_time\" : 1, \"gi_schedule\": \"00:00\", \"gi_repeat_count\" : 2,"
          "\"anticipation_ratio\" : 5, \"inacc_timeout\" : 180, \"bulle_time\" : 10  }, \"south_monitoring\" : { \"asset\" : \"TEST_STATUS\" } } }";
 }
@@ -610,7 +612,7 @@ class HNZTest : public testing::Test {
       ASSERT_EQ(dataObjectsReceived, labels.size());
       resetCounters();
     }
-    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     std::string timeRangeStr(to_string(epochMs - 1000) + ";" + to_string(epochMs));
     std::shared_ptr<Reading> currentReading = nullptr;
     for(const auto& label: labels) {
@@ -991,7 +993,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   // Validate epoch timestamp encoding
   ///////////////////////////////////////
   // Default is 0
-  std::chrono::time_point<std::chrono::high_resolution_clock> dateTime = {};
+  std::chrono::time_point<std::chrono::system_clock> dateTime = {};
   unsigned char daySection = 0;
   unsigned int ts = 0;
   unsigned long epochMs = HNZ::getEpochMsTimestamp(dateTime, daySection, ts);
@@ -1049,7 +1051,7 @@ TEST_F(HNZTest, ReceivingTSCEMessages) {
   ASSERT_GE(startupModulo, 0);
   ASSERT_LE(startupModulo, 143);
 
-  dateTime = std::chrono::high_resolution_clock::now();
+  dateTime = std::chrono::system_clock::now();
   // Day section is initialized when sending SET TIME message after connection is established
   daySection = startupModulo;
   ts = 14066;
@@ -3575,7 +3577,7 @@ TEST_F(HNZTest, GIScheduleActiveFuture) {
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
 
-  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   unsigned long totalMinutes = epochMs / 60000;
   unsigned long totalHours = totalMinutes / 60;
   unsigned long totalDays = totalHours / 24;
@@ -3889,4 +3891,69 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsResultInGi) {
   // No more TEST_STATUS should be sent
   ASSERT_EQ(popFrontReadingsUntil("TEST_STATUS"), nullptr);
   if(HasFatalFailure()) return;
+}
+
+
+TEST_F(HNZTest, timeSettingsUseUTC) {
+  // Validates the use of local or UTC time in inital time settings messages
+
+  /*  _POSIX_C_SOURCE >= 200112L ||  glibc <= 2.19: */
+  setenv("TZ", "CET", 1); // Set timezone as Central European Time (UTC+1)
+  tzset();
+
+  int port = getNextPort();
+  ServersWrapper wrapper(0x05, port);
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  std::shared_ptr<MSG_TRAME> time_frame = findFrameWithId(server->popLastFramesReceived(), 0x1d); // Time settings
+  ASSERT_NE(time_frame, nullptr);
+  debug_print("Received time : %s", BasicHNZServer::frameToStr(time_frame).c_str());
+
+  ASSERT_GE(time_frame->usLgBuffer, 6);
+  char mod10m = time_frame->aubTrame[3];
+  long int frac = (time_frame->aubTrame[4] << 8) + time_frame->aubTrame[5];
+  long int total_seconds_local = mod10m * 600 + frac / 100;
+
+  // TSCE timestamp handling
+  unsigned long expectedEpochMs_local = HNZ::getEpochMsTimestamp(std::chrono::system_clock::now(), mod10m, 14066);
+
+  std::string protocol_stack = protocol_stack_generator(port, 0);
+  std::string protocol_stack_custom = std::regex_replace(protocol_stack, std::regex("\"modulo_use_utc\" : false"), "\"modulo_use_utc\" : true");
+  debug_print("[HNZ south plugin] Reconfigure plugin with modulo_use_utc : true");
+  clearReadings();
+  wrapper.initHNZPlugin(protocol_stack_custom);
+
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  time_frame = findFrameWithId(server->popLastFramesReceived(), 0x1d); // Time settings
+  ASSERT_NE(time_frame, nullptr);
+  debug_print("Received time : %s", BasicHNZServer::frameToStr(time_frame).c_str());
+  ASSERT_GE(time_frame->usLgBuffer, 6);
+
+  ASSERT_GE(time_frame->usLgBuffer, 6);
+  mod10m = time_frame->aubTrame[3];
+  frac = (time_frame->aubTrame[4] << 8) + time_frame->aubTrame[5];
+  long int total_seconds_utc = mod10m * 600 + frac / 100;
+  // 1 min tolerance, modulo prevents errors if the test runs at midnight
+  ASSERT_TRUE(abs(total_seconds_local - (total_seconds_utc + 3600)) % 86400 <= 60 ||
+              abs(total_seconds_local - (total_seconds_utc + 7200)) % 86400 <= 60) << "Local time (CET) should be equal to UTC+1 or UTC+2 (summer).";
+
+  // TSCE timestamp handling
+  unsigned long expectedEpochMs_utc = HNZ::getEpochMsTimestamp(std::chrono::system_clock::now(), mod10m, 14066);
+  ASSERT_TRUE(expectedEpochMs_local - expectedEpochMs_utc == 3600000 ||
+              expectedEpochMs_local - expectedEpochMs_utc == 7200000) << "Local time (CET) should be equal to UTC+1 or UTC+2 (summer).";
 }

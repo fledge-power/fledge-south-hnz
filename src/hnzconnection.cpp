@@ -274,7 +274,7 @@ void HNZConnection::m_check_GI() {
   }
 }
 
-void HNZConnection::m_check_command_timer(std::shared_ptr<HNZPath> path) {
+void HNZConnection::m_check_command_timer(std::shared_ptr<HNZPath> path) const {
   if(path == nullptr) return;
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_command_timer -";
   if (!path->command_sent.empty()) {
@@ -345,7 +345,7 @@ void HNZConnection::requestConnectionState(HNZPath* path, ConnectionState newSta
 }
 
 
-bool HNZConnection::tryActivateOtherPath(HNZPath* path) {
+bool HNZConnection::tryActivateOtherPath(const HNZPath* path) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::tryActivateOtherPath -";
   std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
   // Only find a path to activate if we are not shutting down the whole connection

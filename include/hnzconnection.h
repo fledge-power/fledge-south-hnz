@@ -85,7 +85,7 @@ class HNZConnection {
    * Get both active and passive path as an array of pointers (with a single lock)
    * @return array of existing paths
    */
-  std::array<std::shared_ptr<HNZPath>, MAXPATHS> getPaths() {
+  const std::array<std::shared_ptr<HNZPath>, MAXPATHS>& getPaths() const {
     return m_paths;
   };
 
@@ -102,7 +102,7 @@ class HNZConnection {
    * @param path Path that cannot be activated
    * @return true if a path to activate was found, else false
    */
-  bool tryActivateOtherPath(HNZPath* path);
+  bool tryActivateOtherPath(const HNZPath* path);
 
 #ifdef UNIT_TEST
   /**
@@ -219,7 +219,7 @@ class HNZConnection {
    * Checks that sent command messages have been acknowledged and removes them
    * from the sent queue.
    */
-  void m_check_command_timer(std::shared_ptr<HNZPath> path);
+  void m_check_command_timer(std::shared_ptr<HNZPath> path) const;
 
   /**
    * Update the current time and time elapsed since last call to this function

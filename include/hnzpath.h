@@ -176,7 +176,14 @@ class HNZPath {
   void sendGeneralInterrogation();
 
   /**
+   * Request to HNZConnection a change of connection state for this path
+   * @param newState New state requested
+   */
+  void requestConnectionState(ConnectionState newState);
+
+  /**
    * Set the state of the path.
+   * @param newState New state applied
    */
   void setConnectionState(ConnectionState newState);
 
@@ -190,6 +197,7 @@ class HNZPath {
    * Get current connection state.
    */
   ConnectionState getConnectionState() const {
+    std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
     return m_connection_state;
   }
 
@@ -266,8 +274,9 @@ class HNZPath {
   std::condition_variable m_state_changed_cond; // Condition variable used to notify changes in m_manageHNZProtocolConnection thread
   bool m_state_changed = false; // variable set to true when m_protocol_state changed
   ProtocolState m_protocol_state = ProtocolState::CONNECTION; // HNZ Protocol connection state
-  ConnectionState m_connection_state = ConnectionState::DISCONNECTED; // Effective connection state
   mutable std::recursive_mutex m_protocol_state_mutex; // mutex to protect changes in m_protocol_state
+  ConnectionState m_connection_state = ConnectionState::DISCONNECTED; // Effective connection state
+  mutable std::recursive_mutex m_connection_state_mutex; // mutex to protect changes in m_connection_state
 
   // Plugin configuration
   string m_ip;  // IP of the PA
@@ -307,6 +316,7 @@ class HNZPath {
 
 
   void m_refreshNameLog() {
+    std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
     m_name_log = "[" + m_path_name + " - " + connectionState2str(m_connection_state) + "]";
   }
   /**

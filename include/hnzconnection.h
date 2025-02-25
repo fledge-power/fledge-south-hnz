@@ -63,7 +63,7 @@ class HNZConnection {
    * @return the active path
    */
   HNZPath* getActivePath() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
     return m_active_path;
   };
 
@@ -72,7 +72,7 @@ class HNZConnection {
    * @return a passive path or nullptr
    */
   HNZPath* getPassivePath() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
     for (std::shared_ptr<HNZPath> path: m_paths)
     {
       auto rawPath = path.get();
@@ -86,7 +86,6 @@ class HNZConnection {
    * @return array of existing paths
    */
   std::array<std::shared_ptr<HNZPath>, MAXPATHS> getPaths() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     return m_paths;
   };
 
@@ -132,9 +131,9 @@ class HNZConnection {
   GiStatus getGiStatus();
 
   /**
-   * Returns mutex used to protect the active and passive path
+   * Returns mutex used to protect the active path
    */
-  std::recursive_mutex& getPathMutex() { return m_path_mutex; }
+  std::recursive_mutex& getActivePathMutex() { return m_active_path_mutex; }
 
    /**
    * Returns the running status of the connection
@@ -146,6 +145,7 @@ class HNZConnection {
    * Ensures that only one of the two possible path will extract the message at all times.
    */
   bool canPathExtractMessage(HNZPath* path){
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
     if(path == nullptr) return false;
     if(path == m_active_path){
       return true;
@@ -174,7 +174,7 @@ class HNZConnection {
   // First path in protocol state INPUT_CONNECTED, covers edge cases of the protocol
   HNZPath* m_first_input_connected = nullptr;
   std::array<std::shared_ptr<HNZPath>, MAXPATHS> m_paths = {nullptr, nullptr};
-  std::recursive_mutex m_path_mutex;
+  std::recursive_mutex m_active_path_mutex;
   std::shared_ptr<std::thread> m_messages_thread;  // Main thread that monitors messages
   std::atomic<bool> m_is_running{false};  // If false, the connection thread will stop
   uint64_t m_current = 0;         // Store the last time requested

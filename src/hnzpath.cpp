@@ -61,11 +61,11 @@ void HNZPath::protocolStateTransition(const ConnectionEvent event){
 
   HnzUtility::log_info(beforeLog + " Issuing protocol state transition %s : %s -> %s", connectionEvent2str(event).c_str(),
     protocolState2str(m_protocol_state).c_str(), protocolState2str(resolveTransition.first).c_str());
-  // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+  // Here m_active_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
   // Same can happen if m_protocol_state_mutex from the other path gets locked later withing this function
-  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock all mutexes simultaneously
+  std::lock(m_protocol_state_mutex, m_hnz_connection->getActivePathMutex()); // Lock all mutexes simultaneously
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
-  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getActivePathMutex(), std::adopt_lock);
 
   bool state_changed = (m_protocol_state != resolveTransition.first);
   m_protocol_state = resolveTransition.first;
@@ -159,6 +159,7 @@ std::string convert_messages_to_str(const deque<Message>& messages) {
 }
 
 void HNZPath::sendAuditSuccess(){
+  std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
   std::string activePassive = m_connection_state == ConnectionState::ACTIVE ? "active" : "passive";
   HnzUtility::audit_success("SRVFL", m_hnz_connection->getServiceName() + "-" + m_path_letter + "-" + activePassive);
 }
@@ -170,10 +171,9 @@ void HNZPath::sendAuditFail(){
 void HNZPath::resolveProtocolStateConnected(){
   std::string beforeLogRoot = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnected - ";
   std::string beforeLog = beforeLogRoot + m_name_log;
-  std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
 
   // Ask to be active, HNZConnection will decide if this path can be active or passive
-  m_hnz_connection->requestConnectionState(this, ConnectionState::ACTIVE);
+  requestConnectionState(ConnectionState::ACTIVE);
   // m_name_log may have changed here so update log prefix
   beforeLog = beforeLogRoot + m_name_log;
 
@@ -186,7 +186,7 @@ void HNZPath::resolveProtocolStateConnection(){
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::resolveProtocolStateConnection - " + m_name_log;
   HnzUtility::log_info(beforeLog + " Going to HNZ connection state... Waiting for a SARM.");
 
-  m_hnz_connection->requestConnectionState(this, ConnectionState::DISCONNECTED);
+  requestConnectionState(ConnectionState::DISCONNECTED);
 
   // Initialize internal variable
   resetInputVariables();
@@ -280,10 +280,10 @@ void HNZPath::m_manageHNZProtocolConnection() {
 
   do {
     {
-      // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
-      std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+      // Here m_active_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+      std::lock(m_protocol_state_mutex, m_hnz_connection->getActivePathMutex()); // Lock both mutexes simultaneously
       std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
-      std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+      std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getActivePathMutex(), std::adopt_lock);
       long long now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
       sleep = m_manageHNZProtocolState(now);
     }
@@ -354,8 +354,18 @@ void HNZPath::sendInitMessages(){
   m_last_connected = 0;
 }
 
+void HNZPath::requestConnectionState(ConnectionState newState) {
+  // Here m_active_path_mutex might be locked within the scope of m_connection_state_mutex lock, so lock both to avoid deadlocks
+  // Same can happen if m_connection_state_mutex from the other path gets locked later withing this function
+  std::lock(m_connection_state_mutex, m_hnz_connection->getActivePathMutex()); // Lock all mutexes simultaneously
+  std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex, std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getActivePathMutex(), std::adopt_lock);
+  m_hnz_connection->requestConnectionState(this, newState);
+}
+
 void HNZPath::setConnectionState(ConnectionState newState) {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::setConnectionState - " + m_name_log;
+  std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
   // Only process updates (especially audits) when state changed
   if (newState != m_connection_state) {
     ConnectionState oldState = m_connection_state;
@@ -376,7 +386,7 @@ void HNZPath::setConnectionState(ConnectionState newState) {
 }
 
 void HNZPath::setConnectionPending(){
-  m_hnz_connection->requestConnectionState(this, ConnectionState::PENDING_HNZ);
+  requestConnectionState(ConnectionState::PENDING_HNZ);
 }
 
 vector<vector<unsigned char>> HNZPath::getData() {
@@ -455,10 +465,10 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
 void HNZPath::m_receivedINFO(unsigned char* data, int size, vector<vector<unsigned char>>* messages){
   if(messages == nullptr) return;
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_receivedINFO - " + m_name_log;
-  // Here m_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
-  std::lock(m_protocol_state_mutex, m_hnz_connection->getPathMutex()); // Lock both mutexes simultaneously
+  // Here m_active_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
+  std::lock(m_protocol_state_mutex, m_hnz_connection->getActivePathMutex()); // Lock both mutexes simultaneously
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex, std::adopt_lock);
-  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getPathMutex(), std::adopt_lock);
+  std::lock_guard<std::recursive_mutex> lock2(m_hnz_connection->getActivePathMutex(), std::adopt_lock);
   unsigned char type = data[1];           // Message type (INFO)
   // Get NR, P/F ans NS field
   int ns = (type >> 1) & 0x07;
@@ -470,7 +480,7 @@ void HNZPath::m_receivedINFO(unsigned char* data, int size, vector<vector<unsign
     // Information frame
     HnzUtility::log_info(beforeLog + " Received an information frame (ns = " + to_string(ns) +
                                     ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
-    std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getPathMutex());
+    std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getActivePathMutex());
     if (m_hnz_connection->canPathExtractMessage(this)) {
       // Only the messages on the active path are extracted. The
       // passive path does not need them.

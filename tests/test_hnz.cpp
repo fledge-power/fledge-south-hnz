@@ -3918,8 +3918,25 @@ TEST_F(HNZTest, timeSettingsUseUTC) {
   long int frac = (time_frame->aubTrame[4] << 8) + time_frame->aubTrame[5];
   long int total_seconds_local = mod10m * 600 + frac / 100;
 
-  // TSCE timestamp handling
-  unsigned long expectedEpochMs_local = HNZ::getEpochMsTimestamp(std::chrono::system_clock::now(), mod10m, 14066);
+  int ts = 14066;
+
+  // TSCE timestamp handling -----------------------------------------------------
+  unsigned char msb = static_cast<unsigned char>(ts >> 8);
+  unsigned char lsb = static_cast<unsigned char>(ts & 0xFF);
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x33, 0x28, msb, lsb}, false);
+  debug_print("[HNZ Server] TSCE sent");
+  waitUntil(dataObjectsReceived, 1, 1000);
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TS1");
+
+  Datapoint* data_object = getObject(*currentReading, "data_object");
+  ASSERT_NE(nullptr, data_object) << ": data_object is null";
+  int64_t do_ts_local = getIntValue(getChild(*data_object, "do_ts"));
+  if(HasFatalFailure()) return;
+  // ------------------------------------------------------------------------------
 
   std::string protocol_stack = protocol_stack_generator(port, 0);
   std::string protocol_stack_custom = std::regex_replace(protocol_stack, std::regex("\"modulo_use_utc\" : false"), "\"modulo_use_utc\" : true");
@@ -3952,8 +3969,25 @@ TEST_F(HNZTest, timeSettingsUseUTC) {
   ASSERT_TRUE(abs(total_seconds_local - (total_seconds_utc + 3600)) % 86400 <= 60 ||
               abs(total_seconds_local - (total_seconds_utc + 7200)) % 86400 <= 60) << "Local time (CET) should be equal to UTC+1 or UTC+2 (summer).";
 
-  // TSCE timestamp handling
-  unsigned long expectedEpochMs_utc = HNZ::getEpochMsTimestamp(std::chrono::system_clock::now(), mod10m, 14066);
-  ASSERT_TRUE(expectedEpochMs_local - expectedEpochMs_utc == 3600000 ||
-              expectedEpochMs_local - expectedEpochMs_utc == 7200000) << "Local time (CET) should be equal to UTC+1 or UTC+2 (summer).";
+  unsigned long expectedEpochMs_utc = HNZ::getEpochMsTimestamp(std::chrono::system_clock::now(), mod10m, ts);
+
+  clearReadings();
+  resetCounters();
+  // TSCE timestamp handling -----------------------------------------------------
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x33, 0x28, msb, lsb}, false);
+  debug_print("[HNZ Server] TSCE sent");
+  waitUntil(dataObjectsReceived, 1, 1000);
+
+  // Check that ingestCallback had been called
+  ASSERT_EQ(dataObjectsReceived, 1);
+  resetCounters();
+  currentReading = popFrontReadingsUntil("TS1");
+
+  data_object = getObject(*currentReading, "data_object");
+  ASSERT_NE(nullptr, data_object) << ": data_object is null";
+  int64_t do_ts_utc = getIntValue(getChild(*data_object, "do_ts"));
+  if(HasFatalFailure()) return;
+  // ------------------------------------------------------------------------------
+  debug_print("Values found : do_ts_local = %ld, do_ts_utc = %ld, expectedEpochMs_utc = %ld", do_ts_local, do_ts_utc, expectedEpochMs_utc);
+  ASSERT_TRUE(do_ts_local == do_ts_utc && do_ts_local == expectedEpochMs_utc) << "Status points timestamps should always be using UTC time.";
 }

@@ -303,7 +303,7 @@ void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned ch
   // No reading to send when reciving modulo code, but keep the parameter
   // to get a homogenous signature for all m_handle*() methods
   readings.clear();
-  m_daySection = data[1];
+  setDaySection(data[1]);
 }
 
 void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& data) const {
@@ -355,9 +355,15 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
   // Using C time (C++11 limitations conversion to local time)
   time_t now = time(0);
-  tm* time_struct = new tm();
-  m_hnz_conf->get_use_utc() ? gmtime_r(&now, time_struct) : localtime_r(&now, time_struct);
-  unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::from_time_t(mktime(time_struct)), m_daySection, ts);
+  tm* time_struct_real = new tm();
+  m_hnz_conf->get_use_utc() ? gmtime_r(&now, time_struct_real) : localtime_r(&now, time_struct_real);
+  unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::from_time_t(mktime(time_struct_real)), m_daySection, ts);
+
+  // Always timestamp with UTC time --------
+  tm* time_struct_utc = new tm();
+  gmtime_r(&now, time_struct_utc);
+  unsigned long real_utc_offset_ms = static_cast<unsigned long>((mktime(time_struct_real) - mktime(time_struct_utc))) * 1000;
+  // ----------------------------------------
 
   ReadingParameters params;
   params.label = label;
@@ -366,7 +372,7 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   params.msg_address = msg_address;
   params.value = value;
   params.valid = valid;
-  params.ts = epochMs;
+  params.ts = epochMs - real_utc_offset_ms;
   params.ts_iv = ts_iv;
   params.ts_c = ts_c;
   params.ts_s = ts_s;

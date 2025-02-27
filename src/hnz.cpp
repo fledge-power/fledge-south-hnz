@@ -354,15 +354,15 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   unsigned int ts_s = data[2] & 0x1;          // S bit
   unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
   // Using C time (C++11 limitations conversion to local time)
-  time_t now = time(0);
-  tm* time_struct_real = new tm();
-  m_hnz_conf->get_use_utc() ? gmtime_r(&now, time_struct_real) : localtime_r(&now, time_struct_real);
-  unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::from_time_t(mktime(time_struct_real)), m_daySection, ts);
+  time_t now = time(nullptr);
+  auto time_struct_real = tm();
+  m_hnz_conf->get_use_utc() ? gmtime_r(&now, &time_struct_real) : localtime_r(&now, &time_struct_real);
+  auto epochMs = getEpochMsTimestamp(std::chrono::system_clock::from_time_t(mktime(&time_struct_real)), m_daySection, ts);
 
   // Always timestamp with UTC time --------
-  tm* time_struct_utc = new tm();
-  gmtime_r(&now, time_struct_utc);
-  unsigned long real_utc_offset_ms = static_cast<unsigned long>((mktime(time_struct_real) - mktime(time_struct_utc))) * 1000;
+  auto time_struct_utc = tm();
+  gmtime_r(&now, &time_struct_utc);
+  auto real_utc_offset_ms = static_cast<unsigned long>((mktime(&time_struct_real) - mktime(&time_struct_utc))) * 1000;
   // ----------------------------------------
 
   ReadingParameters params;

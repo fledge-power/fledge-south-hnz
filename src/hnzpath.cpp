@@ -781,13 +781,13 @@ void HNZPath::m_send_date_setting() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_send_date_setting - " + m_name_log;
   unsigned char msg[4];
   // Using C time (C++11 limitations conversion to local time)
-  time_t now = time(0);
-  tm* time_struct = new tm();
-  m_use_utc ? gmtime_r(&now, time_struct) : localtime_r(&now, time_struct);
+  time_t now = time(nullptr);
+  tm time_struct = tm();
+  m_use_utc ? gmtime_r(&now, &time_struct) : localtime_r(&now, &time_struct);
   msg[0] = SETDATE_CODE;
-  msg[1] = time_struct->tm_mday;
-  msg[2] = time_struct->tm_mon + 1;
-  msg[3] = time_struct->tm_year % 100;
+  msg[1] = time_struct.tm_mday;
+  msg[2] = time_struct.tm_mon + 1;
+  msg[3] = time_struct.tm_year % 100;
   bool sent = m_sendInfo(msg, sizeof(msg));
   HnzUtility::log_info(beforeLog + " Time setting " + (sent?"sent":"discarded") + " : " + to_string((int)msg[1]) + "/" +
                                   to_string((int)msg[2]) + "/" + to_string((int)msg[3]));
@@ -797,10 +797,10 @@ void HNZPath::m_send_time_setting() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_send_time_setting - " + m_name_log;
   // Using C time (C++11 limitations conversion to local time)
   time_t now = time(0);
-  tm* time_struct = new tm();
-  m_use_utc ? gmtime_r(&now, time_struct) : localtime_r(&now, time_struct);
+  tm time_struct = tm();
+  m_use_utc ? gmtime_r(&now, &time_struct) : localtime_r(&now, &time_struct);
   long int ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::system_clock::from_time_t(mktime(time_struct)).time_since_epoch()).count();
+              std::chrono::system_clock::from_time_t(mktime(&time_struct)).time_since_epoch()).count();
   long int ms_today = ms_since_epoch % 86400000;
   long int mod10m = ms_today / 600000;
   long int frac = (ms_today - (mod10m * 600000)) / 10;

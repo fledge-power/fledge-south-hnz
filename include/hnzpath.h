@@ -176,7 +176,14 @@ class HNZPath {
   void sendGeneralInterrogation();
 
   /**
+   * Request to HNZConnection a change of connection state for this path
+   * @param newState New state requested
+   */
+  void requestConnectionState(ConnectionState newState);
+
+  /**
    * Set the state of the path.
+   * @param newState New state applied
    */
   void setConnectionState(ConnectionState newState);
 
@@ -190,6 +197,7 @@ class HNZPath {
    * Get current connection state.
    */
   ConnectionState getConnectionState() const {
+    std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
     return m_connection_state;
   }
 
@@ -213,7 +221,37 @@ class HNZPath {
    */
   void resetLastConnected() { m_last_connected = 0;}
 
+  /**
+   * Send the business messages expected after the connection is fully initialized : Date update + time update + GI request
+   */
   void sendInitMessages();
+
+  /**
+   * Converts a ConnectionState enum as string
+   * @param state Enum value to convert
+   * @return String corresponding to the enum value
+   */
+  const std::string& connectionState2str(ConnectionState state) const {
+    return m_connectionState2str.at(state);
+  }
+
+  /**
+   * Converts a ProtocolState enum as string
+   * @param state Enum value to convert
+   * @return String corresponding to the enum value
+   */
+  const std::string& protocolState2str(ProtocolState state) const {
+    return m_protocolState2str.at(state);
+  }
+
+  /**
+   * Converts a ConnectionEvent enum as string
+   * @param state Enum value to convert
+   * @return String corresponding to the enum value
+   */
+  const std::string& connectionEvent2str(ConnectionEvent state) const {
+    return m_connectionEvent2str.at(state);
+  }
 
  private:
   std::unique_ptr<HNZClient> m_hnz_client;  // HNZ Client that manage TCP connection
@@ -236,8 +274,9 @@ class HNZPath {
   std::condition_variable m_state_changed_cond; // Condition variable used to notify changes in m_manageHNZProtocolConnection thread
   bool m_state_changed = false; // variable set to true when m_protocol_state changed
   ProtocolState m_protocol_state = ProtocolState::CONNECTION; // HNZ Protocol connection state
-  ConnectionState m_connection_state = ConnectionState::DISCONNECTED; // Effective connection state
   mutable std::recursive_mutex m_protocol_state_mutex; // mutex to protect changes in m_protocol_state
+  ConnectionState m_connection_state = ConnectionState::DISCONNECTED; // Effective connection state
+  mutable std::recursive_mutex m_connection_state_mutex; // mutex to protect changes in m_connection_state
 
   // Plugin configuration
   string m_ip;  // IP of the PA
@@ -275,6 +314,11 @@ class HNZPath {
   int m_nbr_sarm_sent = 0;  // Number of SARM sent
   int m_repeat = 0;         // Number of times the sent message is repeated
 
+
+  void m_refreshNameLog() {
+    std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
+    m_name_log = "[" + m_path_name + " - " + connectionState2str(m_connection_state) + "]";
+  }
   /**
    * Manage the HNZ protocol connection with the PA. Be careful, it doesn't
    * manage the TCP connection.
@@ -479,41 +523,42 @@ class HNZPath {
   *
   *  Each entry of this map represents a transition between protocol states, triggered by a ConnectionEvent and resolved by an ordered list of actions.
   */
-  std::map<std::pair<ProtocolState, ConnectionEvent>, std::pair<ProtocolState, std::vector<void (HNZPath::*)()>>> protocolStateTransitionMap = {
+  std::map<std::pair<ProtocolState, ConnectionEvent>, std::pair<ProtocolState, std::vector<void (HNZPath::*)()>>> m_protocolStateTransitionMap = {
     {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetInputVariables}                                                                                  }},
     {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_UA   }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::setConnectionPending, &HNZPath::resetOutputVariables}                                                                                 }},
     {{ProtocolState::CONNECTION,       ConnectionEvent::MAX_SARM_SENT }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                                    }},
+    {{ProtocolState::CONNECTION,       ConnectionEvent::TO_RECV       }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                                    }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetInputVariables}                                                                                  }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TO_RECV       }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
-    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_UA   }, {ProtocolState::CONNECTED,        {&HNZPath::resetOutputVariables, &HNZPath::resolveProtocolStateConnected, &HNZPath::sendAuditSuccess}            }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_UA   }, {ProtocolState::CONNECTED,        {&HNZPath::resetOutputVariables, &HNZPath::resolveProtocolStateConnected}            }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::MAX_SARM_SENT }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                                    }},
-    {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTED,        {&HNZPath::resetInputVariables, &HNZPath::sendAuditSuccess, &HNZPath::resolveProtocolStateConnected}             }},
+    {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTED,        {&HNZPath::resetInputVariables, &HNZPath::resolveProtocolStateConnected}             }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::MAX_SEND      }, {ProtocolState::CONNECTION,       {&HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resolveProtocolStateConnection}                                          }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::MAX_SEND      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_TCACK      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::sendAuditFail, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables} }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_RECV       }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::setConnectionPending, &HNZPath::sendAuditFail, &HNZPath::discardMessages, &HNZPath::resetOutputVariables}                                                             }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::MAX_SEND      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_TCACK      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables} }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_RECV       }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::setConnectionPending, &HNZPath::discardMessages, &HNZPath::resetOutputVariables}                                                             }},
     {{ProtocolState::CONNECTION,       ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
     {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
     {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::discardMessages, &HNZPath::resolveProtocolStateConnection}                                                                       }},
-    {{ProtocolState::CONNECTED,        ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::sendAuditFail, &HNZPath::resolveProtocolStateConnection, &HNZPath::discardMessages}                   }}
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection, &HNZPath::discardMessages}                   }}
   };
 
-  std::map<ConnectionState, std::string> connectionState2str =  {
+  std::map<ConnectionState, std::string> m_connectionState2str =  {
     {ConnectionState::DISCONNECTED, "disconnected" },
     {ConnectionState::PENDING_HNZ,  "pending-hnz"  },
     {ConnectionState::PASSIVE,      "passive"      },
     {ConnectionState::ACTIVE,       "active"       }
   };
 
-  std::map<ProtocolState, std::string> protocolState2str =  {
+  std::map<ProtocolState, std::string> m_protocolState2str =  {
     {ProtocolState::CONNECTION,       "CONNECTION"       },
     {ProtocolState::INPUT_CONNECTED,  "INPUT_CONNECTED"  },
     {ProtocolState::OUTPUT_CONNECTED, "OUTPUT_CONNECTED" },
     {ProtocolState::CONNECTED,        "CONNECTED"        }
   };
 
-  std::map<ConnectionEvent, std::string> connectionEvent2str =  {
+  std::map<ConnectionEvent, std::string> m_connectionEvent2str =  {
     {ConnectionEvent::TCP_CNX_ESTABLISHED, "TCP_CNX_ESTABLISHED" },
     {ConnectionEvent::RECEIVED_SARM,       "RECEIVED_SARM"       },
     {ConnectionEvent::RECEIVED_UA,         "RECEIVED_UA"         },

@@ -34,10 +34,9 @@ HNZConnection::HNZConnection(std::shared_ptr<HNZConf> hnz_conf, HNZ* hnz_fledge)
   // Create the path needed
   for (int i = 0; i < MAXPATHS; i++)
   {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
     std::string pathLetter = i == 0 ? "A" : "B";
     if (m_hnz_conf->get_paths_ip()[i] != "") {
-      m_paths[i] = new HNZPath(
+      m_paths[i] = std::make_shared<HNZPath>(
                         m_hnz_conf,
                         this,
                         m_hnz_conf->get_paths_repeat()[i],
@@ -69,11 +68,6 @@ HNZConnection::~HNZConnection() {
   if (m_is_running) {
     stop();
   }
-
-  for (HNZPath* path: m_paths)
-  {
-    delete path;
-  }
 }
 
 void HNZConnection::start() {
@@ -91,8 +85,8 @@ void HNZConnection::stop() {
   // Stop the path used (close the TCP connection and stop the threads that
   // manage HNZ connections)
   {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    for (HNZPath* path: m_paths)
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
+    for (std::shared_ptr<HNZPath> path: m_paths)
     {
       if(path != nullptr){
         path->disconnect();
@@ -113,7 +107,7 @@ void HNZConnection::stop() {
 
 void HNZConnection::checkGICompleted(bool success) { 
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::checkGICompleted -";
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
   
   // GI is a success
   if (success) {
@@ -177,8 +171,8 @@ void HNZConnection::m_manageMessages() {
 
     // Manage repeat/timeout for each path
     {
-      std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-      for (HNZPath* path: m_paths)
+      std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
+      for (std::shared_ptr<HNZPath> path: m_paths)
       {
         if(path != nullptr){
           m_check_timer(path);
@@ -199,7 +193,7 @@ void HNZConnection::m_manageMessages() {
   } while (m_is_running);
 }
 
-void HNZConnection::m_check_timer(HNZPath* path) {
+void HNZConnection::m_check_timer(std::shared_ptr<HNZPath> path) {
   if(path == nullptr) return;
 
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_timer - " + path->getName();
@@ -243,7 +237,7 @@ void HNZConnection::m_check_timer(HNZPath* path) {
 }
 
 void HNZConnection::m_check_GI() {
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_GI -";
   // Check the status of an ongoing GI
   if (m_gi_repeat != 0) {
@@ -268,18 +262,20 @@ void HNZConnection::m_check_GI() {
   if (m_gi_schedule.activate && !m_gi_schedule_already_sent &&
       (m_gi_scheduled_time <= m_current)) {
     if(m_active_path == nullptr){
-      HnzUtility::log_warn("%s No active path on which to send scheduled GI.", beforeLog.c_str());
-      return;
+      HnzUtility::log_warn("%s No active path on which to send scheduled GI => GI skipped", beforeLog.c_str());
     }
-    HnzUtility::log_warn("%s It's %dh%d. Executing scheduled GI.", beforeLog.c_str(), m_gi_schedule.hour, m_gi_schedule.min);
-    m_active_path->sendGeneralInterrogation();
+    else {
+      HnzUtility::log_warn("%s It's %dh%d. Executing scheduled GI.", beforeLog.c_str(), m_gi_schedule.hour, m_gi_schedule.min);
+      m_active_path->sendGeneralInterrogation();
+    }
+    // Make sure to always set this flag or it will attempt to send GI each tick,
+    // and if no active path is present those attempts are useless as a GI will trigger when a first path become active
     m_gi_schedule_already_sent = true;
   }
 }
 
-void HNZConnection::m_check_command_timer(HNZPath* path) {
+void HNZConnection::m_check_command_timer(std::shared_ptr<HNZPath> path) const {
   if(path == nullptr) return;
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::m_check_command_timer -";
   if (!path->command_sent.empty()) {
     list<Command_message>::iterator it = path->command_sent.begin();
@@ -308,11 +304,12 @@ void HNZConnection::m_update_quality_update_timer() {
   m_hnz_fledge->updateQualityUpdateTimer(m_elapsedTimeMs);
 }
 
-void HNZConnection::pathConnectionChanged(HNZPath* path, bool isReady) {
+void HNZConnection::requestConnectionState(HNZPath* path, ConnectionState newState) {
   if(!path) return;
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::pathConnectionChanged -";
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-  HnzUtility::log_debug("%s Path %s changed connection state : %s.", beforeLog.c_str(), path->getName().c_str(), isReady ? "ready" : "not ready");
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::requestConnectionState -";
+  std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
+
+  HnzUtility::log_debug("%s Path %s request connection state change to %s", beforeLog.c_str(), path->getName().c_str(), path->connectionState2str(newState).c_str());
 
   if(m_first_input_connected == nullptr && (path->getProtocolState() == ProtocolState::INPUT_CONNECTED || path->getProtocolState() == ProtocolState::CONNECTED)){
     HnzUtility::log_debug("%s Path %s has INPUT_CONNECTED first.", beforeLog.c_str(), path->getName().c_str());
@@ -321,40 +318,58 @@ void HNZConnection::pathConnectionChanged(HNZPath* path, bool isReady) {
     m_first_input_connected = nullptr;
   }
 
-  if(isReady){
-    if(!m_active_path){
+  if(newState == ConnectionState::ACTIVE){
+    // Transition to ACTIVE requested, check if path can become ACTIVE or should be PASSIVE
+    if(m_active_path == nullptr){
       m_active_path = path;
-      HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
       path->setConnectionState(ConnectionState::ACTIVE);
       updateConnectionStatus(ConnectionStatus::STARTED);
     }
+    else {
+      path->setConnectionState(ConnectionState::PASSIVE);
+    }
   } else {
+    // Accept other tansitions immediately
+    path->setConnectionState(newState);
     if(path == m_active_path){
       // We lost the connection on the active path
       m_active_path = nullptr;
       m_gi_repeat = 0;
-      // Check for other available paths
-      for (HNZPath* otherPath: m_paths)
-      {
-        if(otherPath != nullptr && otherPath != path && otherPath->getConnectionState() == ConnectionState::PASSIVE){
-          m_active_path = otherPath;
-          otherPath->setConnectionState(ConnectionState::ACTIVE);
-          HnzUtility::log_warn("%s Switching active and passive path.", beforeLog.c_str());
-          HnzUtility::log_info("%s New active path is %s", beforeLog.c_str(), m_active_path->getName().c_str());
-          updateConnectionStatus(ConnectionStatus::STARTED);
-          return;
-        }
+      if (!tryActivateOtherPath(path)) {
+        // No suitable path found !
+        updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
       }
-      // No suitable path found !
-      updateConnectionStatus(ConnectionStatus::NOT_CONNECTED);
     }
     // else : we lost the connection on a passive path, do nothing
   }
 }
 
+
+bool HNZConnection::tryActivateOtherPath(const HNZPath* path) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::tryActivateOtherPath -";
+  std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
+  // Only find a path to activate if we are not shutting down the whole connection
+  if (!m_is_running) {
+    return false;
+  }
+  // Check for other available paths
+  for (std::shared_ptr<HNZPath> otherPath: m_paths)
+  {
+    auto otherPathRaw = otherPath.get();
+    if(otherPathRaw != nullptr && otherPathRaw != path && otherPathRaw->getConnectionState() == ConnectionState::PASSIVE){
+      m_active_path = otherPathRaw;
+      HnzUtility::log_warn("%s Connection lost on active path : Switching activity to other path", beforeLog.c_str());
+      otherPathRaw->setConnectionState(ConnectionState::ACTIVE);
+      updateConnectionStatus(ConnectionStatus::STARTED);
+      return true;
+    }
+  }
+  return false;
+}
+
 #ifdef UNIT_TEST
 void HNZConnection::sendInitialGI() {
-  std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+  std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZConnection::sendInitialGI -";
   if(!m_active_path){
     HnzUtility::log_error("%s No active path was found !", beforeLog.c_str());

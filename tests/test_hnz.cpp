@@ -440,15 +440,34 @@ class HNZTest : public testing::Test {
     }
   }
 
+  static void clearFramesExcept(std::vector<std::shared_ptr<MSG_TRAME>>& frames, const std::vector<unsigned char>& expectedFrame) {
+    auto expectedSize = expectedFrame.size();
+    frames.erase(
+        std::remove_if(frames.begin(), frames.end(), [&](std::shared_ptr<MSG_TRAME> frame) {
+            // Unexpected frame size
+            if (frame->usLgBuffer != (4 + expectedSize)) {
+              return true;
+            }
+            for (int i=0; i<expectedSize ; i++) {
+              if (frame->aubTrame[i+2] != expectedFrame[i]) {
+                return true;
+              }
+            }
+            return false;
+        }),
+        frames.end()
+    );
+  }
+
   static int getFrameIdOccurenceCount(const std::vector<std::shared_ptr<MSG_TRAME>>& frames, unsigned char frameId) {
-    int iccurenceCount = 0;
+    int occurenceCount = 0;
 
     for(auto frame: frames) {
       if((frame->usLgBuffer > 2) && (frame->aubTrame[2] == frameId)) {
-        iccurenceCount++;
+        occurenceCount++;
       }
     }
-    return iccurenceCount;
+    return occurenceCount;
   }
 
   static std::shared_ptr<MSG_TRAME> findFrameWithId(const std::vector<std::shared_ptr<MSG_TRAME>>& frames, unsigned char frameId) {
@@ -3574,41 +3593,97 @@ TEST_F(HNZTest, GIScheduleActiveFuture) {
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
   validateAllTIQualityUpdate(true, false);
   if(HasFatalFailure()) return;
+  resetCounters();
 
-  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-  unsigned long totalMinutes = epochMs / 60000;
-  unsigned long totalHours = totalMinutes / 60;
-  unsigned long totalDays = totalHours / 24;
-  int hours = static_cast<int>(totalHours - (totalDays * 24));
-  int minutes = static_cast<int>(totalMinutes - (totalHours * 60));
-  int delayMin = 2; // Program GI 2 minutes in the future, in case we are close to the end of current minute
+  auto getGITime = [](int delayMin) -> std::pair<int, int> {
+    unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    unsigned long totalMinutes = epochMs / 60000;
+    unsigned long totalHours = totalMinutes / 60;
+    unsigned long totalDays = totalHours / 24;
+    int hours = static_cast<int>(totalHours - (totalDays * 24));
+    int minutes = static_cast<int>(totalMinutes - (totalHours * 60));
+    // If we are too close to midnight, wait long enough for the test to pass
+    if ((hours == 23) && (minutes >= (60 - delayMin))) {
+      this_thread::sleep_for(chrono::minutes(delayMin));
+      minutes += delayMin;
+    }
 
-  // If we are too close to midnight, wait long enough for the test to pass
-  if ((hours == 23) && (minutes >= (60 - delayMin))) {
-    this_thread::sleep_for(chrono::minutes(delayMin));
     minutes += delayMin;
-  }
-
-  minutes += delayMin;
-  if (minutes >= 60) {
-    hours = (hours + 1) % 24;
-    minutes = minutes % 60;
-  }
-  auto formatTime = [](int time)
-  {
+    if (minutes >= 60) {
+      hours = (hours + 1) % 24;
+      minutes = minutes % 60;
+    }
+    return {hours, minutes};
+  };
+  
+  auto formatTime = [](int time) -> std::string {
     std::stringstream ss;
     ss << std::setw(2) << std::setfill('0') << time;
     return ss.str();
   };
-  std::string giSchedule = formatTime(hours) + ":" + formatTime(minutes);
+
+  int delayMin = 2; // Program GI 2 minutes in the future, in case we are close to the end of current minute
+  auto giTime = getGITime(delayMin);
+  std::string giSchedule = formatTime(giTime.first) + ":" + formatTime(giTime.second);
   std::string protocol_stack = protocol_stack_generator(port, 0);
   std::string protocol_stack_custom = std::regex_replace(protocol_stack, std::regex("00:00"), giSchedule);
   wrapper.initHNZPlugin(protocol_stack_custom);
-  this_thread::sleep_for(chrono::milliseconds(3000));
+  // Plugin stopped by reconfigure = invalid quality update
+  waitUntil(dataObjectsReceived, 8, 1000);
+  ASSERT_EQ(dataObjectsReceived, 8);
+  validateAllTIQualityUpdate(true, false, true);
+  if(HasFatalFailure()) return;
+  resetCounters();
+  debug_print("[HNZ server] Waiting for outdated TI emission...");
+  waitUntil(dataObjectsReceived, 8, 1000);
+  ASSERT_EQ(dataObjectsReceived, 8);
+  validateAllTIQualityUpdate(false, true, true);
+  if(HasFatalFailure()) return;
+  resetCounters();
 
-  // Wait for scheduled GI
+  // Also stop the server as it is unable to reconnect on the fly
+  debug_print("[HNZ server] Request server stop...");
+  ASSERT_TRUE(server->stopHNZServer());
+  debug_print("[HNZ server] Request server start...");
+  server->startHNZServer();
+
+  // Check that the server is reconnected after reconfigure
+  server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
+  waitUntil(dataObjectsReceived, 4, 6000); // Wait for CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  ASSERT_EQ(dataObjectsReceived, 4);
+  validateMissingTSCGQualityUpdate({"TS1", "TS2", "TS3", "TS4"});
+  if(HasFatalFailure()) return;
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+
+  debug_print("[HNZ server] Wait for scheduled GI...");
   this_thread::sleep_for(chrono::minutes(delayMin));
-  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  // BULLE and GI have the same function code so we need to clear any BULLE received before counting the GIs
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  clearFramesExcept(frames, {GI_FUNCTION_CODE, GI_BIT});
+
+  // Check that there is at least one CG frame in the list of frames received by server (there might be up to 3 due to repeats)
+  int nbGI = getFrameIdOccurenceCount(frames, GI_FUNCTION_CODE);
+  ASSERT_GE(nbGI, 1);
+  ASSERT_LE(nbGI, 3);
+  if(HasFatalFailure()) return;
+
+  // Schedule another GI for coverage
+  giTime = getGITime(delayMin);
+  giSchedule = formatTime(giTime.first) + ":" + formatTime(giTime.second);
+  protocol_stack_custom = std::regex_replace(protocol_stack, std::regex("00:00"), giSchedule);
+  wrapper.initHNZPlugin(protocol_stack_custom);
+
+  // This time do not restart the server side of the connection
+  debug_print("[HNZ server] Request server stop 2...");
+  ASSERT_TRUE(server->stopHNZServer());
+
+  // Wait long enough for GI attempt (nothing to validate as only a log is generated)
+  debug_print("[HNZ server] Wait for scheduled GI 2...");
+  this_thread::sleep_for(chrono::minutes(delayMin));
 }
 
 TEST_F(HNZTest, ReceiveGiTriggeringTsResultInNoGi) {

@@ -167,7 +167,7 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
   return true;
 }
 
-void HNZ::receive(HNZPath* hnz_path_in_use) {
+void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   if(!hnz_path_in_use){
     HnzUtility::log_info(HnzUtility::NamePlugin + " - HNZ::receive - No path to use, exit");
     return;

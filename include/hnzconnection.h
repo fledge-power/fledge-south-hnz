@@ -21,6 +21,7 @@ class HNZ;
 class HNZPath;
 enum class ConnectionStatus;
 enum class GiStatus;
+enum class ConnectionState : unsigned char;
 
 /**
  * @brief Class used to manage the HNZ connection. Manage one path (or two path,
@@ -62,7 +63,7 @@ class HNZConnection {
    * @return the active path
    */
   HNZPath* getActivePath() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
     return m_active_path;
   };
 
@@ -71,10 +72,11 @@ class HNZConnection {
    * @return a passive path or nullptr
    */
   HNZPath* getPassivePath() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    for (HNZPath* path: m_paths)
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
+    for (std::shared_ptr<HNZPath> path: m_paths)
     {
-       if(path != nullptr && path != m_active_path) return path;
+      auto rawPath = path.get();
+      if(rawPath != nullptr && rawPath != m_active_path) return rawPath;
     }
     return nullptr;
   };
@@ -83,15 +85,24 @@ class HNZConnection {
    * Get both active and passive path as an array of pointers (with a single lock)
    * @return array of existing paths
    */
-  std::array<HNZPath*, MAXPATHS> getPaths() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+  const std::array<std::shared_ptr<HNZPath>, MAXPATHS>& getPaths() const {
     return m_paths;
   };
 
   /**
    * Manages the connection state of the different paths.
+   * HNZConnection decide if transition is allowed or not and make the actual state update.
+   * @param path Path requesting a state change
+   * @param newState New state requested
    */
-  void pathConnectionChanged(HNZPath* path, bool isReady);
+  void requestConnectionState(HNZPath* path, ConnectionState newState);
+
+  /**
+   * Tries to make a path other than the input path active
+   * @param path Path that cannot be activated
+   * @return true if a path to activate was found, else false
+   */
+  bool tryActivateOtherPath(const HNZPath* path);
 
 #ifdef UNIT_TEST
   /**
@@ -120,9 +131,9 @@ class HNZConnection {
   GiStatus getGiStatus();
 
   /**
-   * Returns mutex used to protect the active and passive path
+   * Returns mutex used to protect the active path
    */
-  std::recursive_mutex& getPathMutex() { return m_path_mutex; }
+  std::recursive_mutex& getActivePathMutex() { return m_active_path_mutex; }
 
    /**
    * Returns the running status of the connection
@@ -131,8 +142,10 @@ class HNZConnection {
 
   /**
    * A running path can extract messages only if it is active, or has at least its input connected.
-   *  */
+   * Ensures that only one of the two possible path will extract the message at all times.
+   */
   bool canPathExtractMessage(HNZPath* path){
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
     if(path == nullptr) return false;
     if(path == m_active_path){
       return true;
@@ -160,8 +173,8 @@ class HNZConnection {
   HNZPath* m_active_path = nullptr;
   // First path in protocol state INPUT_CONNECTED, covers edge cases of the protocol
   HNZPath* m_first_input_connected = nullptr;
-  std::array<HNZPath*, MAXPATHS> m_paths = {nullptr, nullptr};
-  std::recursive_mutex m_path_mutex;
+  std::array<std::shared_ptr<HNZPath>, MAXPATHS> m_paths = {nullptr, nullptr};
+  std::recursive_mutex m_active_path_mutex;
   std::shared_ptr<std::thread> m_messages_thread;  // Main thread that monitors messages
   std::atomic<bool> m_is_running{false};  // If false, the connection thread will stop
   uint64_t m_current = 0;         // Store the last time requested
@@ -194,7 +207,7 @@ class HNZConnection {
    * If a message is not acknowledged, then a retransmission request is sent.
    * @param path the related path
    */
-  void m_check_timer(HNZPath* path);
+  void m_check_timer(std::shared_ptr<HNZPath> path);
 
   /**
    * Check the state of ongoing GI (General Interrogation) and manage scheduled
@@ -206,7 +219,7 @@ class HNZConnection {
    * Checks that sent command messages have been acknowledged and removes them
    * from the sent queue.
    */
-  void m_check_command_timer(HNZPath* path);
+  void m_check_command_timer(std::shared_ptr<HNZPath> path) const;
 
   /**
    * Update the current time and time elapsed since last call to this function

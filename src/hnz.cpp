@@ -303,7 +303,7 @@ void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned ch
   // No reading to send when reciving modulo code, but keep the parameter
   // to get a homogenous signature for all m_handle*() methods
   readings.clear();
-  m_daySection = data[1];
+  setDaySection(data[1]);
 }
 
 void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& data) const {
@@ -353,7 +353,17 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   unsigned int ts_iv = (data[2] >> 2) & 0x1;  // HNV bit
   unsigned int ts_s = data[2] & 0x1;          // S bit
   unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
-  unsigned long epochMs = getEpochMsTimestamp(std::chrono::high_resolution_clock::now(), m_daySection, ts);
+  // Using C time (C++11 limitations conversion to local time)
+  time_t now = time(nullptr);
+  auto time_struct_real = tm();
+  m_hnz_conf->get_use_utc() ? gmtime_r(&now, &time_struct_real) : localtime_r(&now, &time_struct_real);
+  auto epochMs = getEpochMsTimestamp(std::chrono::system_clock::from_time_t(mktime(&time_struct_real)), m_daySection, ts);
+
+  // Always timestamp with UTC time --------
+  auto time_struct_utc = tm();
+  gmtime_r(&now, &time_struct_utc);
+  auto real_utc_offset_ms = static_cast<unsigned long>((mktime(&time_struct_real) - mktime(&time_struct_utc))) * 1000;
+  // ----------------------------------------
 
   ReadingParameters params;
   params.label = label;
@@ -362,7 +372,7 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   params.msg_address = msg_address;
   params.value = value;
   params.valid = valid;
-  params.ts = epochMs;
+  params.ts = epochMs - real_utc_offset_ms;
   params.ts_iv = ts_iv;
   params.ts_c = ts_c;
   params.ts_s = ts_s;
@@ -750,7 +760,7 @@ std::string HNZ::frameToStr(std::vector<unsigned char> frame) {
   return stream.str();
 }
 
-unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::high_resolution_clock> dateTime,
+unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::system_clock> dateTime,
   unsigned char daySection, unsigned int ts)
 {
   // Convert timestamp to epoch milliseconds
@@ -945,7 +955,7 @@ void HNZ::m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<u
 
 void HNZ::m_sendAllTSQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
   ReadingParameters paramsTemplate;
-  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   paramsTemplate.msg_code = "TS";
   paramsTemplate.station_addr = m_remote_address;
   paramsTemplate.valid = static_cast<unsigned int>(invalid);

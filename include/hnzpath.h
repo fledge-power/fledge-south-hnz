@@ -300,6 +300,7 @@ class HNZPath {
   unsigned int m_bulle_time = 0; // time in seconds before sending a BULLE mesage when no message have been sent on this path
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
+  bool m_use_utc = false; // Use UTC time in date and time init messages
   long long c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for a control command (in ms)
 
   // HNZ protocol related variable

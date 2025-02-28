@@ -976,11 +976,11 @@ class ProtocolStateHelper{
     std::shared_ptr<BasicHNZServer> _server;
 };
 
-// TEST_F(HNZTest, TCPConnectionOnePathOK) {
-//   ServersWrapper wrapper(0x05, getNextPort());
-//   BasicHNZServer* server = wrapper.server1().get();
-//   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
-// }
+TEST_F(HNZTest, TCPConnectionOnePathOK) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+}
 
 TEST_F(HNZTest, ReceivingTSCEMessages) {
   ServersWrapper wrapper(0x05, getNextPort());

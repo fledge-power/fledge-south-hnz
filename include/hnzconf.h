@@ -13,7 +13,10 @@
 
 #include <map>
 #include <memory>
+#include <unordered_set>
 #include "rapidjson/document.h"
+
+#define MAXPATHS 2
 
 // Local definition of make_unique as it is only available since C++14 and right now fledge-south-hnz is built with C++11
 template<typename T, typename... Args>
@@ -43,14 +46,18 @@ constexpr char GI_REPEAT_COUNT[] = "gi_repeat_count";
 constexpr char GI_TIME[] = "gi_time";
 constexpr char C_ACK_TIME[] = "c_ack_time";
 constexpr char CMD_RECV_TIMEOUT[] = "cmd_recv_timeout";
+constexpr char BULLE_TIME[] = "bulle_time";
 constexpr char SOUTH_MONITORING[] = "south_monitoring";
 constexpr char SOUTH_MONITORING_ASSET[] = "asset";
+constexpr char MODULO_USE_UTC[] = "modulo_use_utc";
 
 constexpr char JSON_EXCHANGED_DATA_NAME[] = "exchanged_data";
 constexpr char DATAPOINTS[] = "datapoints";
 constexpr char LABEL[] = "label";
 constexpr char PIVOT_ID[] = "pivot_id";
 constexpr char PIVOT_TYPE[] = "pivot_type";
+constexpr char PIVOT_SUBTYPES[] = "pivot_subtypes";
+constexpr char TRIGGER_SOUTH_GI_PIVOT_SUBTYPE[] = "trigger_south_gi";
 constexpr char PROTOCOLS[] = "protocols";
 constexpr char HNZ_NAME[] = "hnzip";
 constexpr char MESSAGE_CODE[] = "typeid";
@@ -69,6 +76,7 @@ constexpr unsigned int DEFAULT_GI_REPEAT_COUNT = 3;
 constexpr unsigned int DEFAULT_GI_TIME = 255;
 constexpr unsigned int DEFAULT_C_ACK_TIME = 10;
 constexpr long long int DEFAULT_CMD_RECV_TIMEOUT = 100000; // 100ms
+constexpr unsigned int DEFAULT_BULLE_TIME = 10;
 
 constexpr int RETRY_CONN_DELAY = 5;
 
@@ -147,32 +155,18 @@ class HNZConf {
   unsigned int getLastTSAddress() const;
 
   /**
-   * Get the IP address to remote IEC 104 server (A path)
+   * Get paths ips as an array of string
    *
-   * @return string
+   * @return Array of string containing paths ip
    */
-  string get_ip_address_A() const { return m_ip_A; }
+  std::array<string, MAXPATHS> get_paths_ip() const { return m_paths_ip; }
 
   /**
-   * Get the port number to remote IEC 104 server (A path)
+   * Get paths ports as an array of unsigned int
    *
-   * @return unsigned int
+   * @return Array of int containing paths ip
    */
-  unsigned int get_port_A() const { return m_port_A; }
-
-  /**
-   * Get the IP address to remote IEC 104 server (B path)
-   *
-   * @return string
-   */
-  string get_ip_address_B() const { return m_ip_B; }
-
-  /**
-   * Get the port number to remote IEC 104 server (B path)
-   *
-   * @return unsigned int
-   */
-  unsigned int get_port_B() const { return m_port_B; }
+  std::array<unsigned int, MAXPATHS> get_paths_port() const { return m_paths_port; }
 
   /**
    * Get the remote server station address
@@ -182,7 +176,7 @@ class HNZConf {
   unsigned int get_remote_station_addr() const { return m_remote_station_addr; }
 
   /**
-   * Get the timeout before declaring the remote server unreachable
+   * Get the timeout in seconds before declaring the remote server unreachable
    *
    * @return unsigned int
    */
@@ -197,21 +191,13 @@ class HNZConf {
   unsigned int get_max_sarm() const { return m_max_sarm; }
 
   /**
-   * Get the max number of authorized repeats for path A
-   *
+   *  Get the max number of authorized repeats for all paths
    * @return unsigned int
    */
-  unsigned int get_repeat_path_A() const { return m_repeat_path_A; }
+  std::array<unsigned int, MAXPATHS> get_paths_repeat() const { return m_paths_repeat; }
 
   /**
-   * Get the max number of authorized repeats for path B
-   *
-   * @return unsigned int
-   */
-  unsigned int get_repeat_path_B() const { return m_repeat_path_B; }
-
-  /**
-   * Get the time allowed for the receiver to acknowledge a frame, after this
+   * Get the time in ms allowed for the receiver to acknowledge a frame, after this
    * time, the sender repeats the frame.
    *
    * @return unsigned int
@@ -276,6 +262,20 @@ class HNZConf {
   long long int get_cmd_recv_timeout() const { return m_cmd_recv_timeout; }
 
   /**
+   * Get the time to wait before sending a BULLE message after the previous message sent.
+   *
+   * @return time in seconds
+   */
+  unsigned int get_bulle_time() const { return m_bulle_time; }
+
+    /**
+   * Get the prefered reference time for messages timestamps (UTC or local time)
+   *
+   * @return wheter to use UTC time or local time
+   */
+  bool get_use_utc() const { return m_use_utc; }
+
+  /**
    * Get the "asset" name for south plugin monitoring event
    *
    * @return  string
@@ -288,6 +288,13 @@ class HNZConf {
    * @return Nested map of messages defined in configuration
    */
   const map<string, map<unsigned int, map<unsigned int, string>>>& get_all_messages() const { return m_msg_list; }
+
+  /**
+   * Check if an address is in the CG triggering TS address set
+   *
+   * @return True if the given address is present in the address set
+   */
+  bool isTsAddressCgTriggering(int address) { return m_cgTriggeringTsAdresses.find(address) != m_cgTriggeringTsAdresses.end(); }
 
  private:
   /**
@@ -314,14 +321,20 @@ class HNZConf {
    */
   bool m_importDatapoint(const Value &msg);
 
-  string m_ip_A, m_ip_B = "";
-  unsigned int m_port_A = 0;
-  unsigned int m_port_B = 0;
+  /**
+   * Tells if the current datapoint has the configuration to trigger a GI
+   * 
+   * @param msg json configuration object
+   * @return True if the configuration is present, else false
+   */
+  bool m_isGiTriggeringTs(const Value &msg) const;
+
+  std::array<string, MAXPATHS> m_paths_ip = {"", ""};
+  std::array<unsigned int, MAXPATHS> m_paths_port = {0, 0};
+  std::array<unsigned int, MAXPATHS> m_paths_repeat = {0, 0};
   unsigned int m_remote_station_addr = 0;
   unsigned int m_inacc_timeout = 0;
   unsigned int m_max_sarm = 0;
-  unsigned int m_repeat_path_A = 0;
-  unsigned int m_repeat_path_B = 0;
   unsigned int m_repeat_timeout = 0;
   unsigned int m_anticipation_ratio = 0;
   BulleFormat m_test_msg_send;
@@ -331,11 +344,16 @@ class HNZConf {
   unsigned int m_gi_time = 0;
   unsigned int m_c_ack_time = 0;
   long long int m_cmd_recv_timeout = 0;
+  unsigned int m_bulle_time = 0;
+  bool m_use_utc = false;
 
   std::string m_connx_status = "";
   unsigned int m_lastTSAddr = 0;
   // Nested map of msg_code, remote_station_addr and msg_address
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
+
+  // Set of TS addresses that triggers a CG if the TS value is 0
+  std::unordered_set<int> m_cgTriggeringTsAdresses;
 
   bool m_config_is_complete = false;
   bool m_exchange_data_is_complete = false;
@@ -351,6 +369,7 @@ class HNZConf {
   static bool m_retrieve(const Value &json, const char *key, BulleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, GIScheduleFormat *target);
   static bool m_retrieve(const Value &json, const char *key, long long int *target, long long int def);
+  static bool m_retrieve(const Value &json, const char *key, bool *target, bool def);
 };
 
 #endif

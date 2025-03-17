@@ -102,10 +102,14 @@ bool BasicHNZServer::stopHNZServer() {
   return success;
 }
 
-void BasicHNZServer::receiving_loop() {
-  // Reset NS/NR variables
+void BasicHNZServer::resetProtocol() {
   m_ns = 0;
   m_nr = 0;
+}
+
+void BasicHNZServer::receiving_loop() {
+  // Reset NS/NR variables
+  resetProtocol();
   while (is_running) {
     // Receive an hnz frame, this call is blocking
     MSG_TRAME *frReceived = (server->receiveFr());
@@ -309,6 +313,27 @@ bool BasicHNZServer::HNZServerIsReady(int timeout_s /*= 16*/, bool sendSarm /*= 
     delete m_t2;
     m_t2 = nullptr;
   }
+  return true;
+}
+
+bool BasicHNZServer::HNZServerForceReady(int timeout_s /* = 16 */){
+  // Lock to prevent multiple calls to this function in parallel
+  std::lock_guard<std::mutex> guard(m_init_mutex);
+  if (receiving_thread) {
+    printf("[HNZ Server][%d] Server already connected\n", m_port); fflush(stdout);
+    return true;
+  }
+  is_running = true;
+  printf("[HNZ Server][%d] Waiting for initial connection...\n", m_port); fflush(stdout);
+  // Wait for the server to finish starting
+  if (!waitForTCPConnection(timeout_s)) {
+    return false;
+  }
+  if (!is_running) {
+    printf("[HNZ Server][%d] Not running after initial connection, exit\n", m_port); fflush(stdout);
+    return false;
+  }
+  receiving_thread = new thread(&BasicHNZServer::receiving_loop, this);
   return true;
 }
 

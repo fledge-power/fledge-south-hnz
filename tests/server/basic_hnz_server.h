@@ -25,6 +25,9 @@ class BasicHNZServer {
   // Timeout = 16 = (5 * 3) + 1 sec = (SARM retries * SARM delay) + 1
   bool HNZServerIsReady(int timeout_s = 16, bool sendSarm = true, bool delaySarm = false);
 
+  // Start server without performing the SARM/UA loop
+  bool HNZServerForceReady(int timeout_s = 16);
+
   void sendSARM();
 
   struct FrameError {
@@ -50,6 +53,8 @@ class BasicHNZServer {
   static std::string toHexStr(unsigned char num);
   static std::string frameToStr(std::shared_ptr<MSG_TRAME> frame);
   static std::string framesToStr(std::vector<std::shared_ptr<MSG_TRAME>> frames);
+
+  void resetProtocol();
 
   HNZServer* server = nullptr;
   int addr = 0;

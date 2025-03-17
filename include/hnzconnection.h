@@ -21,6 +21,7 @@ class HNZ;
 class HNZPath;
 enum class ConnectionStatus;
 enum class GiStatus;
+enum class ConnectionState : unsigned char;
 
 /**
  * @brief Class used to manage the HNZ connection. Manage one path (or two path,
@@ -61,39 +62,54 @@ class HNZConnection {
    * commands).
    * @return the active path
    */
-  std::shared_ptr<HNZPath> getActivePath() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
+  HNZPath* getActivePath() {
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
     return m_active_path;
   };
 
   /**
-   * Get the path in stand-by.
-   * @return the active path
+   * Get a pointer to the first passive path found, if any.
+   * @return a passive path or nullptr
    */
-  std::shared_ptr<HNZPath> getPassivePath() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    return m_passive_path;
+  HNZPath* getPassivePath() {
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
+    for (std::shared_ptr<HNZPath> path: m_paths)
+    {
+      auto rawPath = path.get();
+      if(rawPath != nullptr && rawPath != m_active_path) return rawPath;
+    }
+    return nullptr;
   };
 
   /**
-   * Get both active and passive path (with a single lock)
-   * @return a path pair (active_path, passive_path)
+   * Get both active and passive path as an array of pointers (with a single lock)
+   * @return array of existing paths
    */
-  std::pair<std::shared_ptr<HNZPath>, std::shared_ptr<HNZPath>> getBothPath() {
-    std::lock_guard<std::recursive_mutex> lock(m_path_mutex);
-    return std::make_pair(m_active_path, m_passive_path);
+  const std::array<std::shared_ptr<HNZPath>, MAXPATHS>& getPaths() const {
+    return m_paths;
   };
 
   /**
-   * Switch between the active path and passive path. Must be called in case of
-   * connection problem on the active path.
+   * Manages the connection state of the different paths.
+   * HNZConnection decide if transition is allowed or not and make the actual state update.
+   * @param path Path requesting a state change
+   * @param newState New state requested
    */
-  void switchPath();
+  void requestConnectionState(HNZPath* path, ConnectionState newState);
 
+  /**
+   * Tries to make a path other than the input path active
+   * @param path Path that cannot be activated
+   * @return true if a path to activate was found, else false
+   */
+  bool tryActivateOtherPath(const HNZPath* path);
+
+#ifdef UNIT_TEST
   /**
    * Send the initial GI message (reset retry counter if it was in progress)
    */
   void sendInitialGI();
+#endif
 
   /**
    * Called to update the current connection status
@@ -115,14 +131,27 @@ class HNZConnection {
   GiStatus getGiStatus();
 
   /**
-   * Returns mutex used to protect the active and passive path
+   * Returns mutex used to protect the active path
    */
-  std::recursive_mutex& getPathMutex() { return m_path_mutex; }
+  std::recursive_mutex& getActivePathMutex() { return m_active_path_mutex; }
 
    /**
    * Returns the running status of the connection
    */
   bool isRunning() const { return m_is_running; };
+
+  /**
+   * A running path can extract messages only if it is active, or has at least its input connected.
+   * Ensures that only one of the two possible path will extract the message at all times.
+   */
+  bool canPathExtractMessage(HNZPath* path){
+    std::lock_guard<std::recursive_mutex> lock(m_active_path_mutex);
+    if(path == nullptr) return false;
+    if(path == m_active_path){
+      return true;
+    }
+    return path == m_first_input_connected && m_active_path == nullptr;
+  }
 
   /**
    * Returns the name of the Fledge service instanciating this plugin
@@ -135,20 +164,29 @@ class HNZConnection {
    */
   inline void setDaySection(unsigned char daySection) { m_hnz_fledge->setDaySection(daySection); }
 
+  /**
+   * Allows a path to notify that a GI request has been sent
+   */
+  void notifyGIsent();
+
  private:
-  std::shared_ptr<HNZPath> m_active_path;
-  std::shared_ptr<HNZPath> m_passive_path;
-  std::recursive_mutex m_path_mutex;
+  HNZPath* m_active_path = nullptr;
+  // First path in protocol state INPUT_CONNECTED, covers edge cases of the protocol
+  HNZPath* m_first_input_connected = nullptr;
+  std::array<std::shared_ptr<HNZPath>, MAXPATHS> m_paths = {nullptr, nullptr};
+  std::recursive_mutex m_active_path_mutex;
   std::shared_ptr<std::thread> m_messages_thread;  // Main thread that monitors messages
   std::atomic<bool> m_is_running{false};  // If false, the connection thread will stop
   uint64_t m_current = 0;         // Store the last time requested
   uint64_t m_elapsedTimeMs = 0;   // Store elapsed time in milliseconds every time m_current is updated
   uint64_t m_days_since_epoch = 0;
+  bool m_sendInitNexConnection = true; // The init messages (time/date/GI) have to be sent
 
+  int m_gi_repeat = 0;
+  long m_gi_start_time = 0;
   // Plugin configuration
-  int gi_repeat_count_max = 0;  // time to wait for GI completion
-  int gi_time_max = 0;          // repeat GI for this number of times in case it is
-                            // incomplete
+  int m_gi_repeat_count_max = 0;  // time to wait for GI completion
+  int m_gi_time_max = 0;          // repeat GI for this number of times in case it is incomplete
   GIScheduleFormat m_gi_schedule;
 
   int m_repeat_timeout = 0;  // time allowed for the receiver to acknowledge a frame
@@ -169,7 +207,7 @@ class HNZConnection {
    * If a message is not acknowledged, then a retransmission request is sent.
    * @param path the related path
    */
-  void m_check_timer(std::shared_ptr<HNZPath> path) const;
+  void m_check_timer(std::shared_ptr<HNZPath> path);
 
   /**
    * Check the state of ongoing GI (General Interrogation) and manage scheduled
@@ -181,7 +219,7 @@ class HNZConnection {
    * Checks that sent command messages have been acknowledged and removes them
    * from the sent queue.
    */
-  void m_check_command_timer();
+  void m_check_command_timer(std::shared_ptr<HNZPath> path) const;
 
   /**
    * Update the current time and time elapsed since last call to this function

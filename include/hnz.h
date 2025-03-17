@@ -179,11 +179,13 @@ class HNZ {
    */
   inline void setDaySection(unsigned char daySection) { m_daySection = daySection; }
 
+#ifdef UNIT_TEST
  protected:
   /**
    * Sends a CG request (reset counters if any was already in progress)
    */
   void sendInitialGI();
+#endif
 
 private:
   // Tells if the plugin is currently running
@@ -217,6 +219,8 @@ private:
   // Connection and GI status management
   ConnectionStatus m_connStatus = ConnectionStatus::NOT_CONNECTED;
   GiStatus m_giStatus = GiStatus::IDLE;
+  // Boolean saying if a gi asking is waiting to be send. If true, as soon as the current gi will end a new one will be triggered and this will be set to false.
+  bool m_giInQueue = false;
   std::recursive_mutex m_connexionGiMutex;
   long m_qualityUpdateTimer = 0;
   long m_qualityUpdateTimeoutMs = 500;
@@ -246,7 +250,7 @@ private:
    * Handle TSCE messages: analyse them and returns one reading for export to
    * fledge.
    */
-  void m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const;
+  void m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data);
 
   /**
    * Handle TSCG messages: analyse them and returns one reading for export to
@@ -288,6 +292,7 @@ private:
     unsigned int ts_iv = 0;
     unsigned int ts_c = 0;
     unsigned int ts_s = 0;
+    bool empty_timestamp = false; // TSCE with no timestamp, the module HNZtoPivot will fill it artificially
     // TS only
     bool cg = false;
     // TM only

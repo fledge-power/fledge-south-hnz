@@ -15,13 +15,47 @@
 #include <list>
 #include <queue>
 #include <thread>
+#include <condition_variable>
+#include <map>
 
 #include <hnz_client.h>
 
 #include "hnzconnection.h"
 
-#define CONNECTION 0
-#define CONNECTED 1
+// Connection event used to transition between protocol states
+// Some event are unused as they do not appear in the protocol state automaton.
+// These states correspond to actions performed by the plugin, and they could be included.
+enum class ConnectionEvent : unsigned char {
+  TCP_CNX_ESTABLISHED = 0, // unused
+  RECEIVED_SARM       = 1,
+  RECEIVED_UA         = 2,
+  TO_RECV             = 3,
+  MAX_SEND            = 4,
+  TCP_CNX_LOST        = 5,
+  TO_SEND             = 6, // unused
+  RECEIVED_INFO       = 7, // unused
+  SEND_TC             = 8, // unused
+  TO_UA               = 9, // unused
+  MAX_SARM_SENT       = 10,
+  TO_LASTCG           = 11,// unused
+  TO_TCACK            = 12
+};
+
+// HNZ protocol state
+enum class ProtocolState : unsigned char {
+  CONNECTION       = 0, // No connection has been established
+  INPUT_CONNECTED  = 1, // SARM received
+  OUTPUT_CONNECTED = 2, // UA received
+  CONNECTED        = 3  // Fully connected
+};
+
+// Connection state
+enum class ConnectionState : unsigned char {
+  DISCONNECTED = 0, // No connection has been established
+  PENDING_HNZ  = 1, // TCP OK, waiting for protocolState to update to allow the transit of messages
+  PASSIVE      = 2, // Available for a path switch
+  ACTIVE       = 3  // Path used to receive and send messages (max. 1)
+};
 
 /**
  * @brief Structure containing internal informations about a message
@@ -50,8 +84,6 @@ struct Command_message {
   bool ack;
 } typedef Command_message;
 
-using namespace std::chrono;
-
 class HNZConnection;
 
 /**
@@ -62,10 +94,16 @@ class HNZPath {
   // Give access to HNZPath private members for HNZConnection
   friend class HNZConnection;
  public:
-  HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_connection, bool secondary);
+  HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_connection, int repeat_max, std::string ip, unsigned int port, std::string pathLetter);
   ~HNZPath();
 
   string getName() const { return m_name_log; };
+
+  /**
+   * Triggers a transition from the protocol state automaton according to a ConnectionEvent.
+   * @param event Connection event triggering a transition
+   */
+  void protocolStateTransition(const ConnectionEvent event);
 
   /**
    * Connect (or re-connect) to the HNZ PA (TCP connection and HNZ connection
@@ -91,17 +129,11 @@ class HNZPath {
    */
   bool isHNZConnected() {
     std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
-    return (m_protocol_state == CONNECTED) && isConnected();
+    return (m_protocol_state == ProtocolState::CONNECTED) && isTCPConnected();
   };
 
   /**
-   * Is the TCP connection with the PA established and still alive?
-   * @return true if connected, false otherwise
-   */
-  bool isConnected() { return m_connected && isTCPConnected(); };
-
-  /**
-   * Is the TCP connection with the PA still alive according to HNZ client?
+   * Is the TCP connection with the PA still alive ?
    * @return true if connected, false otherwise
    */
   bool isTCPConnected();
@@ -144,29 +176,81 @@ class HNZPath {
   void sendGeneralInterrogation();
 
   /**
-   * Go to connection state. Can be call when there is a problem with the path.
-   * It will re-synchronize with the PA.
+   * Request to HNZConnection a change of connection state for this path
+   * @param newState New state requested
    */
-  void go_to_connection();
+  void requestConnectionState(ConnectionState newState);
 
   /**
    * Set the state of the path.
+   * @param newState New state applied
    */
-  void setActivePath(bool active);
+  void setConnectionState(ConnectionState newState);
 
   /**
-   * Gets the state of the path
-   * @return true if active, false if passive
+   * Set the current connection state to PENDING_HNZ.
+   * This method serve in the protocolState automaton, to notify that the connection on protocol level is pending.
    */
-  bool isActivePath() const { return m_is_active_path; }
+  void setConnectionPending();
 
   /**
-   * Gets the state of the HNZ protocol (CONNECTION, CONNECTED)
-   * @return CONNECTION if SARM/UA step is not complete, CONNECTED after that
+   * Get current connection state.
    */
-  int getProtocolState() const { 
+  ConnectionState getConnectionState() const {
+    std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
+    return m_connection_state;
+  }
+
+  /**
+   * Gets the state of the HNZ protocol (CONNECTION, INPUT_CONNECTED, OUTPUT_CONNECTED, CONNECTED)
+   * @return Current protocol state
+   */
+  ProtocolState getProtocolState() const {
     std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex);
     return m_protocol_state;
+  }
+
+  /**
+   * Getter for property m_last_connected
+   * @return timestamp of the last transition to protocol state CONNECTED
+   */
+  long long getLastConnected() const { return m_last_connected;}
+
+  /**
+   * Resets the timestamp of the last transition to protocol state CONNECTED
+   */
+  void resetLastConnected() { m_last_connected = 0;}
+
+  /**
+   * Send the business messages expected after the connection is fully initialized : Date update + time update + GI request
+   */
+  void sendInitMessages();
+
+  /**
+   * Converts a ConnectionState enum as string
+   * @param state Enum value to convert
+   * @return String corresponding to the enum value
+   */
+  const std::string& connectionState2str(ConnectionState state) const {
+    return m_connectionState2str.at(state);
+  }
+
+  /**
+   * Converts a ProtocolState enum as string
+   * @param state Enum value to convert
+   * @return String corresponding to the enum value
+   */
+  const std::string& protocolState2str(ProtocolState state) const {
+    return m_protocolState2str.at(state);
+  }
+
+  /**
+   * Converts a ConnectionEvent enum as string
+   * @param state Enum value to convert
+   * @return String corresponding to the enum value
+   */
+  const std::string& connectionEvent2str(ConnectionEvent state) const {
+    return m_connectionEvent2str.at(state);
   }
 
  private:
@@ -179,19 +263,20 @@ class HNZPath {
   list<Command_message>
       command_sent;  // List of command already sent waiting to be ack
 
-  long last_sent_time = 0;     // Timestamp of the last message sent
+  long long last_sent_time = 0;     // Timestamp of the last information message sent
   int repeat_max = 0;          // max number of authorized repeats
-  int gi_repeat = 0;       // number of time a GI is repeated
-  long gi_start_time = 0;  // GI start time
 
   std::shared_ptr<std::thread> m_connection_thread; // Main thread that maintains the connection
   std::mutex m_connection_thread_mutex; // mutex to protect changes in m_connection_thread
   atomic<bool> m_is_running{true};  // If false, the connection thread will stop
-  atomic<bool> m_connected{false};  // TCP Connection state with the PA
-  // Initializing to CONNECTED ensures that the initial state transition from go_to_connection generates an audit
-  int m_protocol_state = CONNECTED; // HNZ Protocol connection state
+  
+  std::mutex m_state_changed_mutex; // mutex to use condition variable below
+  std::condition_variable m_state_changed_cond; // Condition variable used to notify changes in m_manageHNZProtocolConnection thread
+  bool m_state_changed = false; // variable set to true when m_protocol_state changed
+  ProtocolState m_protocol_state = ProtocolState::CONNECTION; // HNZ Protocol connection state
   mutable std::recursive_mutex m_protocol_state_mutex; // mutex to protect changes in m_protocol_state
-  bool m_is_active_path = false;
+  ConnectionState m_connection_state = ConnectionState::DISCONNECTED; // Effective connection state
+  mutable std::recursive_mutex m_connection_state_mutex; // mutex to protect changes in m_connection_state
 
   // Plugin configuration
   string m_ip;  // IP of the PA
@@ -208,27 +293,33 @@ class HNZPath {
 
   int m_max_sarm = 0;  // max number of SARM messages before handing over to the
                    // passive path
-  int m_inacc_timeout = 0;   // timeout before declaring the remote server
-                         // unreachable
-  int m_repeat_timeout = 0;  // time allowed for the receiver to acknowledge a frame
+  int m_inacc_timeout = 0;   // timeout in seconds before declaring the remote server unreachable
+  int m_repeat_timeout = 0;  // time allowed in ms for the receiver to acknowledge a frame
   int m_anticipation_ratio = 0;  // number of frames allowed to be received without
                              // acknowledgement
+  unsigned int m_bulle_time = 0; // time in seconds before sending a BULLE mesage when no message have been sent on this path
   BulleFormat m_test_msg_receive;  // Payload of received BULLE
   BulleFormat m_test_msg_send;     // Payload of sent BULLE
-  int c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for
-                      // a control command (in ms)
+  bool m_use_utc = false; // Use UTC time in date and time init messages
+  long long c_ack_time_max = 0;  // Max time to wait before receving a acknowledgement for a control command (in ms)
 
   // HNZ protocol related variable
   int m_nr = 0;   // Number in reception
   int m_ns = 0;   // Number in sending
   int m_NRR = 0;  // Received aquit number
-  long m_last_msg_time = 0;   // Timestamp of the last reception
-  bool sarm_PA_received = false;  // The SARM sent by the PA was received
-  bool sarm_ARP_UA = false;     // The UA sent by the PA (after receiving our SARM) was
-                        // received
+  long long m_last_msg_time = 0;   // Timestamp of the last reception in ms
+  long long m_last_msg_sent_time = 0;   // Timestamp of the last sent message in ms
+  long long m_last_sarm_sent_time = 0; // Timestamp of the last sent SARM message in ms
+  // Timestamp of the last transition to CONNECTED, to prevent a double-SARM reseting connection and tempo init messages
+  long long m_last_connected = 0;
   int m_nbr_sarm_sent = 0;  // Number of SARM sent
   int m_repeat = 0;         // Number of times the sent message is repeated
 
+
+  void m_refreshNameLog() {
+    std::lock_guard<std::recursive_mutex> lock(m_connection_state_mutex);
+    m_name_log = "[" + m_path_name + " - " + connectionState2str(m_connection_state) + "]";
+  }
   /**
    * Manage the HNZ protocol connection with the PA. Be careful, it doesn't
    * manage the TCP connection.
@@ -236,18 +327,11 @@ class HNZPath {
   void m_manageHNZProtocolConnection();
 
   /**
-   * Manage the HNZ protocol when connecting
-   * @param now epoch time in seconds
-   * @return Number of miliseconds to sleep after this step
+   * Manage the HNZ protocol according to the current ProtocolState m_protocol_state
+   * @param now epoch time in milliseconds
+   * @return Number of milliseconds to sleep after this step
    */
-  milliseconds m_manageHNZProtocolConnecting(long now);
-
-  /**
-   * Manage the HNZ protocol when connected
-   * @param now epoch time in seconds
-   * @return Number of miliseconds to sleep after this step
-   */
-  milliseconds m_manageHNZProtocolConnected(long now);
+  std::chrono::milliseconds m_manageHNZProtocolState(long long now);
 
   /**
    * Analyze a HNZ frame. If the frame is an information frame then we extract
@@ -330,6 +414,14 @@ class HNZPath {
   bool m_sendInfoImmediately(Message message);
 
   /**
+   * Process an information frame and update the list "messages" accordingly
+   * @param data Raw data
+   * @param int Frame size
+   * @param messages Messages list to be updated
+   */
+  void m_receivedINFO(unsigned char* data, int size, vector<vector<unsigned char>>* messages);
+
+  /**
    * Send a date configuration message
    */
   void m_send_date_setting();
@@ -338,23 +430,6 @@ class HNZPath {
    * Send a time configuration message
    */
   void m_send_time_setting();
-
-  /**
-   * Go to the CONNECTED statue of the HNZ connection
-   */
-  void m_go_to_connected();
-
-  /**
-   * Get the other path if any
-   * @return Second HNZ path, or nullptr if no other path defined
-   */
-  std::shared_ptr<HNZPath> m_getOtherPath() const;
-
-  /**
-   * Tells if the HNZ connection is fully established and active on the other path
-   * @return True if the connection is established, false if not established or no other path defined
-   */
-  bool m_isOtherPathHNZConnected() const;
 
   /**
    * Called after sending a Command to store its information until a ACK is received, if the command was actually sent
@@ -380,12 +455,125 @@ class HNZPath {
   void m_NRAccepted(int nr);
 
   /**
-   * Returns mutex used to protect the protocol state from the other path,
-   * if no other path is defined, returns a static mutex object instead
-   * so that the return of this function can always be passed to a lock
-   * @return Mutex protecting m_protocol_state from the other path, or static mutex
+   * Send a frame through the HNZ client and record the last send time
+   * @param msg Bytes of the frame to send
+   * @param msgSize Number of bytes in msg
+   * @param usePAAddr If true, use PA address in the message, else use Center address
+   * Protocol expect the following addresses when sending the following type of messages :
+   * | Type | Expected Addr |
+   * | ---- | ------------- |
+   * | SARM | Center        |
+   * | UA   | PA            |
+   * | RR   | PA            |
+   * | INFO | Center        |
    */
-  std::recursive_mutex& m_getOtherPathProtocolStateMutex() const;
+  void m_sendFrame(unsigned char *msg, unsigned long msgSize, bool usePAAddr = false);
+
+  /**
+   * Allow for the re-emission of SARM messages
+   */
+  void resetSarmCounters();
+
+  /**
+   * Performs the different actions necessary on entry in the protocol state CONNECTED
+   */
+  void resolveProtocolStateConnected();
+
+  /**
+   * Performs the different actions necessary on entry in the protocol state CONNECTION
+   */
+  void resolveProtocolStateConnection();
+
+  /* Discard unacknowledged messages and messages waiting to be sent
+   */
+  void resetInputVariables();
+
+  /* Discard unacknowledged messages and messages waiting to be sent
+   */
+  void resetOutputVariables();
+
+  /**
+   * Calls HNZClient to stop the TCP connection
+   */
+  void stopTCP();
+
+  /**
+   * Send audit for path connection status : CONNECTED
+   */
+  void sendAuditSuccess();
+
+  /**
+   * Send audit for path connection status : CONNECTION
+   */
+  void sendAuditFail();
+
+  /**
+   * Discard unacknowledged messages and messages waiting to be sent
+   */
+  void discardMessages();
+
+  /**
+   * Helper function to evaluate if a message is a BULLE. BULLE can be sent in OUTPUT_CONNECTED and CONNECT states.
+   * @param msg Raw frame
+   * @param size Size of the frame
+   * @return true if the message is a BULLE
+   */
+  bool isBULLE(const unsigned char* msg, unsigned long size) const;
+
+  /*! \brief Protocol state automaton
+  *
+  *  Each entry of this map represents a transition between protocol states, triggered by a ConnectionEvent and resolved by an ordered list of actions.
+  */
+  std::map<std::pair<ProtocolState, ConnectionEvent>, std::pair<ProtocolState, std::vector<void (HNZPath::*)()>>> m_protocolStateTransitionMap = {
+    {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetInputVariables}                                                                                  }},
+    {{ProtocolState::CONNECTION,       ConnectionEvent::RECEIVED_UA   }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::setConnectionPending, &HNZPath::resetOutputVariables}                                                                                 }},
+    {{ProtocolState::CONNECTION,       ConnectionEvent::MAX_SARM_SENT }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                                    }},
+    {{ProtocolState::CONNECTION,       ConnectionEvent::TO_RECV       }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                                    }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetInputVariables}                                                                                  }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TO_RECV       }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::RECEIVED_UA   }, {ProtocolState::CONNECTED,        {&HNZPath::resetOutputVariables, &HNZPath::resolveProtocolStateConnected}            }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::MAX_SARM_SENT }, {ProtocolState::CONNECTION,       {&HNZPath::stopTCP, &HNZPath::resolveProtocolStateConnection}                                                    }},
+    {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::RECEIVED_SARM }, {ProtocolState::CONNECTED,        {&HNZPath::resetInputVariables, &HNZPath::resolveProtocolStateConnected}             }},
+    {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::MAX_SEND      }, {ProtocolState::CONNECTION,       {&HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resolveProtocolStateConnection}                                          }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::MAX_SEND      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_TCACK      }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables}                                }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::RECEIVED_SARM }, {ProtocolState::INPUT_CONNECTED,  {&HNZPath::setConnectionPending, &HNZPath::resetSarmCounters, &HNZPath::discardMessages, &HNZPath::resetInputVariables} }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TO_RECV       }, {ProtocolState::OUTPUT_CONNECTED, {&HNZPath::setConnectionPending, &HNZPath::discardMessages, &HNZPath::resetOutputVariables}                                                             }},
+    {{ProtocolState::CONNECTION,       ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
+    {{ProtocolState::INPUT_CONNECTED,  ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection}                                                                       }},
+    {{ProtocolState::OUTPUT_CONNECTED, ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::discardMessages, &HNZPath::resolveProtocolStateConnection}                                                                       }},
+    {{ProtocolState::CONNECTED,        ConnectionEvent::TCP_CNX_LOST  }, {ProtocolState::CONNECTION,       {&HNZPath::resolveProtocolStateConnection, &HNZPath::discardMessages}                   }}
+  };
+
+  std::map<ConnectionState, std::string> m_connectionState2str =  {
+    {ConnectionState::DISCONNECTED, "disconnected" },
+    {ConnectionState::PENDING_HNZ,  "pending-hnz"  },
+    {ConnectionState::PASSIVE,      "passive"      },
+    {ConnectionState::ACTIVE,       "active"       }
+  };
+
+  std::map<ProtocolState, std::string> m_protocolState2str =  {
+    {ProtocolState::CONNECTION,       "CONNECTION"       },
+    {ProtocolState::INPUT_CONNECTED,  "INPUT_CONNECTED"  },
+    {ProtocolState::OUTPUT_CONNECTED, "OUTPUT_CONNECTED" },
+    {ProtocolState::CONNECTED,        "CONNECTED"        }
+  };
+
+  std::map<ConnectionEvent, std::string> m_connectionEvent2str =  {
+    {ConnectionEvent::TCP_CNX_ESTABLISHED, "TCP_CNX_ESTABLISHED" },
+    {ConnectionEvent::RECEIVED_SARM,       "RECEIVED_SARM"       },
+    {ConnectionEvent::RECEIVED_UA,         "RECEIVED_UA"         },
+    {ConnectionEvent::TO_RECV,             "TO_RECV"             },
+    {ConnectionEvent::MAX_SEND,            "MAX_SEND"            },
+    {ConnectionEvent::TCP_CNX_LOST,        "TCP_CNX_LOST"        },
+    {ConnectionEvent::TO_SEND,             "TO_SEND"             },
+    {ConnectionEvent::RECEIVED_INFO,       "RECEIVED_INFO"       },
+    {ConnectionEvent::SEND_TC,             "SEND_TC"             },
+    {ConnectionEvent::TO_UA,               "TO_UA"               },
+    {ConnectionEvent::MAX_SARM_SENT,       "MAX_SARM_SENT"       },
+    {ConnectionEvent::TO_LASTCG,           "TO_LASTCG"           },
+    {ConnectionEvent::TO_TCACK,            "TO_TCACK"            }
+  };
 };
 
 #endif

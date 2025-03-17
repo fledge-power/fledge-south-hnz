@@ -29,6 +29,7 @@ string protocol_stack_def = QUOTE({
       "gi_repeat_count": 5,
       "gi_time": 300,
       "c_ack_time": 20,
+      "bulle_time": 15,
       "cmd_recv_timeout": 200000
     },
     "south_monitoring": {
@@ -47,7 +48,12 @@ string exchanged_data_def = QUOTE({
         "pivot_id": "ID114562",
         "pivot_type": "SpsTyp",
         "protocols": [
-          {"name": "iec104", "address": "45-672", "typeid": "M_SP_TB_1"}, {
+          {
+            "name": "iec104",
+            "address": "45-672",
+            "typeid": "M_SP_TB_1"
+          },
+          {
             "name": "tase2",
             "address": "S_114562",
             "typeid": "Data_StateQTimeTagExtended"
@@ -57,6 +63,31 @@ string exchanged_data_def = QUOTE({
             "address": "511",
             "typeid": "TS"
           }
+        ]
+      },
+      {
+        "label": "TS2",
+        "pivot_id": "S_2367_0_2_32",
+        "pivot_type": "SpsTyp",
+        "protocols": [
+          {
+            "name": "iec104",
+            "address": "45-673",
+            "typeid": "M_SP_TB_1"
+          },
+          {
+            "name": "tase2",
+            "address": "S_114563",
+            "typeid": "Data_StateQTimeTagExtended"
+          },
+          {
+            "name": "hnzip",
+            "address": "512",
+            "typeid": "TS"
+          }
+        ],
+        "pivot_subtypes": [
+          "trigger_south_gi"
         ]
       },
       {
@@ -104,13 +135,13 @@ TEST(HNZCONF, ConstructorWithParam) {
 TEST_F(HNZConfTest, ConfComplete) { EXPECT_TRUE(hnz_conf->is_complete()); }
 
 TEST_F(HNZConfTest, GetIPAdress) {
-  ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "192.168.0.10");
-  ASSERT_STREQ(hnz_conf->get_ip_address_B().c_str(), "192.168.0.12");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[0].c_str(), "192.168.0.10");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[1].c_str(), "192.168.0.12");
 }
 
 TEST_F(HNZConfTest, GetPort) {
-  ASSERT_EQ(hnz_conf->get_port_A(), 6001);
-  ASSERT_EQ(hnz_conf->get_port_B(), 6002);
+  ASSERT_EQ(hnz_conf->get_paths_port()[0], 6001);
+  ASSERT_EQ(hnz_conf->get_paths_port()[1], 6002);
 }
 
 TEST_F(HNZConfTest, GetRemoteStationAddr) {
@@ -124,8 +155,8 @@ TEST_F(HNZConfTest, GetInaccTimeout) {
 TEST_F(HNZConfTest, GetMaxSARM) { ASSERT_EQ(hnz_conf->get_max_sarm(), 40); }
 
 TEST_F(HNZConfTest, GetRepeatPathAB) {
-  ASSERT_EQ(hnz_conf->get_repeat_path_A(), 5);
-  ASSERT_EQ(hnz_conf->get_repeat_path_B(), 2);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[0], 5);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[1], 2);
 }
 
 TEST_F(HNZConfTest, GetRepeatTimeout) {
@@ -162,6 +193,8 @@ TEST_F(HNZConfTest, GetCAckTime) { ASSERT_EQ(hnz_conf->get_c_ack_time(), 20); }
 
 TEST_F(HNZConfTest, GetCmdRecvTimeout) { ASSERT_EQ(hnz_conf->get_cmd_recv_timeout(), 200000); }
 
+TEST_F(HNZConfTest, GetBulleTime) { ASSERT_EQ(hnz_conf->get_bulle_time(), 15); }
+
 TEST_F(HNZConfTest, GetLabelTS1) {
   ASSERT_STREQ(hnz_conf->getLabel("TS", 511).c_str(), "TS1");
 }
@@ -172,7 +205,7 @@ TEST_F(HNZConfTest, GetLabelUnknown) {
 
 TEST_F(HNZConfTest, GetConnxStatusSignal) { ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "TEST_ASSET"); }
 
-TEST_F(HNZConfTest, GetLastTSAddress) { ASSERT_EQ(hnz_conf->getLastTSAddress(), 511); }
+TEST_F(HNZConfTest, GetLastTSAddress) { ASSERT_EQ(hnz_conf->getLastTSAddress(), 512); }
 
 TEST_F(HNZConfTest, GetAllMessages) {
   unsigned int remote_station_addr = 12;
@@ -190,7 +223,7 @@ TEST_F(HNZConfTest, GetAllMessages) {
   ASSERT_EQ(allTMMessages.count(remote_station_addr), 1);
 
   const auto& allTSForRemoteAddr = allTSMessages.at(remote_station_addr);
-  ASSERT_EQ(allTSForRemoteAddr.size(), 1);
+  ASSERT_EQ(allTSForRemoteAddr.size(), 2);
   ASSERT_EQ(allTSForRemoteAddr.count(msg_address), 1);
   ASSERT_STREQ(allTSForRemoteAddr.at(msg_address).c_str(), "TS1");
   const auto& allTMForRemoteAddr = allTMMessages.at(remote_station_addr);
@@ -199,27 +232,27 @@ TEST_F(HNZConfTest, GetAllMessages) {
   ASSERT_STREQ(allTMForRemoteAddr.at(msg_address).c_str(), "TM1");
 }
 
-string min_protocol_stack_def = QUOTE({
-  "protocol_stack": {
-    "name": "hnzclient",
-    "version": "1.0",
-    "transport_layer": {"connections": [ {"srv_ip": "0.0.0.0"} ]},
-    "application_layer": {"remote_station_addr": 18}
-  }
-});
-
 TEST(HNZCONF, MinimumConf) {
+  std::string min_protocol_stack_def = QUOTE({
+    "protocol_stack": {
+      "name": "hnzclient",
+      "version": "1.0",
+      "transport_layer": {"connections": [ {"srv_ip": "0.0.0.0"} ]},
+      "application_layer": {"remote_station_addr": 18}
+    }
+  });
+
   std::shared_ptr<HNZConf> hnz_conf = std::make_shared<HNZConf>();
   hnz_conf->importConfigJson(min_protocol_stack_def);
   hnz_conf->importExchangedDataJson(exchanged_data_def);
 
   ASSERT_TRUE(hnz_conf->is_complete());
 
-  ASSERT_STREQ(hnz_conf->get_ip_address_A().c_str(), "0.0.0.0");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[0].c_str(), "0.0.0.0");
 
-  ASSERT_STREQ(hnz_conf->get_ip_address_B().c_str(), "");
+  ASSERT_STREQ(hnz_conf->get_paths_ip()[1].c_str(), "");
 
-  ASSERT_EQ(hnz_conf->get_port_A(), 6001);
+  ASSERT_EQ(hnz_conf->get_paths_port()[0], 6001);
 
   ASSERT_EQ(hnz_conf->get_remote_station_addr(), 18);
 
@@ -227,8 +260,8 @@ TEST(HNZCONF, MinimumConf) {
 
   ASSERT_EQ(hnz_conf->get_max_sarm(), 30);
 
-  ASSERT_EQ(hnz_conf->get_repeat_path_A(), 3);
-  ASSERT_EQ(hnz_conf->get_repeat_path_B(), 3);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[0], 3);
+  ASSERT_EQ(hnz_conf->get_paths_repeat()[1], 3);
 
   ASSERT_EQ(hnz_conf->get_repeat_timeout(), 3000);
 
@@ -248,7 +281,13 @@ TEST(HNZCONF, MinimumConf) {
 
   ASSERT_EQ(hnz_conf->get_c_ack_time(), 10);
 
+  ASSERT_EQ(hnz_conf->get_bulle_time(), 10);
+
   ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "");
+
+  ASSERT_TRUE(hnz_conf->isTsAddressCgTriggering(512));
+
+  ASSERT_FALSE(hnz_conf->isTsAddressCgTriggering(511));
 }
 
 TEST(HNZCONF, ConfNotComplete) {
@@ -553,6 +592,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": "nope",
         "gi_time": "nope",
         "c_ack_time": "nope",
+        "bulle_time": "nope",
         "cmd_recv_timeout": "nope"
       }
     }
@@ -584,6 +624,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -615,6 +656,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -646,6 +688,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -677,6 +720,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -708,6 +752,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -739,6 +784,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -770,6 +816,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       }
     }
@@ -802,6 +849,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": 42
@@ -834,6 +882,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": {}
@@ -866,6 +915,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": {
@@ -900,6 +950,7 @@ TEST(HNZCONF, ProtocolStackImportErrors) {
         "gi_repeat_count": 5,
         "gi_time": 300,
         "c_ack_time": 20,
+        "bulle_time": 15,
         "cmd_recv_timeout": 200000
       },
       "south_monitoring": {
@@ -1175,6 +1226,94 @@ TEST(HNZCONF, ExchangedDataImportErrors) {
   });
   hnz_conf->importExchangedDataJson(configValid);
   ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with the wrong type for pivot_subtypes 
+  std::string configPivotSubtypesString = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": "test"
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesString);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with an empty array for pivot_subtypes 
+  std::string configPivotSubtypesEmptyArray = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": []
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesEmptyArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with the wrong array type for pivot_subtypes 
+  std::string configPivotSubtypesIntegerArray = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          42
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesIntegerArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with the string content for pivot_subtypes 
+  std::string configPivotSubtypesWrongStringArray = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          "42"
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesWrongStringArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
 }
 
 TEST(HNZCONF, GetNumberCG) {
@@ -1184,5 +1323,6 @@ TEST(HNZCONF, GetNumberCG) {
 
   conf = std::make_shared<HNZConf>(protocol_stack_def, exchanged_data_def);
   ASSERT_TRUE(conf->is_complete());
-  ASSERT_EQ(conf->getNumberCG(), 1);
+  ASSERT_EQ(conf->getNumberCG(), 2);
 }
+

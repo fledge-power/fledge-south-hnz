@@ -50,13 +50,13 @@ void HNZ::start(bool requestedStart /*= false*/) {
   m_sendAllTMQualityReadings(true, false);
   m_sendAllTSQualityReadings(true, false);
 
-  auto pathPair = m_hnz_connection->getBothPath();
-  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, pathPair.first);
-  if (pathPair.second != nullptr) {
+  auto paths = m_hnz_connection->getPaths();
+  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, paths[0]);
+  if (paths[1] != nullptr) {
     // Wait after getting the passive path pointer as connection init of active path may swap path
-    this_thread::sleep_for(milliseconds(1000));
+    this_thread::sleep_for(std::chrono::milliseconds(1000));
     // Path B is defined in the configuration
-    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, pathPair.second);
+    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, paths[1]);
   }
 
   m_hnz_connection->start();
@@ -87,7 +87,7 @@ void HNZ::stop(bool requestedStop /*= false*/) {
     m_receiving_thread_B = nullptr;
   }
   // Connection must be freed after management threads of both path
-  // as HNZ::m_hnz_connection, HNZConnection::m_active_path and HNZConnection::m_passive_path
+  // as HNZ::m_hnz_connection and paths of HNZConnection
   // are used in HNZ::receive running on the threads
   if (m_hnz_connection != nullptr) {
     m_hnz_connection = nullptr;
@@ -168,6 +168,10 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
 }
 
 void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
+  if(!hnz_path_in_use){
+    HnzUtility::log_info(HnzUtility::NamePlugin + " - HNZ::receive - No path to use, exit");
+    return;
+  }
   {
     std::lock_guard<std::recursive_mutex> guard(m_configMutex);
     if (!m_hnz_conf->is_complete()) {
@@ -195,10 +199,10 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
     // Waiting for data
     messages = hnz_path_in_use->getData();
 
-    if (messages.empty() && !hnz_path_in_use->isConnected()) {
-      HnzUtility::log_warn("%s Connection lost, reconnecting active path and switching to other path", beforeLog.c_str());
-      // If connection lost, try to switch path
-      if (hnz_path_in_use->isActivePath()) m_hnz_connection->switchPath();
+    if (messages.empty() && !hnz_path_in_use->isTCPConnected()) {
+      // Refresh beforeLog as path state will change over time
+      beforeLog = HnzUtility::NamePlugin + " - HNZ::receive - " + hnz_path_in_use->getName();
+      HnzUtility::log_warn("%s Connection lost, reconnecting path.", beforeLog.c_str());
       // Try to reconnect, unless thread is stopping
       if (m_is_running) {
         hnz_path_in_use->disconnect();
@@ -299,7 +303,7 @@ void HNZ::m_handleModuloCode(vector<Reading>& readings, const vector<unsigned ch
   // No reading to send when reciving modulo code, but keep the parameter
   // to get a homogenous signature for all m_handle*() methods
   readings.clear();
-  m_daySection = data[1];
+  setDaySection(data[1]);
 }
 
 void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& data) const {
@@ -331,7 +335,8 @@ void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& da
   }
 }
 
-void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) const {
+void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handleTSCE - ";
   string msg_code = "TS";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
     to_string((int)(data[2] >> 5)));  // AD0 + ADB
@@ -348,7 +353,17 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   unsigned int ts_iv = (data[2] >> 2) & 0x1;  // HNV bit
   unsigned int ts_s = data[2] & 0x1;          // S bit
   unsigned int ts_c = (data[2] >> 1) & 0x1;   // C bit
-  unsigned long epochMs = getEpochMsTimestamp(std::chrono::system_clock::now(), m_daySection, ts);
+  // Using C time (C++11 limitations conversion to local time)
+  time_t now = time(nullptr);
+  auto time_struct_real = tm();
+  m_hnz_conf->get_use_utc() ? gmtime_r(&now, &time_struct_real) : localtime_r(&now, &time_struct_real);
+  auto epochMs = getEpochMsTimestamp(std::chrono::system_clock::from_time_t(mktime(&time_struct_real)), m_daySection, ts);
+
+  // Always timestamp with UTC time --------
+  auto time_struct_utc = tm();
+  gmtime_r(&now, &time_struct_utc);
+  auto real_utc_offset_ms = static_cast<unsigned long>((mktime(&time_struct_real) - mktime(&time_struct_utc))) * 1000;
+  // ----------------------------------------
 
   ReadingParameters params;
   params.label = label;
@@ -357,12 +372,34 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
   params.msg_address = msg_address;
   params.value = value;
   params.valid = valid;
-  params.ts = epochMs;
+  params.ts = epochMs - real_utc_offset_ms;
   params.ts_iv = ts_iv;
   params.ts_c = ts_c;
   params.ts_s = ts_s;
   params.cg = false;
+
+  // In stateINPUT_CONNECTED, timestamp mod10 might be uninitialized
+  if(m_hnz_connection->getActivePath() != nullptr && m_hnz_connection->getActivePath()->getProtocolState() == ProtocolState::INPUT_CONNECTED){
+    HnzUtility::log_info("%s TSCE discarded in path protocol state INPUT_CONNECTED.", beforeLog.c_str());
+    params.empty_timestamp = true;
+  }
+
   readings.push_back(m_prepare_reading(params));
+
+  if (params.value == 0 && m_hnz_conf->isTsAddressCgTriggering(msg_address)) {
+    if(m_hnz_connection->getActivePath() == nullptr) {
+      HnzUtility::log_debug(beforeLog + "GI triggering TS received but no active path available => GI skipped");
+    }
+    else {
+      if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
+        HnzUtility::log_debug(beforeLog + "GI triggering TS received but GI already running, scheduling another GI after the current one");
+        m_giInQueue = true;
+      } else {
+        HnzUtility::log_info(beforeLog + "GI triggering TS received, start a GI");
+        m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+      }
+    }
+  }
 }
 
 void HNZ::m_handleTSCG(vector<Reading>& readings, const vector<unsigned char>& data) {
@@ -450,7 +487,13 @@ void HNZ::m_handleATVC(vector<Reading>& readings, const vector<unsigned char>& d
 
   unsigned int msg_address = data[1] & 0x1F;  // AD0
 
-  m_hnz_connection->getActivePath()->receivedCommandACK("TVC", msg_address);
+  // Acknowledge the TVC on the path from which it was sent
+  // Unexpected partial disconnection of the active path can generate ill states if the message is not acknowledged
+  for (auto& path: m_hnz_connection->getPaths())
+  {
+    if(path == nullptr) continue;
+    path->receivedCommandACK("TVC", msg_address);
+  }
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
   if (label.empty()) {
@@ -479,7 +522,13 @@ void HNZ::m_handleATC(vector<Reading>& readings, const vector<unsigned char>& da
   unsigned int msg_address = stoi(to_string((int)data[1]) +
     to_string((int)(data[2] >> 5)));  // AD0 + ADB
 
-  m_hnz_connection->getActivePath()->receivedCommandACK("TC", msg_address);
+  // Acknowledge the TC on the path from which it was sent
+  // Unexpected partial disconnection of the active path can generate ill states if the message is not acknowledged
+  for (auto& path: m_hnz_connection->getPaths())
+  {
+    if(path == nullptr) continue;
+    path->receivedCommandACK("TC", msg_address);
+  }
 
   string label = m_hnz_conf->getLabel(msg_code, msg_address);
   if (label.empty()) {
@@ -549,7 +598,7 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
   }
   if (isTSCE) {
     // Casting "unsigned long" into "long" for do_ts in order to match implementation of iec104 plugin
-    measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
+    if(!params.empty_timestamp) measure_features->push_back(m_createDatapoint("do_ts", static_cast<long int>(params.ts)));
     measure_features->push_back(m_createDatapoint("do_ts_iv", static_cast<long int>(params.ts_iv)));
     measure_features->push_back(m_createDatapoint("do_ts_c", static_cast<long int>(params.ts_c)));
     measure_features->push_back(m_createDatapoint("do_ts_s", static_cast<long int>(params.ts_s)));
@@ -680,6 +729,10 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
     return 1;
   }
 
+  if(m_hnz_connection->getActivePath() == nullptr){
+    return 2;
+  }
+
   if (type == "TC") {
     bool success = m_hnz_connection->getActivePath()->sendTCCommand(address, static_cast<unsigned char>(value));
     return success ? 0 : 2;
@@ -738,6 +791,8 @@ unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::syst
 
 void HNZ::updateConnectionStatus(ConnectionStatus newState) {
   std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::string newStateSTR = newState == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
+  std::string m_connStatusSTR = m_connStatus == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
   if (m_connStatus == newState) return;
 
   m_connStatus = newState;
@@ -873,11 +928,19 @@ void HNZ::GICompleted(bool success) {
     updateGiStatus(GiStatus::FAILED);
   }
   resetGIQueue();
+
+  if (m_giInQueue) {
+    HnzUtility::log_info("%s Starting delayed GI", beforeLog.c_str());
+    m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+    m_giInQueue = false;
+  }
 }
 
+#ifdef UNIT_TEST
 void HNZ::sendInitialGI() {
   m_hnz_connection->sendInitialGI();
 }
+#endif
 
 void HNZ::m_sendAllTMQualityReadings(bool invalid, bool outdated, const vector<unsigned int>& rejectFilter /*= {}*/) {
   ReadingParameters paramsTemplate;

@@ -51,6 +51,8 @@ void HNZConf::importConfigJson(const string &json) {
   if (m_check_object(info, APP_LAYER)) {
     const Value &conf = info[APP_LAYER];
     is_complete &= m_importApplicationLayer(conf);
+    // Use UTC time instead of local time, default false.
+    m_retrieve(conf, MODULO_USE_UTC, &m_use_utc, false);
   } else {
     is_complete = false;
   }
@@ -71,30 +73,19 @@ bool HNZConf::m_importTransportLayer(const Value &transport) {
   bool is_complete = true;
   if (m_check_array(transport, CONNECTIONS)) {
     const Value &conn = transport[CONNECTIONS];
-    if (conn.Size() == 1) {
-      if (!conn[0].IsObject()) {
-        HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
-        is_complete = false;
-      }
-      else {
-        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
-        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
-      }
-    } else if (conn.Size() == 2) {
-      if (!conn[0].IsObject() || !conn[1].IsObject()) {
-        HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
-        is_complete = false;
-      }
-      else {
-        is_complete &= m_retrieve(conn[0], IP_ADDR, &m_ip_A);
-        is_complete &= m_retrieve(conn[0], IP_PORT, &m_port_A, DEFAULT_PORT);
-        is_complete &= m_retrieve(conn[1], IP_ADDR, &m_ip_B);
-        is_complete &= m_retrieve(conn[1], IP_PORT, &m_port_B, DEFAULT_PORT);
-      }
-    } else {
+    if(conn.Size() == 0 || conn.Size() > MAXPATHS){
       string s = IP_ADDR;
       HnzUtility::log_error(beforeLog + "Bad connections informations (needed one or two " + s + ").");
-      is_complete = false;
+      return false;
+    }
+    for (int i = 0; i < conn.Size(); i++)
+    {
+      if (!conn[i].IsObject()) {
+        HnzUtility::log_error(beforeLog + "Bad connections informations (one array element is not an object).");
+        return false;
+      }
+      is_complete &= m_retrieve(conn[i], IP_ADDR, &(m_paths_ip[i]));
+      is_complete &= m_retrieve(conn[i], IP_PORT, &(m_paths_port[i]), DEFAULT_PORT);
     }
   }
   return is_complete;
@@ -117,10 +108,10 @@ bool HNZConf::m_importApplicationLayer(const Value &conf) {
   is_complete &= m_retrieve(conf, MAX_SARM, &m_max_sarm, DEFAULT_MAX_SARM);
 
   is_complete &=
-      m_retrieve(conf, REPEAT_PATH_A, &m_repeat_path_A, DEFAULT_REPEAT_PATH);
+      m_retrieve(conf, REPEAT_PATH_A, &(m_paths_repeat[0]), DEFAULT_REPEAT_PATH);
 
   is_complete &=
-      m_retrieve(conf, REPEAT_PATH_B, &m_repeat_path_B, DEFAULT_REPEAT_PATH);
+      m_retrieve(conf, REPEAT_PATH_B, &(m_paths_repeat[1]), DEFAULT_REPEAT_PATH);
 
   is_complete &= m_retrieve(conf, REPEAT_TIMEOUT, &m_repeat_timeout,
                             DEFAULT_REPEAT_TIMEOUT);
@@ -144,6 +135,9 @@ bool HNZConf::m_importApplicationLayer(const Value &conf) {
 
   is_complete &=
       m_retrieve(conf, CMD_RECV_TIMEOUT, &m_cmd_recv_timeout, DEFAULT_CMD_RECV_TIMEOUT);
+
+  is_complete &= m_retrieve(conf, BULLE_TIME, &m_bulle_time,
+                          DEFAULT_BULLE_TIME);
   return is_complete;
 }
 
@@ -191,6 +185,8 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   is_complete &= m_check_string(msg, PIVOT_ID);
   is_complete &= m_check_string(msg, PIVOT_TYPE);
 
+  bool isGiTriggeringTs = m_isGiTriggeringTs(msg);
+
   if (!m_check_array(msg, PROTOCOLS)) return false;
 
   for (const Value &protocol : msg[PROTOCOLS].GetArray()) {
@@ -229,8 +225,25 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
     if (msg_address > m_lastTSAddr) {
       m_lastTSAddr = msg_address;
     }
+
+    if (isGiTriggeringTs) {
+      HnzUtility::log_debug(beforeLog + " Storing address " + to_string(msg_address) + " for GI triggering");
+      m_cgTriggeringTsAdresses.insert(msg_address);
+    }
   }
+
   return is_complete;
+}
+
+bool HNZConf::m_isGiTriggeringTs(const Value &msg) const {
+  if (msg.HasMember(PIVOT_SUBTYPES) && msg[PIVOT_SUBTYPES].IsArray()) {
+    for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
+      if (subtype.IsString() && subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
@@ -445,6 +458,21 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, long long int *targ
       return false;
     }
     *target = json[key].GetInt64();
+  }
+  return true;
+}
+
+bool HNZConf::m_retrieve(const Value &json, const char *key, bool *target, bool def) {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_retrieve - ";
+  if (!json.HasMember(key)) {
+    *target = def;
+  } else {
+    if (!json[key].IsBool()) {
+      string s = key;
+      HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value is not a bool.");
+      return false;
+    }
+    *target = json[key].GetBool();
   }
   return true;
 }

@@ -816,15 +816,16 @@ void HNZPath::m_send_date_setting() {
 
 void HNZPath::m_send_time_setting() {
   std::string beforeLog = HnzUtility::NamePlugin + " - HNZPath::m_send_time_setting - " + m_name_log;
+  long int ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::high_resolution_clock::now().time_since_epoch())
+                            .count();
   // Using C time (C++11 limitations conversion to local time)
-  time_t now = time(0);
+  time_t now = static_cast<time_t>(ms_since_epoch / 1000);
   tm time_struct = tm();
   m_use_utc ? gmtime_r(&now, &time_struct) : localtime_r(&now, &time_struct);
-  long int ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::system_clock::from_time_t(mktime(&time_struct)).time_since_epoch()).count();
-  long int ms_today = ms_since_epoch % 86400000;
+  long int ms_today = time_struct.tm_hour * 3600000 + time_struct.tm_min * 60000 + time_struct.tm_sec * 1000 + (ms_since_epoch % 1000);
   long int mod10m = ms_today / 600000;
-  long int frac = (ms_today - (mod10m * 600000)) / 10;
+  long int frac = (ms_since_epoch - (mod10m * 600000)) / 10;
   unsigned char msg[5];
   msg[0] = SETTIME_CODE;
   msg[1] = mod10m & 0xFF;

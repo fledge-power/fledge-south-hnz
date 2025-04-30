@@ -153,8 +153,8 @@ static PLUGIN_INFORMATION info = {
  * Return the information about this plugin
  */
 PLUGIN_INFORMATION *plugin_info() {
-  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_info -";
-  HnzUtility::log_info("%s HNZ Config is %s", beforeLog.c_str(), info.config);
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_info -"; //LCOV_EXCL_LINE
+  HnzUtility::log_info("%s HNZ Config is %s", beforeLog.c_str(), info.config); //LCOV_EXCL_LINE
   return &info;
 }
 
@@ -163,11 +163,11 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
   Logger::getLogger()->setMinLevel(STRINGIFY_MACRO(START_LOG_LEVEL));
   #endif
 
-  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_init -";
-  HnzUtility::log_info("%s Initializing the plugin", beforeLog.c_str());
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_init -"; //LCOV_EXCL_LINE
+  HnzUtility::log_info("%s Initializing the plugin", beforeLog.c_str()); //LCOV_EXCL_LINE
 
   if (config == nullptr) {
-      HnzUtility::log_warn("%s No config provided for filter, using default config", beforeLog.c_str());
+      HnzUtility::log_warn("%s No config provided for filter, using default config", beforeLog.c_str()); //LCOV_EXCL_LINE
       auto pluginInfo = plugin_info();
       config = new ConfigCategory("newConfig", pluginInfo->config);
       config->setItemsValueFromDefault();
@@ -176,7 +176,7 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
   auto hnz = new HNZ();
   hnz->reconfigure(*config);
 
-  HnzUtility::log_info("%s Plugin initialized", beforeLog.c_str());
+  HnzUtility::log_info("%s Plugin initialized", beforeLog.c_str()); //LCOV_EXCL_LINE
 
   return static_cast<PLUGIN_HANDLE>(hnz);
 }
@@ -187,11 +187,11 @@ PLUGIN_HANDLE plugin_init(ConfigCategory* config) {
 void plugin_start(PLUGIN_HANDLE *handle) {
   if (!handle) return;
   
-  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_start -";
-  HnzUtility::log_info("%s Starting the plugin...", beforeLog.c_str());
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_start -"; //LCOV_EXCL_LINE
+  HnzUtility::log_info("%s Starting the plugin...", beforeLog.c_str()); //LCOV_EXCL_LINE
   auto hnz = reinterpret_cast<HNZ *>(handle);
   hnz->start(true);
-  HnzUtility::log_info("%s Plugin started", beforeLog.c_str());
+  HnzUtility::log_info("%s Plugin started", beforeLog.c_str()); //LCOV_EXCL_LINE
 }
 
 /**
@@ -208,7 +208,7 @@ void plugin_register_ingest(PLUGIN_HANDLE *handle, INGEST_CB cb, void *data) {
  * Poll for a plugin reading
  */
 Reading plugin_poll(PLUGIN_HANDLE *handle) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_poll -";
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_poll -"; //LCOV_EXCL_LINE
   throw runtime_error(beforeLog + "HNZ is an async plugin, poll should not be called");
 }
 
@@ -217,8 +217,8 @@ Reading plugin_poll(PLUGIN_HANDLE *handle) {
  */
 void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
   if (!handle) throw exception();
-  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_reconfigure -";
-  HnzUtility::log_info("%s New config: %s", beforeLog.c_str(), newConfig.c_str());
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_reconfigure -"; //LCOV_EXCL_LINE
+  HnzUtility::log_info("%s New config: %s", beforeLog.c_str(), newConfig.c_str()); //LCOV_EXCL_LINE
 
   auto hnz = reinterpret_cast<HNZ *>(*handle);
   ConfigCategory config(hnz->getServiceName(), newConfig);
@@ -229,8 +229,8 @@ void plugin_reconfigure(PLUGIN_HANDLE *handle, string &newConfig) {
  * Shutdown the plugin
  */
 void plugin_shutdown(PLUGIN_HANDLE *handle) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_shutdown -";
-  HnzUtility::log_info("%s Shutting down the plugin...", beforeLog.c_str());
+  std::string beforeLog = HnzUtility::NamePlugin + " - plugin_shutdown -"; //LCOV_EXCL_LINE
+  HnzUtility::log_info("%s Shutting down the plugin...", beforeLog.c_str()); //LCOV_EXCL_LINE
   auto hnz = reinterpret_cast<HNZ *>(handle);
   delete hnz;
 }

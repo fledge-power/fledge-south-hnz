@@ -290,9 +290,9 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
       if (m_gi_addresses_received.size() != nbTSCG) {
         AddressesDiff TSAddressesDiff = m_getMismatchingTSCGAddresses();
         HnzUtility::log_warn("%s Received last TSCG but %lu TS received when %lu were expected: Missing %s, Extra %s", //LCOV_EXCL_LINE
-                            beforeLog.c_str(), m_gi_addresses_received.size(), nbTSCG,
-                            formatAddresses(TSAddressesDiff.missingAddresses).c_str(),
-                            formatAddresses(TSAddressesDiff.extraAddresses).c_str());
+                            beforeLog.c_str(), m_gi_addresses_received.size(), nbTSCG, //LCOV_EXCL_LINE
+                            formatAddresses(TSAddressesDiff.missingAddresses).c_str(), //LCOV_EXCL_LINE
+                            formatAddresses(TSAddressesDiff.extraAddresses).c_str()); //LCOV_EXCL_LINE
       }
       m_hnz_connection->checkGICompleted(true);
     }

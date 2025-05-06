@@ -282,7 +282,7 @@ void HNZConnection::m_check_command_timer(std::shared_ptr<HNZPath> path) const {
     while (it != path->command_sent.end()) {
       if (it->timestamp_max < m_current) {
         HnzUtility::log_warn("%s A remote control (%s addr=%d) was not acknowledged in time !", beforeLog.c_str(), //LCOV_EXCL_LINE
-                            it->type.c_str(), it->addr);
+                            it->type.c_str(), it->addr); //LCOV_EXCL_LINE
         it = path->command_sent.erase(it);
         // DF.GLOB.TC : nothing to do in HNZ
       } else {

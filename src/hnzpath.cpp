@@ -61,7 +61,7 @@ void HNZPath::protocolStateTransition(const ConnectionEvent event){
   std::pair<ProtocolState, std::vector<void (HNZPath::*)()>> resolveTransition = m_protocolStateTransitionMap[{m_protocol_state, event}];
 
   HnzUtility::log_info(beforeLog + " Issuing protocol state transition %s : %s -> %s", connectionEvent2str(event).c_str(), //LCOV_EXCL_LINE
-    protocolState2str(m_protocol_state).c_str(), protocolState2str(resolveTransition.first).c_str());
+    protocolState2str(m_protocol_state).c_str(), protocolState2str(resolveTransition.first).c_str()); //LCOV_EXCL_LINE
   // Here m_active_path_mutex might be locked within the scope of m_protocol_state_mutex lock, so lock both to avoid deadlocks
   // Same can happen if m_protocol_state_mutex from the other path gets locked later withing this function
   std::lock(m_protocol_state_mutex, m_hnz_connection->getActivePathMutex()); // Lock all mutexes simultaneously //LCOV_EXCL_LINE
@@ -458,7 +458,7 @@ vector<vector<unsigned char>> HNZPath::m_analyze_frame(MSG_TRAME* frReceived) {
     }
   } else {
     HnzUtility::log_warn(beforeLog + " The received address " + to_string(address) + //LCOV_EXCL_LINE
-                        " don't match the configured address: " + to_string(m_remote_address));
+                        " don't match the configured address: " + to_string(m_remote_address)); //LCOV_EXCL_LINE
   }
   return messages;
 }
@@ -480,7 +480,7 @@ void HNZPath::m_receivedINFO(unsigned char* data, int size, vector<vector<unsign
   } else {
     // Information frame
     HnzUtility::log_info(beforeLog + " Received an information frame (ns = " + to_string(ns) + //LCOV_EXCL_LINE
-                                    ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")");
+                                    ", p = " + to_string(pf) + ", nr = " + to_string(nr) + ")"); //LCOV_EXCL_LINE
     std::lock_guard<std::recursive_mutex> lock3(m_hnz_connection->getActivePathMutex()); //LCOV_EXCL_LINE
     if (m_hnz_connection->canPathExtractMessage(this)) {
       // Only the messages on the active path are extracted. The
@@ -597,7 +597,7 @@ bool HNZPath::m_receivedRR(int nr, bool repetition) {
     } else {
       // invalid NR
       HnzUtility::log_warn(beforeLog + " Ignoring the RR, NR (" + to_string(nr) + ") is invalid. " + //LCOV_EXCL_LINE
-                                      "Current NRR: " + to_string(m_NRR) + ", Current VS: " + to_string(m_ns));
+                                      "Current NRR: " + to_string(m_NRR) + ", Current VS: " + to_string(m_ns)); //LCOV_EXCL_LINE
       return false;
     }
   }
@@ -725,7 +725,7 @@ bool HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex); //LCOV_EXCL_LINE
   if (m_protocol_state != ProtocolState::CONNECTED && !(m_protocol_state == ProtocolState::OUTPUT_CONNECTED && isBULLE(msg, size))) {
     HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message [" //LCOV_EXCL_LINE
-                        + convert_data_to_str(msg, static_cast<int>(size)) + "]");
+                        + convert_data_to_str(msg, static_cast<int>(size)) + "]"); //LCOV_EXCL_LINE
     return false;
   }
   Message message;
@@ -736,7 +736,7 @@ bool HNZPath::m_sendInfo(unsigned char* msg, unsigned long size) {
   } else {
     std::string waitingMsgStr = convert_messages_to_str(msg_sent);
     HnzUtility::log_debug(beforeLog + " Anticipation ratio reached (" + std::to_string(m_anticipation_ratio) + "), message [" //LCOV_EXCL_LINE
-                        + convert_data_to_str(msg, static_cast<int>(size)) + "] will be delayed. Messages waiting: "
+                        + convert_data_to_str(msg, static_cast<int>(size)) + "] will be delayed. Messages waiting: " //LCOV_EXCL_LINE
                         + waitingMsgStr);
     msg_waiting.push_back(message);
   }
@@ -750,7 +750,7 @@ bool HNZPath::m_sendInfoImmediately(Message message) {
   std::lock_guard<std::recursive_mutex> lock(m_protocol_state_mutex); //LCOV_EXCL_LINE
   if (m_protocol_state != ProtocolState::CONNECTED && !(m_protocol_state == ProtocolState::OUTPUT_CONNECTED && isBULLE(msg, size))) {
     HnzUtility::log_debug(beforeLog + " Connection is not yet fully established, discarding message [" //LCOV_EXCL_LINE
-                        + convert_data_to_str(msg, size) + "]");
+                        + convert_data_to_str(msg, size) + "]"); //LCOV_EXCL_LINE
     return false;
   }
 
@@ -770,7 +770,7 @@ bool HNZPath::m_sendInfoImmediately(Message message) {
   msg_sent.push_back(message);
 
   HnzUtility::log_debug(beforeLog + " Sent information frame: " + //LCOV_EXCL_LINE
-                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1));
+                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1)); //LCOV_EXCL_LINE
 
   m_ns = (m_ns + 1) % 8;
   return true;
@@ -794,7 +794,7 @@ void HNZPath::sendBackInfo(Message& message) {
           .count();
   
   HnzUtility::log_debug(beforeLog + " Resent information frame: " + //LCOV_EXCL_LINE
-                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1));
+                        convert_data_to_str(&m_address_ARP, 1) + " " + convert_data_to_str(msgWithNrNs, size + 1)); //LCOV_EXCL_LINE
 
 }
 
@@ -811,7 +811,7 @@ void HNZPath::m_send_date_setting() {
   msg[3] = time_struct.tm_year % 100;
   bool sent = m_sendInfo(msg, sizeof(msg));
   HnzUtility::log_info(beforeLog + " Time setting " + (sent?"sent":"discarded") + " : " + to_string((int)msg[1]) + "/" + //LCOV_EXCL_LINE
-                                  to_string((int)msg[2]) + "/" + to_string((int)msg[3]));
+                                  to_string((int)msg[2]) + "/" + to_string((int)msg[3])); //LCOV_EXCL_LINE
 }
 
 void HNZPath::m_send_time_setting() {
@@ -834,7 +834,7 @@ void HNZPath::m_send_time_setting() {
   bool sent = m_sendInfo(msg, sizeof(msg));
   m_hnz_connection->setDaySection(static_cast<unsigned char>(mod10m));
   HnzUtility::log_info(beforeLog + " Time setting " + (sent?"sent":"discarded") + " : mod10m = " + to_string(mod10m) + //LCOV_EXCL_LINE
-                                  " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) +
+                                  " and 10ms frac = " + to_string(frac) + " (" + to_string(mod10m / 6) + //LCOV_EXCL_LINE
                                   "h" + to_string((mod10m % 6) * 10) + "m and " + to_string(frac / 100) +
                                   "s " + to_string(frac % 100) + "ms");
 }

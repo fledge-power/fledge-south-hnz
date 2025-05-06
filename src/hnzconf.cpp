@@ -27,7 +27,7 @@ void HNZConf::importConfigJson(const string &json) {
 
   if (document.Parse(const_cast<char *>(json.c_str())).HasParseError()) {
     HnzUtility::log_fatal(beforeLog + "Parsing error in protocol_stack json, offset " + //LCOV_EXCL_LINE
-                               to_string((unsigned)document.GetErrorOffset()) +
+                               to_string((unsigned)document.GetErrorOffset()) + //LCOV_EXCL_LINE
                                " " +
                                GetParseError_En(document.GetParseError()));
     return;
@@ -149,7 +149,7 @@ void HNZConf::importExchangedDataJson(const string &json) {
   Document document;
   if (document.Parse(const_cast<char *>(json.c_str())).HasParseError()) {
     HnzUtility::log_fatal(beforeLog + "Parsing error in exchanged_data json, offset " + //LCOV_EXCL_LINE
-                               to_string((unsigned)document.GetErrorOffset()) +
+                               to_string((unsigned)document.GetErrorOffset()) + //LCOV_EXCL_LINE
                                " " +
                                GetParseError_En(document.GetParseError()));
     return;
@@ -257,7 +257,7 @@ string HNZConf::getLabel(const string &msg_code, const int msg_address) const {
     string msg_addr = MESSAGE_ADDRESS;
     label = "";
     HnzUtility::log_warn(beforeLog + //LCOV_EXCL_LINE
-        "The message received does not exist in the configuration (" + code +
+        "The message received does not exist in the configuration (" + code + //LCOV_EXCL_LINE
         " : " + msg_code + ", " + st_addr + " : " +
         to_string(m_remote_station_addr) + " and " + msg_addr + " : " +
         to_string(msg_address) + ").");
@@ -437,7 +437,7 @@ bool HNZConf::m_retrieve(const Value &json, const char *key, GIScheduleFormat *t
       } else {
         string s = key;
         HnzUtility::log_error(beforeLog + "Error with the field " + s + ", the value isn't correct. " + //LCOV_EXCL_LINE
-                                          "Example of correct value : 18:00, 07:25, 00:00.");
+                                          "Example of correct value : 18:00, 07:25, 00:00."); //LCOV_EXCL_LINE
         return false;
       }
     }

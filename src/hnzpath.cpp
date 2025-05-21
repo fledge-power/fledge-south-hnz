@@ -823,9 +823,8 @@ void HNZPath::m_send_time_setting() {
   time_t now = static_cast<time_t>(ms_since_epoch / 1000);
   tm time_struct = tm();
   m_use_utc ? gmtime_r(&now, &time_struct) : localtime_r(&now, &time_struct);
-  long int ms_today = time_struct.tm_hour * 3600000 + time_struct.tm_min * 60000 + time_struct.tm_sec * 1000 + (ms_since_epoch % 1000);
-  long int mod10m = ms_today / 600000;
-  long int frac = (ms_since_epoch - (mod10m * 600000)) / 10;
+  long int mod10m = time_struct.tm_hour * 6 + time_struct.tm_min / 10;
+  long int frac = (ms_since_epoch % 600000) / 10;
   unsigned char msg[5];
   msg[0] = SETTIME_CODE;
   msg[1] = mod10m & 0xFF;

@@ -675,6 +675,38 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
     HnzUtility::log_info("%s Received request_connection_status", beforeLog.c_str());
     m_sendConnectionStatus();
     return true;
+  } else if (operation == "north_status") {
+    // The north service notifies its status and awaits a response in mode "accept_if_south_connx_started".
+    // A GI is triggered once the north service is fully started.
+    if(count != 1) {
+      HnzUtility::log_error("%s Invalid number of parameters for north_status operation: %d", beforeLog.c_str(), count); //LCOV_EXCL_LINE
+      return false;
+    }
+    if(params[0]->value == "init_config_finished"){
+      if(m_connStatus == ConnectionStatus::STARTED) {
+        m_sendSouthMonitoringEvent(true, false);
+        HnzUtility::log_debug("%s Received operation \"init_config_finished\", reply with south_event connection started.", beforeLog.c_str()); //LCOV_EXCL_LINE
+      } else {
+        HnzUtility::log_debug("%s Received operation \"init_config_finished\" but south is not connected -> Ignore.", beforeLog.c_str()); //LCOV_EXCL_LINE
+      }
+      return true;
+    } else if (params[0]->value == "init_socket_finished") {
+      if (m_hnz_connection->getActivePath() == nullptr) {
+        HnzUtility::log_debug("%s Received operation \"init_socket_finished\" but no active path available to request GI => GI skipped", beforeLog.c_str()); //LCOV_EXCL_LINE
+        return false;
+      }
+      if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
+        HnzUtility::log_debug("%s Received operation \"init_socket_finished\" but a GI is already running, scheduling another GI after the current one", beforeLog.c_str()); //LCOV_EXCL_LINE
+        m_giInQueue = true;
+      } else {
+        HnzUtility::log_info("%s Received operation \"init_socket_finished\", start a GI", beforeLog.c_str()); //LCOV_EXCL_LINE
+        m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+      }
+      return true;
+    } else {
+      HnzUtility::log_error("%s Unrecognised parameter for north_status operation: %s", beforeLog.c_str(), params[0]->value.c_str()); //LCOV_EXCL_LINE
+      return false;
+    }
   }
 
   HnzUtility::log_error("%s Unrecognised operation %s with %d parameters: %s", beforeLog.c_str(), operation.c_str(), count, paramsToStr(params, count).c_str());

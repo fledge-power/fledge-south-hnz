@@ -682,15 +682,7 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
       HnzUtility::log_error("%s Invalid number of parameters for north_status operation: %d", beforeLog.c_str(), count); //LCOV_EXCL_LINE
       return false;
     }
-    if(params[0]->value == "init_config_finished"){
-      if(m_connStatus == ConnectionStatus::STARTED) {
-        m_sendSouthMonitoringEvent(true, false);
-        HnzUtility::log_debug("%s Received operation \"init_config_finished\", reply with south_event connection started.", beforeLog.c_str()); //LCOV_EXCL_LINE
-      } else {
-        HnzUtility::log_debug("%s Received operation \"init_config_finished\" but south is not connected -> Ignore.", beforeLog.c_str()); //LCOV_EXCL_LINE
-      }
-      return true;
-    } else if (params[0]->value == "init_socket_finished") {
+    if (params[0]->value == "init_socket_finished") {
       if (m_hnz_connection->getActivePath() == nullptr) {
         HnzUtility::log_debug("%s Received operation \"init_socket_finished\" but no active path available to request GI => GI skipped", beforeLog.c_str()); //LCOV_EXCL_LINE
         return false;

@@ -4069,3 +4069,174 @@ TEST_F(HNZTest, timeSettingsUseUTC) {
   debug_print("Values found : do_ts_local = %ld, do_ts_utc = %ld, expectedEpochMs_utc = %ld", do_ts_local, do_ts_utc, expectedEpochMs_utc);
   ASSERT_TRUE(do_ts_local == do_ts_utc && do_ts_local == expectedEpochMs_utc) << "Status points timestamps should always be using UTC time.";
 }
+
+TEST_F(HNZTest, NorthStatusInit) {
+  // The south plugin has to anwser to north operations :
+  // {"north_status" : "init_config_finished"} => send south_event connection started, only if connected
+  // {"north_status" : "init_socket_finished"} => start a General Interrogation if connected
+
+  // Create server but do not start connection to HNZ device
+  ServersWrapper wrapper(0x05, getNextPort(), 0, false);
+  // Initialize configuration only (mandatory for operation processing)
+  wrapper.initHNZPlugin();
+  PLUGIN_PARAMETER paramContentConfigFinished = {"north_status", "init_config_finished"};
+  PLUGIN_PARAMETER paramContentSocketFinished = {"north_status", "init_socket_finished"};
+  PLUGIN_PARAMETER* paramsConfigFinished[1] = {&paramContentConfigFinished};
+  PLUGIN_PARAMETER* paramsSocketFinished[1] = {&paramContentSocketFinished};
+
+  // #########################################################################################
+  // South plugin does not anwser to north_status if not connected
+  ASSERT_TRUE(hnz->operation("north_status", 1, paramsConfigFinished));
+  debug_print("[HNZ south plugin] {\"north_status\" : \"init_config_finished\"} sent");
+  ASSERT_EQ(southEventsReceived, 0);
+
+  // GI is not triggered on socket finished
+  ASSERT_FALSE(hnz->operation("north_status", 1, paramsSocketFinished));
+  debug_print("[HNZ south plugin] {\"north_status\" : \"init_socket_finished\"} sent");
+  ASSERT_EQ(southEventsReceived, 0);
+
+  // Wait for connection to be initialized
+  wrapper.startHNZPlugin();
+  debug_print("[HNZ south plugin] waiting for connection established...");
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  // Also wait for initial CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  waitUntil(southEventsReceived, 3, 6000);
+  // Check that ingestCallback had been called the expected number of times
+  ASSERT_EQ(southEventsReceived, 3);
+  resetCounters();
+  // Validate new connection state
+  std::shared_ptr<Reading> currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  // Validate new GI state
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "failed"},
+  });
+  if(HasFatalFailure()) return;
+
+  // #########################################################################################
+  // South plugin is connected : anwser to init_config_finished with a south_event
+  ASSERT_TRUE(hnz->operation("north_status", 1, paramsConfigFinished));
+  debug_print("[HNZ south plugin] {\"north_status\" : \"init_config_finished\"} sent");
+  ASSERT_EQ(southEventsReceived, 1);
+
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"connx_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+  this_thread::sleep_for(chrono::milliseconds(3000));
+
+  // #########################################################################################
+  // South plugin is connected : anwser to init_socket_finished with a General Interrogation
+  ASSERT_TRUE(hnz->operation("north_status", 1, paramsSocketFinished));
+  debug_print("[HNZ south plugin] {\"north_status\" : \"init_socket_finished\"} sent");
+  waitUntil(southEventsReceived, 1, 1000);
+  resetCounters();
+
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Plugin in is wait for TSCG frames, so we give them
+  server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x01, 0x10, 0x00}, false);
+
+  waitUntil(southEventsReceived, 2, 1000);
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+
+  // No more TEST_STATUS should be sent
+  ASSERT_EQ(popFrontReadingsUntil("TEST_STATUS"), nullptr);
+  if(HasFatalFailure()) return;
+
+  // #########################################################################################
+  // South plugin is connected : anwser to init_socket_finished with a General Interrogation
+  // Not more than 2 GI on multiple status (4 north)
+  ASSERT_TRUE(hnz->operation("north_status", 1, paramsSocketFinished));
+  ASSERT_TRUE(hnz->operation("north_status", 1, paramsSocketFinished));
+  ASSERT_TRUE(hnz->operation("north_status", 1, paramsSocketFinished));
+  ASSERT_TRUE(hnz->operation("north_status", 1, paramsSocketFinished));
+  debug_print("[HNZ south plugin] {\"north_status\" : \"init_socket_finished\"} sent");
+
+  waitUntil(southEventsReceived, 1, 1000);
+  resetCounters();
+
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Plugin in is wait for TSCG frames, so we give them
+  server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x01, 0x10, 0x00}, false);
+
+  waitUntil(southEventsReceived, 3, 1000);
+  ASSERT_EQ(southEventsReceived, 3);
+  resetCounters();
+
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "started"},
+  });
+  if(HasFatalFailure()) return;
+
+  // Plugin in is wait for TSCG frames, so we give them
+  server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
+  server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x01, 0x10, 0x00}, false);
+
+  waitUntil(southEventsReceived, 2, 1000);
+  ASSERT_EQ(southEventsReceived, 2);
+  resetCounters();
+
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "in progress"},
+  });
+  if(HasFatalFailure()) return;
+  currentReading = popFrontReadingsUntil("TEST_STATUS");
+  validateSouthEvent(currentReading, "TEST_STATUS", {
+    {"gi_status", "finished"},
+  });
+  if(HasFatalFailure()) return;
+
+  this_thread::sleep_for(chrono::milliseconds(1000));
+  ASSERT_EQ(southEventsReceived, 0);
+
+  // No more TEST_STATUS should be sent
+  ASSERT_EQ(popFrontReadingsUntil("TEST_STATUS"), nullptr);
+  if(HasFatalFailure()) return;
+}

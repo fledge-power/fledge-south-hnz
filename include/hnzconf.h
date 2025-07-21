@@ -12,6 +12,7 @@
 #define HNZConf_H
 
 #include <map>
+#include <array>
 #include <memory>
 #include <unordered_set>
 #include "rapidjson/document.h"

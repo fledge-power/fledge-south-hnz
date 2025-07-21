@@ -14,6 +14,7 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include <array>
 
 #include "hnzconf.h"
 

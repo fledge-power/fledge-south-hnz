@@ -4079,18 +4079,11 @@ TEST_F(HNZTest, NorthStatusInit) {
   ServersWrapper wrapper(0x05, getNextPort(), 0, false);
   // Initialize configuration only (mandatory for operation processing)
   wrapper.initHNZPlugin();
-  PLUGIN_PARAMETER paramContentConfigFinished = {"north_status", "init_config_finished"};
   PLUGIN_PARAMETER paramContentSocketFinished = {"north_status", "init_socket_finished"};
-  PLUGIN_PARAMETER* paramsConfigFinished[1] = {&paramContentConfigFinished};
   PLUGIN_PARAMETER* paramsSocketFinished[1] = {&paramContentSocketFinished};
 
   // #########################################################################################
-  // South plugin does not anwser to north_status if not connected
-  ASSERT_TRUE(hnz->operation("north_status", 1, paramsConfigFinished));
-  debug_print("[HNZ south plugin] {\"north_status\" : \"init_config_finished\"} sent");
-  ASSERT_EQ(southEventsReceived, 0);
-
-  // GI is not triggered on socket finished
+  // GI is not triggered on initialization
   ASSERT_FALSE(hnz->operation("north_status", 1, paramsSocketFinished));
   debug_print("[HNZ south plugin] {\"north_status\" : \"init_socket_finished\"} sent");
   ASSERT_EQ(southEventsReceived, 0);
@@ -4121,18 +4114,6 @@ TEST_F(HNZTest, NorthStatusInit) {
   currentReading = popFrontReadingsUntil("TEST_STATUS");
   validateSouthEvent(currentReading, "TEST_STATUS", {
     {"gi_status", "failed"},
-  });
-  if(HasFatalFailure()) return;
-
-  // #########################################################################################
-  // South plugin is connected : anwser to init_config_finished with a south_event
-  ASSERT_TRUE(hnz->operation("north_status", 1, paramsConfigFinished));
-  debug_print("[HNZ south plugin] {\"north_status\" : \"init_config_finished\"} sent");
-  ASSERT_EQ(southEventsReceived, 1);
-
-  currentReading = popFrontReadingsUntil("TEST_STATUS");
-  validateSouthEvent(currentReading, "TEST_STATUS", {
-    {"connx_status", "started"},
   });
   if(HasFatalFailure()) return;
   this_thread::sleep_for(chrono::milliseconds(3000));

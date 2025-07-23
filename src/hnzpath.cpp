@@ -17,7 +17,7 @@
 
 HNZPath::HNZPath(const std::shared_ptr<HNZConf> hnz_conf, HNZConnection* hnz_connection, int repeat_max, std::string ip, unsigned int port, std::string pathLetter):
                   // Path settings
-                  m_hnz_client(make_unique<HNZClient>()),
+                  m_hnz_client(uniq::make_unique<HNZClient>()),
                   m_hnz_connection(hnz_connection),
                   repeat_max(repeat_max-1), // -1 because m_repeat is incremented when a message is re-sent
                   m_ip(ip),

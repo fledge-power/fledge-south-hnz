@@ -51,12 +51,12 @@ void HNZ::start(bool requestedStart /*= false*/) {
   m_sendAllTSQualityReadings(true, false);
 
   auto paths = m_hnz_connection->getPaths();
-  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, paths[0]);
+  m_receiving_thread_A = uniq::make_unique<thread>(&HNZ::receive, this, paths[0]);
   if (paths[1] != nullptr) {
     // Wait after getting the passive path pointer as connection init of active path may swap path
     this_thread::sleep_for(std::chrono::milliseconds(1000));
     // Path B is defined in the configuration
-    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, paths[1]);
+    m_receiving_thread_B = uniq::make_unique<thread>(&HNZ::receive, this, paths[1]);
   }
 
   m_hnz_connection->start();
@@ -153,7 +153,7 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
-  m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
+  m_hnz_connection = uniq::make_unique<HNZConnection>(m_hnz_conf, this);
   if (!m_hnz_connection->isRunning()) {
     HnzUtility::log_fatal("%s Unable to start HNZ Connection", beforeLog.c_str());
     return false;

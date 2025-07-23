@@ -19,9 +19,14 @@
 
 #define MAXPATHS 2
 
+namespace uniq{
+  template<typename T, typename... Args>
+  std::unique_ptr<T> make_unique(Args&&... args);
+}
+
 // Local definition of make_unique as it is only available since C++14 and right now fledge-south-hnz is built with C++11
 template<typename T, typename... Args>
-std::unique_ptr<T> make_unique(Args&&... args) {
+std::unique_ptr<T> uniq::make_unique(Args&&... args) {
     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 

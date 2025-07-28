@@ -185,7 +185,11 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
   is_complete &= m_check_string(msg, PIVOT_ID);
   is_complete &= m_check_string(msg, PIVOT_TYPE);
 
-  bool isGiTriggeringTs = m_isGiTriggeringTs(msg);
+  bool isGiTriggeringTs = false;
+  int trigger_value = m_isGiTriggeringTs(msg);
+  if(trigger_value != -1) {
+    isGiTriggeringTs = true;
+  }
 
   if (!m_check_array(msg, PROTOCOLS)) return false;
 
@@ -227,23 +231,29 @@ bool HNZConf::m_importDatapoint(const Value &msg) {
     }
 
     if (isGiTriggeringTs) {
-      HnzUtility::log_debug(beforeLog + " Storing address " + to_string(msg_address) + " for GI triggering"); //LCOV_EXCL_LINE
-      m_cgTriggeringTsAdresses.insert(msg_address);
+      HnzUtility::log_debug(beforeLog + " Storing address " + to_string(msg_address) + "and its value " + to_string(trigger_value) + " for GI triggering");
+      m_cgTriggeringTsAdresses.insert({msg_address, trigger_value}); //LCOV_EXCL_LINE
     }
   }
 
   return is_complete;
 }
 
-bool HNZConf::m_isGiTriggeringTs(const Value &msg) const {
+int HNZConf::m_isGiTriggeringTs(const Value &msg) const {
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZConf::m_isGiTriggeringTs - ";
   if (msg.HasMember(PIVOT_SUBTYPES) && msg[PIVOT_SUBTYPES].IsArray()) {
     for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
-      if (subtype.IsString() && subtype.GetString() == string(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
-        return true;
+      if (subtype.IsObject() && subtype.HasMember(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
+        unsigned int trigger_val;
+        bool value_ok = m_retrieve(subtype, TRIGGER_SOUTH_GI_PIVOT_SUBTYPE, &trigger_val);
+        if (!value_ok) {
+          HnzUtility::log_error(beforeLog + "%s is not an unsigned int", TRIGGER_SOUTH_GI_PIVOT_SUBTYPE);
+        }
+        return (int)trigger_val;
       }
     }
   }
-  return false;
+  return -1;
 }
 
 string HNZConf::getLabel(const string &msg_code, const int msg_address) const {

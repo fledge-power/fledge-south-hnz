@@ -364,9 +364,7 @@ class HNZConf {
   // Nested map of msg_code, remote_station_addr and msg_address
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 
-  // Set of TS addresses that triggers a CG and the value which triggering the TS
-  // TODO changer commentaire et modif ligne après avec tableau de valeur correspond à l'adresse
-  // ou plutôt faire une struct pour que les 2 valeurs soient liées
+  // Map of TS addresses that triggers a CG and the value which triggering the TS
   //std::unordered_set<int> m_cgTriggeringTsAdresses;
   std::map<int, int> m_cgTriggeringTsAdresses;
 

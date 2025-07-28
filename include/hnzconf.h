@@ -300,7 +300,13 @@ class HNZConf {
    *
    * @return True if the given address is present in the address set
    */
-  bool isTsAddressCgTriggering(int address) { return m_cgTriggeringTsAdresses.find(address) != m_cgTriggeringTsAdresses.end(); }
+  int isTsAddressCgTriggering(int address) { 
+    auto it = m_cgTriggeringTsAdresses.find(address);
+    if (it != m_cgTriggeringTsAdresses.end()){
+      return it->second;
+    }
+    return -1; 
+  }
 
  private:
   /**
@@ -333,7 +339,7 @@ class HNZConf {
    * @param msg json configuration object
    * @return True if the configuration is present, else false
    */
-  bool m_isGiTriggeringTs(const Value &msg) const;
+  int m_isGiTriggeringTs(const Value &msg) const;
 
   std::array<string, MAXPATHS> m_paths_ip = {"", ""};
   std::array<unsigned int, MAXPATHS> m_paths_port = {0, 0};
@@ -358,8 +364,11 @@ class HNZConf {
   // Nested map of msg_code, remote_station_addr and msg_address
   map<string, map<unsigned int, map<unsigned int, string>>> m_msg_list;
 
-  // Set of TS addresses that triggers a CG if the TS value is 0
-  std::unordered_set<int> m_cgTriggeringTsAdresses;
+  // Set of TS addresses that triggers a CG and the value which triggering the TS
+  // TODO changer commentaire et modif ligne après avec tableau de valeur correspond à l'adresse
+  // ou plutôt faire une struct pour que les 2 valeurs soient liées
+  //std::unordered_set<int> m_cgTriggeringTsAdresses;
+  std::map<int, int> m_cgTriggeringTsAdresses;
 
   bool m_config_is_complete = false;
   bool m_exchange_data_is_complete = false;

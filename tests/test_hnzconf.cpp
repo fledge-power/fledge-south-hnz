@@ -87,7 +87,7 @@ string exchanged_data_def = QUOTE({
           }
         ],
         "pivot_subtypes": [
-          "trigger_south_gi"
+          { "trigger_south_gi": 0 }
         ]
       },
       {
@@ -285,9 +285,9 @@ TEST(HNZCONF, MinimumConf) {
 
   ASSERT_STREQ(hnz_conf->get_connx_status_signal().c_str(), "");
 
-  ASSERT_TRUE(hnz_conf->isTsAddressCgTriggering(512));
+  ASSERT_NE(hnz_conf->isTsAddressCgTriggering(512), -1);
 
-  ASSERT_FALSE(hnz_conf->isTsAddressCgTriggering(511));
+  ASSERT_EQ(hnz_conf->isTsAddressCgTriggering(511), -1);
 }
 
 TEST(HNZCONF, ConfNotComplete) {
@@ -1308,6 +1308,98 @@ TEST(HNZCONF, ExchangedDataImportErrors) {
         }],
         "pivot_subtypes": [
           "42"
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesWrongStringArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with an empty object for pivot_subtypes 
+  std::string configPivotSubtypesEmptyObjectArray = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          {}
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesWrongStringArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with a member without value for pivot_subtypes 
+  std::string configPivotSubtypesNoMemberValue = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          {"trigger_south_gi"}
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesWrongStringArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with a string member for pivot_subtypes 
+  std::string configPivotSubtypesWrongStringValue = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          {"trigger_south_gi" : "test"}
+        ]
+      }]
+    }
+  });
+  hnz_conf->importExchangedDataJson(configPivotSubtypesWrongStringArray);
+  ASSERT_TRUE(hnz_conf->is_complete());
+
+  // Test with a number other than 0 and 1 for pivot_subtypes 
+  std::string configPivotSubtypesWrongIntValue = QUOTE({
+    "exchanged_data": {
+      "name": "test",
+      "version": "1",
+      "datapoints": [{
+        "label": "test",
+        "pivot_id": "test",
+        "pivot_type": "test",
+        "protocols": [{
+          "name": "hnzip",
+          "address": "42",
+          "typeid": "test"
+        }],
+        "pivot_subtypes": [
+          {"trigger_south_gi" : 3}
         ]
       }]
     }

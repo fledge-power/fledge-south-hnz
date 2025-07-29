@@ -334,10 +334,10 @@ class HNZConf {
   bool m_importDatapoint(const Value &msg);
 
   /**
-   * Tells if the current datapoint has the configuration to trigger a GI
+   * Get the trigger value if the current datapoint has the configuration to trigger a GI
    * 
    * @param msg json configuration object
-   * @return True if the configuration is present, else false
+   * @return the trigger value if the configuration is present, else -1
    */
   int m_isGiTriggeringTs(const Value &msg) const;
 

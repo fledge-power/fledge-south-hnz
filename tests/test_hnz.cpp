@@ -98,12 +98,27 @@ static string exchanged_data_def = QUOTE({
         "pivot_id" : "ID114568",
         "pivot_type" : "SpsTyp",
         "pivot_subtypes": [
-          "trigger_south_gi"
+          {"trigger_south_gi" : 0}
         ],
         "protocols" : [
           {
             "name" : "hnzip",
             "address" : "581",
+            "typeid" : "TS"
+          }
+        ]
+      },
+      {
+        "label" : "TS5",
+        "pivot_id" : "ID114569",
+        "pivot_type" : "SpsTyp",
+        "pivot_subtypes": [
+          {"trigger_south_gi" : 1}
+        ],
+        "protocols" : [
+          {
+            "name" : "hnzip",
+            "address" : "582",
             "typeid" : "TS"
           }
         ]
@@ -4219,5 +4234,86 @@ TEST_F(HNZTest, NorthStatusInit) {
 
   // No more TEST_STATUS should be sent
   ASSERT_EQ(popFrontReadingsUntil("TEST_STATUS"), nullptr);
+  if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, GIonTriggerSouthGI) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+
+  // ############################################################
+  // First we check that receiving a TS4 with 0 as value trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] First case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x20, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that no GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  if(HasFatalFailure()) return;
+
+  // ############################################################
+  // Then we check that receiving a TS4 with 1 as value don't trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] Second case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x28, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that no GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 0);
+  resetCounters();
+  if(HasFatalFailure()) return;
+
+  // Find the CG frame in the list of frames received by server and validate it
+  std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(server->popLastFramesReceived(), GI_FUNCTION_CODE);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after a normal TS : " << BasicHNZServer::frameToStr(CGframe);
+  if(HasFatalFailure()) return;
+
+  // ############################################################
+  // Then we check that receiving a TS5 with 0 as value don't trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] Third case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x40, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that no GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 0);
+  resetCounters();
+  if(HasFatalFailure()) return;
+
+  // Find the CG frame in the list of frames received by server and validate it
+  CGframe = findFrameWithId(server->popLastFramesReceived(), GI_FUNCTION_CODE);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after a normal TS : " << BasicHNZServer::frameToStr(CGframe);
+  if(HasFatalFailure()) return;
+
+  // ############################################################
+  // Then we check that receiving a TS5 with 1 as value trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] Fourth case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x48, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that no GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
   if(HasFatalFailure()) return;
 }

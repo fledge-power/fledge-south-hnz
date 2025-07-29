@@ -247,7 +247,7 @@ int HNZConf::m_isGiTriggeringTs(const Value &msg) const {
         unsigned int trigger_val;
         bool value_ok = m_retrieve(subtype, TRIGGER_SOUTH_GI_PIVOT_SUBTYPE, &trigger_val);
         if (!value_ok) {
-          HnzUtility::log_error(beforeLog + "%s is not an unsigned int", TRIGGER_SOUTH_GI_PIVOT_SUBTYPE);
+          HnzUtility::log_warn(beforeLog + "%s is not an unsigned int", TRIGGER_SOUTH_GI_PIVOT_SUBTYPE);
         }
         return (int)trigger_val;
       }

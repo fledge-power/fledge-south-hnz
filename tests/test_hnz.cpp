@@ -1333,7 +1333,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
       {"do_type", {"string", "TS"}},
       {"do_station", {"int64_t", "1"}},
       {"do_addr", {"int64_t", addrByTS[label]}},
-      {"do_value", {"int64_t", i==4 ? "1":"0"}},
+      {"do_value", {"int64_t", i==4 ? "0":"1"}},
       {"do_valid", {"int64_t", "0"}},
       {"do_cg", {"int64_t", "1"}},
       {"do_outdated", {"int64_t", "0"}},
@@ -4238,7 +4238,7 @@ TEST_F(HNZTest, NorthStatusInit) {
   if(HasFatalFailure()) return;
 }
 
-TEST_F(HNZTest, GIonTriggerSouthGI) {
+TEST_F(HNZTest, GiOnExpPart0) {
   ServersWrapper wrapper(0x05, getNextPort());
   BasicHNZServer* server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
@@ -4282,13 +4282,24 @@ TEST_F(HNZTest, GIonTriggerSouthGI) {
   ASSERT_EQ(southEventsReceived, 1);
   resetCounters();
   if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, GiOnPrtInf1) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
 
   // ############################################################
-  // Then we check that receiving a TS5 with 0 as value don't trigger a GI
+  // First we check that receiving a TS5 with 0 as value don't trigger a GI
   // ############################################################
-  debug_print("[TEST STEP] Third case");
+  debug_print("[TEST STEP] First case");
   // Find SET TIME message sent at startup and extract modulo value from it
-  frames = server->popLastFramesReceived();
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
   server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x44, 0x00, 0x00}, false);
   waitUntil(dataObjectsReceived, 1, 1000);
   ASSERT_EQ(dataObjectsReceived, 1);
@@ -4301,7 +4312,7 @@ TEST_F(HNZTest, GIonTriggerSouthGI) {
   // ############################################################
   // Then we check that receiving a TS5 with 1 as value trigger a GI
   // ############################################################
-  debug_print("[TEST STEP] Fourth case");
+  debug_print("[TEST STEP] Second case");
   // Find SET TIME message sent at startup and extract modulo value from it
   frames = server->popLastFramesReceived();
   server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x4C, 0x00, 0x00}, false);

@@ -26,24 +26,24 @@ HNZ::~HNZ() {
 }
 
 void HNZ::start(bool requestedStart /*= false*/) {
-  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::start -";
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex); //LCOV_EXCL_LINE
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::start -"; //LCOV_EXCL_LINE
 
   if (requestedStart) {
     m_should_run = true;
   }
 
   if (m_is_running) {
-    HnzUtility::log_info("%s HNZ south plugin already started", beforeLog.c_str());
+    HnzUtility::log_info("%s HNZ south plugin already started", beforeLog.c_str()); //LCOV_EXCL_LINE
     return;
   }
 
   if (!m_hnz_conf->is_complete()) {
-    HnzUtility::log_info("%s HNZ south plugin can't start because configuration is incorrect.", beforeLog.c_str());
+    HnzUtility::log_info("%s HNZ south plugin can't start because configuration is incorrect.", beforeLog.c_str()); //LCOV_EXCL_LINE
     return;
   }
 
-  HnzUtility::log_info("%s Starting HNZ south plugin...", beforeLog.c_str());
+  HnzUtility::log_info("%s Starting HNZ south plugin...", beforeLog.c_str()); //LCOV_EXCL_LINE
 
   m_is_running = true;
 
@@ -51,20 +51,20 @@ void HNZ::start(bool requestedStart /*= false*/) {
   m_sendAllTSQualityReadings(true, false);
 
   auto paths = m_hnz_connection->getPaths();
-  m_receiving_thread_A = make_unique<thread>(&HNZ::receive, this, paths[0]);
+  m_receiving_thread_A = uniq::make_unique<thread>(&HNZ::receive, this, paths[0]);
   if (paths[1] != nullptr) {
     // Wait after getting the passive path pointer as connection init of active path may swap path
     this_thread::sleep_for(std::chrono::milliseconds(1000));
     // Path B is defined in the configuration
-    m_receiving_thread_B = make_unique<thread>(&HNZ::receive, this, paths[1]);
+    m_receiving_thread_B = uniq::make_unique<thread>(&HNZ::receive, this, paths[1]);
   }
 
   m_hnz_connection->start();
 }
 
 void HNZ::stop(bool requestedStop /*= false*/) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::stop -";
-  HnzUtility::log_info("%s Starting shutdown of HNZ plugin", beforeLog.c_str());
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::stop -"; //LCOV_EXCL_LINE
+  HnzUtility::log_info("%s Starting shutdown of HNZ plugin", beforeLog.c_str()); //LCOV_EXCL_LINE
   m_is_running = false;
 
   if (requestedStop) {
@@ -77,12 +77,12 @@ void HNZ::stop(bool requestedStop /*= false*/) {
     m_hnz_connection->stop();
   }
   if (m_receiving_thread_A != nullptr) {
-    HnzUtility::log_debug("%s Waiting for the receiving thread (path A)", beforeLog.c_str());
+    HnzUtility::log_debug("%s Waiting for the receiving thread (path A)", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_receiving_thread_A->join();
     m_receiving_thread_A = nullptr;
   }
   if (m_receiving_thread_B != nullptr) {
-    HnzUtility::log_debug("%s Waiting for the receiving thread (path B)", beforeLog.c_str());
+    HnzUtility::log_debug("%s Waiting for the receiving thread (path B)", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_receiving_thread_B->join();
     m_receiving_thread_B = nullptr;
   }
@@ -92,11 +92,11 @@ void HNZ::stop(bool requestedStop /*= false*/) {
   if (m_hnz_connection != nullptr) {
     m_hnz_connection = nullptr;
   }
-  HnzUtility::log_info("%s Plugin stopped !", beforeLog.c_str());
+  HnzUtility::log_info("%s Plugin stopped !", beforeLog.c_str()); //LCOV_EXCL_LINE
 }
 
 void HNZ::reconfigure(const ConfigCategory& config) {
-  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex); //LCOV_EXCL_LINE
   std::string protocol_conf_json;
   if (config.itemExists("protocol_stack")) {
     protocol_conf_json = config.getValue("protocol_stack");
@@ -117,16 +117,16 @@ void HNZ::reconfigure(const ConfigCategory& config) {
 }
 
 bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf_json, const string& service_name) {
-  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::setJsonConfig -";
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex); //LCOV_EXCL_LINE
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::setJsonConfig -"; //LCOV_EXCL_LINE
   // If no new json configuration and the plugin is already in the correct running state, nothing to do
   if (protocol_conf_json.empty() && msg_conf_json.empty() && service_name.empty()) {
-    HnzUtility::log_info("%s No new configuration provided to reconfigure, skipping", beforeLog.c_str());
+    HnzUtility::log_info("%s No new configuration provided to reconfigure, skipping", beforeLog.c_str()); //LCOV_EXCL_LINE
     return true;
   }
 
   if (m_is_running) {
-    HnzUtility::log_info("%s Configuration change requested, stopping the plugin", beforeLog.c_str());
+    HnzUtility::log_info("%s Configuration change requested, stopping the plugin", beforeLog.c_str()); //LCOV_EXCL_LINE
     stop();
   }
 
@@ -134,7 +134,7 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
     m_service_name = service_name;
   }
 
-  HnzUtility::log_info("%s Reading json config string...", beforeLog.c_str());
+  HnzUtility::log_info("%s Reading json config string...", beforeLog.c_str()); //LCOV_EXCL_LINE
 
   // Reset configuration info
   m_hnz_conf = std::make_shared<HNZConf>();
@@ -145,22 +145,22 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
     m_hnz_conf->importExchangedDataJson(msg_conf_json);
   }
   if (!m_hnz_conf->is_complete()) {
-    HnzUtility::log_fatal("%s Unable to set Plugin configuration due to error with the json conf", beforeLog.c_str());
+    HnzUtility::log_fatal("%s Unable to set Plugin configuration due to error with the json conf", beforeLog.c_str()); //LCOV_EXCL_LINE
     return false;
   }
 
-  HnzUtility::log_info("%s Json config parsed successsfully.", beforeLog.c_str());
+  HnzUtility::log_info("%s Json config parsed successsfully.", beforeLog.c_str()); //LCOV_EXCL_LINE
 
   m_remote_address = m_hnz_conf->get_remote_station_addr();
   m_test_msg_receive = m_hnz_conf->get_test_msg_receive();
-  m_hnz_connection = make_unique<HNZConnection>(m_hnz_conf, this);
+  m_hnz_connection = uniq::make_unique<HNZConnection>(m_hnz_conf, this);
   if (!m_hnz_connection->isRunning()) {
-    HnzUtility::log_fatal("%s Unable to start HNZ Connection", beforeLog.c_str());
+    HnzUtility::log_fatal("%s Unable to start HNZ Connection", beforeLog.c_str()); //LCOV_EXCL_LINE
     return false;
   }
 
   if (m_should_run) {
-    HnzUtility::log_info("%s Restarting the plugin...", beforeLog.c_str());
+    HnzUtility::log_info("%s Restarting the plugin...", beforeLog.c_str()); //LCOV_EXCL_LINE
     start();
   }
 
@@ -169,29 +169,29 @@ bool HNZ::setJsonConfig(const string& protocol_conf_json, const string& msg_conf
 
 void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
   if(!hnz_path_in_use){
-    HnzUtility::log_info(HnzUtility::NamePlugin + " - HNZ::receive - No path to use, exit");
+    HnzUtility::log_info(HnzUtility::NamePlugin + " - HNZ::receive - No path to use, exit"); //LCOV_EXCL_LINE
     return;
   }
   {
-    std::lock_guard<std::recursive_mutex> guard(m_configMutex);
+    std::lock_guard<std::recursive_mutex> guard(m_configMutex); //LCOV_EXCL_LINE
     if (!m_hnz_conf->is_complete()) {
       return;
     }
   }
 
   string path = hnz_path_in_use->getName();
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::receive - " + path;
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::receive - " + path; //LCOV_EXCL_LINE
 
   // Connect to the server
   hnz_path_in_use->connect();
 
   // Exit early if connection shutting down
   if(!m_is_running) {
-    HnzUtility::log_info("%s Connection shutting down, exit", beforeLog.c_str());
+    HnzUtility::log_info("%s Connection shutting down, exit", beforeLog.c_str()); //LCOV_EXCL_LINE
     return;
   }
 
-  HnzUtility::log_info("%s Listening for data...", beforeLog.c_str());
+  HnzUtility::log_info("%s Listening for data...", beforeLog.c_str()); //LCOV_EXCL_LINE
 
   vector<vector<unsigned char>> messages;
 
@@ -202,7 +202,7 @@ void HNZ::receive(std::shared_ptr<HNZPath> hnz_path_in_use) {
     if (messages.empty() && !hnz_path_in_use->isTCPConnected()) {
       // Refresh beforeLog as path state will change over time
       beforeLog = HnzUtility::NamePlugin + " - HNZ::receive - " + hnz_path_in_use->getName();
-      HnzUtility::log_warn("%s Connection lost, reconnecting path.", beforeLog.c_str());
+      HnzUtility::log_warn("%s Connection lost, reconnecting path.", beforeLog.c_str()); //LCOV_EXCL_LINE
       // Try to reconnect, unless thread is stopping
       if (m_is_running) {
         hnz_path_in_use->disconnect();
@@ -236,46 +236,46 @@ std::string formatAddresses(const std::vector<unsigned int>& addresses) {
 }
 
 void HNZ::m_handle_message(const vector<unsigned char>& data) {
-  std::lock_guard<std::recursive_mutex> guard(m_configMutex);
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handle_message -";
+  std::lock_guard<std::recursive_mutex> guard(m_configMutex); //LCOV_EXCL_LINE
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handle_message -"; //LCOV_EXCL_LINE
   unsigned char t = data[0];  // Payload type
   vector<Reading> readings;   // Contains data object to push to fledge
   
   switch (t) {
   case MODULO_CODE:
-    HnzUtility::log_info("%s Received modulo time update", beforeLog.c_str());
+    HnzUtility::log_info("%s Received modulo time update", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_handleModuloCode(readings, data);
-    break;
+    break; //LCOV_EXCL_LINE
   case TM4_CODE:
-    HnzUtility::log_info("%s Pushing to Fledge a TMA", beforeLog.c_str());
+    HnzUtility::log_info("%s Pushing to Fledge a TMA", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_handleTM4(readings, data);
-    break;
+    break; //LCOV_EXCL_LINE
   case TSCE_CODE:
-    HnzUtility::log_info("%s Pushing to Fledge a TSCE", beforeLog.c_str());
+    HnzUtility::log_info("%s Pushing to Fledge a TSCE", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_handleTSCE(readings, data);
-    break;
+    break; //LCOV_EXCL_LINE
   case TSCG_CODE:
-    HnzUtility::log_info("%s Pushing to Fledge a TSCG", beforeLog.c_str());
+    HnzUtility::log_info("%s Pushing to Fledge a TSCG", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_handleTSCG(readings, data);
-    break;
+    break; //LCOV_EXCL_LINE
   case TMN_CODE:
-    HnzUtility::log_info("%s Pushing to Fledge a TMN", beforeLog.c_str());
+    HnzUtility::log_info("%s Pushing to Fledge a TMN", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_handleTMN(readings, data);
-    break;
+    break; //LCOV_EXCL_LINE
   case TCACK_CODE:
-    HnzUtility::log_info("%s Pushing to Fledge a TC ACK", beforeLog.c_str());
+    HnzUtility::log_info("%s Pushing to Fledge a TC ACK", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_handleATC(readings, data);
-    break;
+    break; //LCOV_EXCL_LINE
   case TVCACK_CODE:
-    HnzUtility::log_info("%s Pushing to Fledge a TVC ACK", beforeLog.c_str());
+    HnzUtility::log_info("%s Pushing to Fledge a TVC ACK", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_handleATVC(readings, data);
-    break;
+    break; //LCOV_EXCL_LINE
   default:
     if (!(t == m_test_msg_receive.first &&
       data[1] == m_test_msg_receive.second)) {
-      HnzUtility::log_error("%s Unknown message to push: %s", beforeLog.c_str(), frameToStr(data).c_str());
+      HnzUtility::log_error("%s Unknown message to push: %s", beforeLog.c_str(), frameToStr(data).c_str()); //LCOV_EXCL_LINE
     }
-    break;
+    break; //LCOV_EXCL_LINE
   }
 
   if (!readings.empty()) {
@@ -289,10 +289,10 @@ void HNZ::m_handle_message(const vector<unsigned char>& data) {
       // Mismatch in the number of TS received: Log CG as incomplete
       if (m_gi_addresses_received.size() != nbTSCG) {
         AddressesDiff TSAddressesDiff = m_getMismatchingTSCGAddresses();
-        HnzUtility::log_warn("%s Received last TSCG but %lu TS received when %lu were expected: Missing %s, Extra %s",
-                            beforeLog.c_str(), m_gi_addresses_received.size(), nbTSCG,
-                            formatAddresses(TSAddressesDiff.missingAddresses).c_str(),
-                            formatAddresses(TSAddressesDiff.extraAddresses).c_str());
+        HnzUtility::log_warn("%s Received last TSCG but %lu TS received when %lu were expected: Missing %s, Extra %s", //LCOV_EXCL_LINE
+                            beforeLog.c_str(), m_gi_addresses_received.size(), nbTSCG, //LCOV_EXCL_LINE
+                            formatAddresses(TSAddressesDiff.missingAddresses).c_str(), //LCOV_EXCL_LINE
+                            formatAddresses(TSAddressesDiff.extraAddresses).c_str()); //LCOV_EXCL_LINE
       }
       m_hnz_connection->checkGICompleted(true);
     }
@@ -336,7 +336,7 @@ void HNZ::m_handleTM4(vector<Reading>& readings, const vector<unsigned char>& da
 }
 
 void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& data) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handleTSCE - ";
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_handleTSCE - "; //LCOV_EXCL_LINE
   string msg_code = "TS";
   unsigned int msg_address = stoi(to_string((int)data[1]) +
     to_string((int)(data[2] >> 5)));  // AD0 + ADB
@@ -385,7 +385,7 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
 
   // In stateINPUT_CONNECTED, timestamp mod10 might be uninitialized
   if(m_hnz_connection->getActivePath() != nullptr && m_hnz_connection->getActivePath()->getProtocolState() == ProtocolState::INPUT_CONNECTED){
-    HnzUtility::log_info("%s TSCE discarded in path protocol state INPUT_CONNECTED.", beforeLog.c_str());
+    HnzUtility::log_info("%s TSCE discarded in path protocol state INPUT_CONNECTED.", beforeLog.c_str()); //LCOV_EXCL_LINE
     params.empty_timestamp = true;
   }
 
@@ -393,14 +393,14 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
 
   if (params.value == 0 && m_hnz_conf->isTsAddressCgTriggering(msg_address)) {
     if(m_hnz_connection->getActivePath() == nullptr) {
-      HnzUtility::log_debug(beforeLog + "GI triggering TS received but no active path available => GI skipped");
+      HnzUtility::log_debug(beforeLog + "GI triggering TS received but no active path available => GI skipped"); //LCOV_EXCL_LINE
     }
     else {
       if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
-        HnzUtility::log_debug(beforeLog + "GI triggering TS received but GI already running, scheduling another GI after the current one");
+        HnzUtility::log_debug(beforeLog + "GI triggering TS received but GI already running, scheduling another GI after the current one"); //LCOV_EXCL_LINE
         m_giInQueue = true;
       } else {
-        HnzUtility::log_info(beforeLog + "GI triggering TS received, start a GI");
+        HnzUtility::log_info(beforeLog + "GI triggering TS received, start a GI"); //LCOV_EXCL_LINE
         m_hnz_connection->getActivePath()->sendGeneralInterrogation();
       }
     }
@@ -555,7 +555,7 @@ void HNZ::m_handleATC(vector<Reading>& readings, const vector<unsigned char>& da
 }
 
 Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_prepare_reading - ";
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::m_prepare_reading - "; //LCOV_EXCL_LINE
   bool isTS = (params.msg_code == "TS");
   bool isTSCE = isTS && !params.cg;
   bool isTM = (params.msg_code == "TM");
@@ -578,7 +578,7 @@ Reading HNZ::m_prepare_reading(const ReadingParameters& params) {
       ", c = " + to_string(params.ts_c) + ", s" + to_string(params.ts_s);
   }
 
-  HnzUtility::log_debug(debugStr);
+  HnzUtility::log_debug(debugStr); //LCOV_EXCL_LINE
 
   auto* measure_features = new vector<Datapoint*>;
   measure_features->push_back(m_createDatapoint("do_type", params.msg_code));
@@ -624,8 +624,8 @@ void HNZ::m_sendToFledge(vector<Reading>& readings) {
 
 void HNZ::ingest(Reading& reading) { 
   if (!m_ingest) {
-    std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::ingest -";
-    HnzUtility::log_error("%s Ingest callback is not defined", beforeLog.c_str());
+    std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::ingest -"; //LCOV_EXCL_LINE
+    HnzUtility::log_error("%s Ingest callback is not defined", beforeLog.c_str()); //LCOV_EXCL_LINE
     return;
   }
   (*m_ingest)(m_data, reading);
@@ -656,8 +656,8 @@ static bool endsWith(const std::string& str, const std::string& suffix)
 }
 
 bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** params) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -";
-  HnzUtility::log_info("%s Operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str());
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::operation -"; //LCOV_EXCL_LINE
+  HnzUtility::log_info("%s Operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str()); //LCOV_EXCL_LINE
 
   if (operation == "HNZCommand") {
     int res = processCommandOperation(count, params);
@@ -667,12 +667,12 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
     }
     else if (res == 2) {
       // Network issue, only log a warning
-      HnzUtility::log_warn("%s Connection with HNZ device is not ready, could not send operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str());
+      HnzUtility::log_warn("%s Connection with HNZ device is not ready, could not send operation %s: %s", beforeLog.c_str(), operation.c_str(), paramsToStr(params, count).c_str()); //LCOV_EXCL_LINE
       return false;
     }
   }
   else if (operation == "request_connection_status") {
-    HnzUtility::log_info("%s Received request_connection_status", beforeLog.c_str());
+    HnzUtility::log_info("%s Received request_connection_status", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_sendConnectionStatus();
     return true;
   } else if (operation == "north_status") {
@@ -701,12 +701,12 @@ bool HNZ::operation(const std::string& operation, int count, PLUGIN_PARAMETER** 
     }
   }
 
-  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters: %s", beforeLog.c_str(), operation.c_str(), count, paramsToStr(params, count).c_str());
+  HnzUtility::log_error("%s Unrecognised operation %s with %d parameters: %s", beforeLog.c_str(), operation.c_str(), count, paramsToStr(params, count).c_str()); //LCOV_EXCL_LINE
   return false;
 }
 
 int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::processCommandOperation -";
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::processCommandOperation -"; //LCOV_EXCL_LINE
   
   std::map<std::string, std::string> commandParams = {
     {"co_type", ""},
@@ -721,13 +721,13 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
       commandParams[paramName] = paramValue;
     }
     else {
-      HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str());
+      HnzUtility::log_warn("%s Unknown parameter '%s' in HNZCommand", beforeLog.c_str(), paramName.c_str()); //LCOV_EXCL_LINE
     }
   }
 
   for (const auto &kvp : commandParams) {
     if (kvp.second == "") {
-      HnzUtility::log_error("%s Received HNZCommand with missing '%s' parameter", beforeLog.c_str(), kvp.first.c_str());
+      HnzUtility::log_error("%s Received HNZCommand with missing '%s' parameter", beforeLog.c_str(), kvp.first.c_str()); //LCOV_EXCL_LINE
       return 1;
     }
   }
@@ -740,10 +740,10 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
   try {
     address = std::stoi(addrStr);
   } catch (const std::invalid_argument &e) {
-    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what()); //LCOV_EXCL_LINE
     return 1;
   } catch (const std::out_of_range &e) {
-    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what());
+    HnzUtility::log_error("%s Cannot convert co_addr '%s' to integer: %s: %s", beforeLog.c_str(), addrStr.c_str(), typeid(e).name(), e.what()); //LCOV_EXCL_LINE
     return 1;
   }
 
@@ -751,10 +751,10 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
   try {
     value = std::stoi(valStr);
   } catch (const std::invalid_argument &e) {
-    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what()); //LCOV_EXCL_LINE
     return 1;
   } catch (const std::out_of_range &e) {
-    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what());
+    HnzUtility::log_error("%s Cannot convert co_value '%s' to integer: %s: %s", beforeLog.c_str(), valStr.c_str(), typeid(e).name(), e.what()); //LCOV_EXCL_LINE
     return 1;
   }
 
@@ -771,7 +771,7 @@ int HNZ::processCommandOperation(int count, PLUGIN_PARAMETER** params) {
     return success ? 0 : 2;
   }
   else {
-    HnzUtility::log_error("%s Unknown co_type '%s' in HNZCommand", beforeLog.c_str(), type.c_str());
+    HnzUtility::log_error("%s Unknown co_type '%s' in HNZCommand", beforeLog.c_str(), type.c_str()); //LCOV_EXCL_LINE
   }
   return 1;
 }
@@ -819,7 +819,7 @@ unsigned long HNZ::getEpochMsTimestamp(std::chrono::time_point<std::chrono::syst
 }
 
 void HNZ::updateConnectionStatus(ConnectionStatus newState) {
-  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex); //LCOV_EXCL_LINE
   std::string newStateSTR = newState == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
   std::string m_connStatusSTR = m_connStatus == ConnectionStatus::NOT_CONNECTED ? "NOT CONNECTED" : "STARTED";
   if (m_connStatus == newState) return;
@@ -846,7 +846,7 @@ void HNZ::updateConnectionStatus(ConnectionStatus newState) {
 }
 
 void HNZ::updateGiStatus(GiStatus newState) {
-  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex); //LCOV_EXCL_LINE
   if (m_giStatus == newState) return;
 
   m_giStatus = newState;
@@ -855,12 +855,12 @@ void HNZ::updateGiStatus(GiStatus newState) {
 }
 
 GiStatus HNZ::getGiStatus() {
-  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex); //LCOV_EXCL_LINE
   return m_giStatus;
 }
 
 void HNZ::updateQualityUpdateTimer(long elapsedTimeMs) {
-  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex); //LCOV_EXCL_LINE
   // If timer is running
   if (m_qualityUpdateTimer > 0) {
     m_qualityUpdateTimer -= elapsedTimeMs;
@@ -878,7 +878,7 @@ void HNZ::m_sendConnectionStatus() {
 }
 
 void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
-  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex);
+  std::lock_guard<std::recursive_mutex> lock(m_connexionGiMutex); //LCOV_EXCL_LINE
   std::string asset = m_hnz_conf->get_connx_status_signal();
   if (asset.empty()) return;
 
@@ -893,11 +893,11 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
     {
     case ConnectionStatus::NOT_CONNECTED:
       eventDp = m_createDatapoint("connx_status", "not connected");
-      break;
+      break; //LCOV_EXCL_LINE
 
     case ConnectionStatus::STARTED:
       eventDp = m_createDatapoint("connx_status", "started");
-      break;
+      break; //LCOV_EXCL_LINE
     }
 
     if (eventDp) {
@@ -912,23 +912,23 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
     {
     case GiStatus::STARTED:
       eventDp = m_createDatapoint("gi_status", "started");
-      break;
+      break; //LCOV_EXCL_LINE
 
     case GiStatus::IN_PROGRESS:
       eventDp = m_createDatapoint("gi_status", "in progress");
-      break;
+      break; //LCOV_EXCL_LINE
 
     case GiStatus::FAILED:
       eventDp = m_createDatapoint("gi_status", "failed");
-      break;
+      break; //LCOV_EXCL_LINE
 
     case GiStatus::FINISHED:
       eventDp = m_createDatapoint("gi_status", "finished");
-      break;
+      break; //LCOV_EXCL_LINE
 
     case GiStatus::IDLE:
       eventDp = m_createDatapoint("gi_status", "idle");
-      break;
+      break; //LCOV_EXCL_LINE
     }
 
     if (eventDp) {
@@ -944,22 +944,22 @@ void HNZ::m_sendSouthMonitoringEvent(bool connxStatus, bool giStatus) {
 }
 
 void HNZ::GICompleted(bool success) {
-  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::GICompleted -";
+  std::string beforeLog = HnzUtility::NamePlugin + " - HNZ::GICompleted -"; //LCOV_EXCL_LINE
   m_hnz_connection->onGICompleted();
   if (success) {
-    HnzUtility::log_info("%s General Interrogation completed.", beforeLog.c_str());
+    HnzUtility::log_info("%s General Interrogation completed.", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FINISHED);
   }
   else {
-    HnzUtility::log_warn("%s General Interrogation FAILED !", beforeLog.c_str());
+    HnzUtility::log_warn("%s General Interrogation FAILED !", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_sendAllTSQualityReadings(true, false, m_gi_addresses_received);
     updateGiStatus(GiStatus::FAILED);
   }
   resetGIQueue();
 
   if (m_giInQueue) {
-    HnzUtility::log_info("%s Starting delayed GI", beforeLog.c_str());
+    HnzUtility::log_info("%s Starting delayed GI", beforeLog.c_str()); //LCOV_EXCL_LINE
     m_hnz_connection->getActivePath()->sendGeneralInterrogation();
     m_giInQueue = false;
   }

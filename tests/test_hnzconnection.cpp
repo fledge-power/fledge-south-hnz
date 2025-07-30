@@ -94,8 +94,8 @@ TEST(HNZConnection, OnlyOnePathConfigured) {
   conf->importConfigJson(protocol_stack_def_one_path);
   conf->importExchangedDataJson(exchanged_data_def);
 
-  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
-  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
+  std::unique_ptr<HNZ> hnz = uniq::make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = uniq::make_unique<HNZConnection>(conf, hnz.get());
 
   ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
   ASSERT_EQ(nullptr, hnz_connection->getPaths()[1]);
@@ -119,8 +119,8 @@ TEST(HNZConnection, TwoPathConfigured) {
   conf->importConfigJson(protocol_stack_def_two_path);
   conf->importExchangedDataJson(exchanged_data_def);
 
-  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
-  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
+  std::unique_ptr<HNZ> hnz = uniq::make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = uniq::make_unique<HNZConnection>(conf, hnz.get());
 
   ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
   ASSERT_NE(nullptr, hnz_connection->getPaths()[1]);
@@ -129,8 +129,8 @@ TEST(HNZConnection, TwoPathConfigured) {
 TEST(HNZConnection, NoPathConfigured) {
   std::shared_ptr<HNZConf> conf = std::make_shared<HNZConf>();
 
-  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
-  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
+  std::unique_ptr<HNZ> hnz = uniq::make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = uniq::make_unique<HNZConnection>(conf, hnz.get());
 
   ASSERT_EQ(nullptr, hnz_connection->getPaths()[0]);
   ASSERT_EQ(nullptr, hnz_connection->getPaths()[1]);
@@ -144,8 +144,8 @@ TEST(HNZConnection, GIScheduleInactive) {
   ASSERT_FALSE(conf->get_gi_schedule().activate);
   ASSERT_TRUE(conf->is_complete());
 
-  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
-  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
+  std::unique_ptr<HNZ> hnz = uniq::make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = uniq::make_unique<HNZConnection>(conf, hnz.get());
 
   ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
   ASSERT_NE(nullptr, hnz_connection->getPaths()[1]);
@@ -171,8 +171,8 @@ TEST(HNZConnection, GIScheduleActivePassed) {
   ASSERT_TRUE(conf->get_gi_schedule().activate);
   ASSERT_TRUE(conf->is_complete());
 
-  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
-  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
+  std::unique_ptr<HNZ> hnz = uniq::make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = uniq::make_unique<HNZConnection>(conf, hnz.get());
 
   ASSERT_NE(nullptr, hnz_connection->getPaths()[0]);
   ASSERT_NE(nullptr, hnz_connection->getPaths()[1]);
@@ -189,8 +189,8 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
   conf->importExchangedDataJson(exchanged_data_def);
   ASSERT_TRUE(conf->is_complete());
 
-  std::unique_ptr<HNZ> hnz = make_unique<HNZ>();
-  std::unique_ptr<HNZConnection> hnz_connection = make_unique<HNZConnection>(conf, hnz.get());
+  std::unique_ptr<HNZ> hnz = uniq::make_unique<HNZ>();
+  std::unique_ptr<HNZConnection> hnz_connection = uniq::make_unique<HNZConnection>(conf, hnz.get());
   std::shared_ptr<HNZPath> hnz_path = std::make_shared<HNZPath>(
                                                                 conf,
                                                                 hnz_connection.get(),
@@ -201,7 +201,7 @@ TEST(HNZConnection, DisconnectPathInDestructor) {
   ASSERT_NE(nullptr, hnz_path.get());
 
   // Start connecting on a thread and wait a little to let it enter the main connection loop
-  std::unique_ptr<std::thread> connection_thread = make_unique<std::thread>(&HNZPath::connect, hnz_path.get());
+  std::unique_ptr<std::thread> connection_thread = uniq::make_unique<std::thread>(&HNZPath::connect, hnz_path.get());
   this_thread::sleep_for(chrono::milliseconds(100));
 
   // Destroy path object while connecting

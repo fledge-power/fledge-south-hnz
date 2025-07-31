@@ -4084,6 +4084,10 @@ TEST_F(HNZTest, timeSettingsUseUTC) {
   do_ts_local += passed_modulo ? 600000 : 0; // Prevent test from failing if the modulo changed between ts local and utc ...
   debug_print("Values found : do_ts_local = %ld, do_ts_utc = %ld, expectedEpochMs_utc = %ld", do_ts_local, do_ts_utc, expectedEpochMs_utc);
   ASSERT_TRUE(do_ts_local == do_ts_utc && do_ts_local == expectedEpochMs_utc) << "Status points timestamps should always be using UTC time.";
+
+  /*  _POSIX_C_SOURCE >= 200112L ||  glibc <= 2.19: */
+  setenv("TZ", "", 1); // Reset TimeZone variable
+  tzset();
 }
 
 TEST_F(HNZTest, NorthStatusInit) {

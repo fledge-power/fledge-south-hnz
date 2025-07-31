@@ -244,10 +244,11 @@ int HNZConf::m_isGiTriggeringTs(const Value &msg) const {
   if (msg.HasMember(PIVOT_SUBTYPES) && msg[PIVOT_SUBTYPES].IsArray()) {
     for (const Value &subtype : msg[PIVOT_SUBTYPES].GetArray()) {
       if (subtype.IsObject() && subtype.HasMember(TRIGGER_SOUTH_GI_PIVOT_SUBTYPE)) {
-        unsigned int trigger_val;
+        unsigned int trigger_val = 0;
         bool value_ok = m_retrieve(subtype, TRIGGER_SOUTH_GI_PIVOT_SUBTYPE, &trigger_val);
         if (!value_ok) {
           HnzUtility::log_warn(beforeLog + "%s is not an unsigned int", TRIGGER_SOUTH_GI_PIVOT_SUBTYPE);
+          return -1;
         }
         return (int)trigger_val;
       }

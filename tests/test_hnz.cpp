@@ -98,12 +98,27 @@ static string exchanged_data_def = QUOTE({
         "pivot_id" : "ID114568",
         "pivot_type" : "SpsTyp",
         "pivot_subtypes": [
-          "trigger_south_gi"
+          {"trigger_south_gi" : 0}
         ],
         "protocols" : [
           {
             "name" : "hnzip",
             "address" : "581",
+            "typeid" : "TS"
+          }
+        ]
+      },
+      {
+        "label" : "TS5",
+        "pivot_id" : "ID114569",
+        "pivot_type" : "SpsTyp",
+        "pivot_subtypes": [
+          {"trigger_south_gi" : 1}
+        ],
+        "protocols" : [
+          {
+            "name" : "hnzip",
+            "address" : "582",
             "typeid" : "TS"
           }
         ]
@@ -556,9 +571,9 @@ class HNZTest : public testing::Test {
   }
 
   static void validateAllTIQualityUpdate(bool invalid, bool outdated, bool noCG = false) {
-    // We only expect invalid messages at init, and during init we will also receive 4 extra messages for the failed CG request
+    // We only expect invalid messages at init, and during init we will also receive 5 extra messages for the failed CG request
     int waitCG = invalid && !noCG;
-    int expectedMessages = waitCG ? 12 : 8;
+    int expectedMessages = waitCG ? 14 : 9;
     // Max time necessary for initial CG to fail due to timeout (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
     int maxWaitTimeMs = waitCG ? 6000 : 0;
     std::string validStr(invalid ? "1" : "0");
@@ -568,7 +583,7 @@ class HNZTest : public testing::Test {
     ASSERT_EQ(dataObjectsReceived, expectedMessages);
     resetCounters();
     unsigned long epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    // First 8 messages are from init
+    // First 9 messages are from init
     // Those messages are expected to be sent before the CG time frame
     std::string timeRangeStr(to_string(epochMs - (maxWaitTimeMs + 10000)) + ";" + to_string(epochMs - maxWaitTimeMs));
     std::shared_ptr<Reading> currentReading = nullptr;
@@ -585,7 +600,7 @@ class HNZTest : public testing::Test {
       });
       if(HasFatalFailure()) return;
     }
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
       std::string label("TS" + to_string(i + 1));
       currentReading = popFrontReadingsUntil(label);
       validateReading(currentReading, label, {
@@ -602,11 +617,11 @@ class HNZTest : public testing::Test {
       });
       if(HasFatalFailure()) return;
     }
-    if (expectedMessages > 8) {
-      // Last 4 messages are from failed initial CG
+    if (expectedMessages > 9) {
+      // Last 5 messages are from failed initial CG
       // Those messages are expected to be sent during the CG time frame
       std::string timeRangeStr2(to_string(epochMs - maxWaitTimeMs) + ";" + to_string(epochMs));
-      for (int i = 0; i < 4; i++) {
+      for (int i = 0; i < 5; i++) {
         std::string label("TS" + to_string(i + 1));
         currentReading = popFrontReadingsUntil(label);
         validateReading(currentReading, label, {
@@ -740,7 +755,7 @@ const std::vector<std::string> HNZTest::allSouthEventAttributeNames = {"connx_st
 constexpr unsigned long HNZTest::oneHourMs;
 constexpr unsigned long HNZTest::oneDayMs;
 constexpr unsigned long HNZTest::tenMinMs;
-std::map<std::string, std::string> HNZTest::addrByTS = {{"TS1", "511"}, {"TS2", "522"}, {"TS3", "577"}, {"TS4", "581"}};
+std::map<std::string, std::string> HNZTest::addrByTS = {{"TS1", "511"}, {"TS2", "522"}, {"TS3", "577"}, {"TS4", "581"}, {"TS5", "582"}};
 
 class ServersWrapper {
   public:
@@ -1212,7 +1227,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(frames, GI_FUNCTION_CODE);
   ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after gi_repeat_count was reached, but found: " << BasicHNZServer::frameToStr(CGframe);
   // Validate quality update for TS messages that were not sent
-  validateMissingTSCGQualityUpdate({"TS1", "TS2", "TS3", "TS4"});
+  validateMissingTSCGQualityUpdate({"TS1", "TS2", "TS3", "TS4", "TS5"});
   if(HasFatalFailure()) return;
   
   ///////////////////////////////////////
@@ -1257,12 +1272,12 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Send only second of the two expected TS (new CG was sent so the TS received earlier are ignored)
   server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCG 2 sent");
-  waitUntil(dataObjectsReceived, 4, 1000);
+  waitUntil(dataObjectsReceived, 5, 1000);
 
   // Only second of the 2 TS CG messages were sent, it contains data for TS3
   // CG is incomplete, but as last TS was received, it is still considered a finished CG
   // Then quality update were sent for all missing TS (TS1 + TS2)
-  ASSERT_EQ(dataObjectsReceived, 4);
+  ASSERT_EQ(dataObjectsReceived, 5);
   resetCounters();
   currentReading = popFrontReadingsUntil("TS3");
   validateReading(currentReading, "TS3", {
@@ -1309,22 +1324,23 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after all TS were received, but found: " << BasicHNZServer::frameToStr(CGframe);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(dataObjectsReceived, 4);
+  ASSERT_EQ(dataObjectsReceived, 5);
   resetCounters();
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     std::string label("TS" + to_string(i + 1));
     currentReading = popFrontReadingsUntil(label);
     validateReading(currentReading, label, {
       {"do_type", {"string", "TS"}},
       {"do_station", {"int64_t", "1"}},
       {"do_addr", {"int64_t", addrByTS[label]}},
-      {"do_value", {"int64_t", "1"}},
+      {"do_value", {"int64_t", i==4 ? "0":"1"}},
       {"do_valid", {"int64_t", "0"}},
       {"do_cg", {"int64_t", "1"}},
       {"do_outdated", {"int64_t", "0"}},
     });
     if(HasFatalFailure()) return;
   }
+  //TODO gérer TS5 qui doit avoir 0 comme value
 
   ///////////////////////////////////////
   // Send TS1 + TS2 + TS3 as CG answer with invalid flag for TS3
@@ -1340,12 +1356,12 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x00, 0x00, 0x00, 0x00}, false);
   server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x02, 0x00, 0x00}, false);
   debug_print("[HNZ Server] TSCG 4 sent");
-  waitUntil(dataObjectsReceived, 4, 1000);
+  waitUntil(dataObjectsReceived, 5, 1000);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(dataObjectsReceived, 4);
+  ASSERT_EQ(dataObjectsReceived, 5);
   resetCounters();
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     std::string label("TS" + to_string(i + 1));
     std::string valid(label == "TS3" ? "1" : "0");
     currentReading = popFrontReadingsUntil(label);
@@ -1405,10 +1421,10 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   // Send only first of the two expected TS on the final CG attempt
   server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
   debug_print("[HNZ Server] TSCG 7 sent");
-  waitUntil(dataObjectsReceived, 4, 1200); // gi_time + 200ms
+  waitUntil(dataObjectsReceived, 5, 1200); // gi_time + 200ms
 
   // Check that ingestCallback had been called for TS1 and TS2 only
-  ASSERT_EQ(dataObjectsReceived, 4);
+  ASSERT_EQ(dataObjectsReceived, 5);
   resetCounters();
   for (int j = 0; j < 2; j++) {
     std::string label("TS" + to_string(j + 1));
@@ -1426,7 +1442,7 @@ TEST_F(HNZTest, ReceivingTSCGMessages) {
   }
 
   // Validate quality update for TS messages that were not sent
-  validateMissingTSCGQualityUpdate({"TS3", "TS4"}, false);
+  validateMissingTSCGQualityUpdate({"TS3", "TS4", "TS5"}, false);
   if(HasFatalFailure()) return;
 
   // Send a few extra CG requests to trigger the anticipation ratio message
@@ -3252,17 +3268,17 @@ TEST_F(HNZTest, MultipleMessagesInOne) {
   ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after all TS were received, but found: " << BasicHNZServer::frameToStr(CGframe);
 
   // Check that ingestCallback had been called
-  ASSERT_EQ(dataObjectsReceived, 4);
+  ASSERT_EQ(dataObjectsReceived, 5);
   resetCounters();
   std::shared_ptr<Reading> currentReading;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     std::string label("TS" + to_string(i + 1));
     currentReading = popFrontReadingsUntil(label);
     validateReading(currentReading, label, {
       {"do_type", {"string", "TS"}},
       {"do_station", {"int64_t", "1"}},
       {"do_addr", {"int64_t", addrByTS[label]}},
-      {"do_value", {"int64_t", "1"}},
+      {"do_value", {"int64_t", i==4 ? "0" : "1"}},
       {"do_valid", {"int64_t", "0"}},
       {"do_cg", {"int64_t", "1"}},
       {"do_outdated", {"int64_t", "0"}},
@@ -3631,14 +3647,14 @@ TEST_F(HNZTest, GIScheduleActiveFuture) {
   std::string protocol_stack_custom = std::regex_replace(protocol_stack, std::regex("00:00"), giSchedule);
   wrapper.initHNZPlugin(protocol_stack_custom);
   // Plugin stopped by reconfigure = invalid quality update
-  waitUntil(dataObjectsReceived, 8, 1000);
-  ASSERT_EQ(dataObjectsReceived, 8);
+  waitUntil(dataObjectsReceived, 9, 1000);
+  ASSERT_EQ(dataObjectsReceived, 9);
   validateAllTIQualityUpdate(true, false, true);
   if(HasFatalFailure()) return;
   resetCounters();
   debug_print("[HNZ server] Waiting for outdated TI emission...");
-  waitUntil(dataObjectsReceived, 8, 1000);
-  ASSERT_EQ(dataObjectsReceived, 8);
+  waitUntil(dataObjectsReceived, 9, 1000);
+  ASSERT_EQ(dataObjectsReceived, 9);
   validateAllTIQualityUpdate(false, true, true);
   if(HasFatalFailure()) return;
   resetCounters();
@@ -3652,9 +3668,9 @@ TEST_F(HNZTest, GIScheduleActiveFuture) {
   // Check that the server is reconnected after reconfigure
   server = wrapper.server1().get();
   ASSERT_NE(server, nullptr) << "Something went wrong. Connection 2 is not established in 10s...";
-  waitUntil(dataObjectsReceived, 4, 6000); // Wait for CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
-  ASSERT_EQ(dataObjectsReceived, 4);
-  validateMissingTSCGQualityUpdate({"TS1", "TS2", "TS3", "TS4"});
+  waitUntil(dataObjectsReceived, 5, 6000); // Wait for CG request to expire (gi_time * (gi_repeat_count+1) * 1000) + repeat_timeout (initial messages tempo, 3s)
+  ASSERT_EQ(dataObjectsReceived, 5);
+  validateMissingTSCGQualityUpdate({"TS1", "TS2", "TS3", "TS4", "TS5"});
   if(HasFatalFailure()) return;
 
   // Clear messages received from south plugin
@@ -3776,8 +3792,8 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsResultInGi) {
   server->sendFrame({TSCG_FUNCTION_CODE, 0x33, 0x10, 0x00, 0x04, 0x00}, false);
   server->sendFrame({TSCG_FUNCTION_CODE, 0x39, 0x00, 0x01, 0x00, 0x00}, false);
 
-  waitUntil(dataObjectsReceived, 4, 1000);
-  ASSERT_EQ(dataObjectsReceived, 4);
+  waitUntil(dataObjectsReceived, 5, 1000);
+  ASSERT_EQ(dataObjectsReceived, 5);
   waitUntil(southEventsReceived, 2, 1000);
   ASSERT_EQ(southEventsReceived, 2);
   resetCounters();
@@ -3803,7 +3819,7 @@ TEST_F(HNZTest, ReceiveGiTriggeringTsResultInGi) {
     if(HasFatalFailure()) return;
   }
 
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < 3; i++) {
     std::string label("TS" + to_string(i + 3));
     currentReading = popFrontReading();
     validateReading(currentReading, label, {
@@ -4068,6 +4084,10 @@ TEST_F(HNZTest, timeSettingsUseUTC) {
   do_ts_local += passed_modulo ? 600000 : 0; // Prevent test from failing if the modulo changed between ts local and utc ...
   debug_print("Values found : do_ts_local = %ld, do_ts_utc = %ld, expectedEpochMs_utc = %ld", do_ts_local, do_ts_utc, expectedEpochMs_utc);
   ASSERT_TRUE(do_ts_local == do_ts_utc && do_ts_local == expectedEpochMs_utc) << "Status points timestamps should always be using UTC time.";
+
+  /*  _POSIX_C_SOURCE >= 200112L ||  glibc <= 2.19: */
+  setenv("TZ", "", 1); // Reset TimeZone variable
+  tzset();
 }
 
 TEST_F(HNZTest, NorthStatusInit) {
@@ -4219,5 +4239,92 @@ TEST_F(HNZTest, NorthStatusInit) {
 
   // No more TEST_STATUS should be sent
   ASSERT_EQ(popFrontReadingsUntil("TEST_STATUS"), nullptr);
+  if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, GiOnExpPart0) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+
+  // ############################################################
+  // First we check that receiving a TS4 with 1 as value don't trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] First case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x2C, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that no GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 0);
+  resetCounters();
+  if(HasFatalFailure()) return;
+
+  // Find the CG frame in the list of frames received by server and validate it
+  std::shared_ptr<MSG_TRAME> CGframe = findFrameWithId(server->popLastFramesReceived(), GI_FUNCTION_CODE);
+  ASSERT_EQ(CGframe.get(), nullptr) << "No CG frame should be sent after a normal TS : " << BasicHNZServer::frameToStr(CGframe);
+  if(HasFatalFailure()) return;
+
+  // ############################################################
+  // Then we check that receiving a TS4 with 0 as value trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] Second case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x24, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
+  if(HasFatalFailure()) return;
+}
+
+TEST_F(HNZTest, GiOnPrtInf1) {
+  ServersWrapper wrapper(0x05, getNextPort());
+  BasicHNZServer* server = wrapper.server1().get();
+  ASSERT_NE(server, nullptr) << "Something went wrong. Connection is not established in 10s...";
+  validateAllTIQualityUpdate(true, false);
+  if(HasFatalFailure()) return;
+
+  // Clear messages received from south plugin
+  server->popLastFramesReceived();
+
+  // ############################################################
+  // First we check that receiving a TS5 with 0 as value don't trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] First case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  std::vector<std::shared_ptr<MSG_TRAME>> frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x44, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that no GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 0);
+  resetCounters();
+  if(HasFatalFailure()) return;
+
+  // ############################################################
+  // Then we check that receiving a TS5 with 1 as value trigger a GI
+  // ############################################################
+  debug_print("[TEST STEP] Second case");
+  // Find SET TIME message sent at startup and extract modulo value from it
+  frames = server->popLastFramesReceived();
+  server->sendFrame({TSCE_FUNCTION_CODE, 0x3A, 0x4C, 0x00, 0x00}, false);
+  waitUntil(dataObjectsReceived, 1, 1000);
+  ASSERT_EQ(dataObjectsReceived, 1);
+  // Check that GI have been received
+  waitUntil(southEventsReceived, 1, 1000);
+  ASSERT_EQ(southEventsReceived, 1);
+  resetCounters();
   if(HasFatalFailure()) return;
 }

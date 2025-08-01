@@ -391,17 +391,20 @@ void HNZ::m_handleTSCE(vector<Reading>& readings, const vector<unsigned char>& d
 
   readings.push_back(m_prepare_reading(params));
 
-  if (params.value == 0 && m_hnz_conf->isTsAddressCgTriggering(msg_address)) {
-    if(m_hnz_connection->getActivePath() == nullptr) {
-      HnzUtility::log_debug(beforeLog + "GI triggering TS received but no active path available => GI skipped"); //LCOV_EXCL_LINE
-    }
-    else {
-      if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
-        HnzUtility::log_debug(beforeLog + "GI triggering TS received but GI already running, scheduling another GI after the current one"); //LCOV_EXCL_LINE
-        m_giInQueue = true;
-      } else {
-        HnzUtility::log_info(beforeLog + "GI triggering TS received, start a GI"); //LCOV_EXCL_LINE
-        m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+  int isTsTriggering = m_hnz_conf->isTsAddressCgTriggering(msg_address);
+  if ( isTsTriggering != -1) {
+    if (params.value == isTsTriggering) {
+      if(m_hnz_connection->getActivePath() == nullptr) {
+        HnzUtility::log_debug(beforeLog + "GI triggering TS received but no active path available => GI skipped"); //LCOV_EXCL_LINE
+      }
+      else {
+        if (m_giStatus == GiStatus::STARTED || m_giStatus == GiStatus::IN_PROGRESS) {
+          HnzUtility::log_debug(beforeLog + "GI triggering TS received but GI already running, scheduling another GI after the current one"); //LCOV_EXCL_LINE
+          m_giInQueue = true;
+        } else {
+          HnzUtility::log_info(beforeLog + "GI triggering TS received, start a GI"); //LCOV_EXCL_LINE
+          m_hnz_connection->getActivePath()->sendGeneralInterrogation();
+        }
       }
     }
   }

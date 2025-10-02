@@ -118,6 +118,26 @@ jobs:
           cd build 
           make
           make hnz_coverage_sonar
+      
+      #TODO used to debug -> erase
+      - name: Test SonarCloud token and project
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          echo "Validate token (should show login)"
+          curl -sS -u "${SONAR_TOKEN}:" "https://sonarcloud.io/api/authentication/validate" || true
+          echo
+          echo "Search project in organization (components should be non-empty)"
+          curl -sS -u "${SONAR_TOKEN}:" "https://sonarcloud.io/api/projects/search?organization=fledge-power&q=fledge-south-hnz" || true
+      - name: Debug sonar-scanner
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          echo "SONAR_TOKEN set? ${SONAR_TOKEN:+yes}"
+          ls -la ${BUILD_WRAPPER_OUT_DIR}
+          test -f build/hnz_coverage_sonar-sonarqube.xml && echo "coverage OK"
+      # END TODO
+
       - name: Run sonar-scanner
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -130,4 +150,4 @@ jobs:
             --define sonar.projectKey="fledge-power_fledge-south-hnz" \
             --define sonar.inclusions="src/*,include/*" \
             --define sonar.coverageReportPaths="build/hnz_coverage_sonar-sonarqube.xml" \
-            --define sonar.branch.name="${{ github.event.inputs.tags }}"
+            --define sonar.branch.name="${{ github.event.inputs.tags || github.ref_name }}"

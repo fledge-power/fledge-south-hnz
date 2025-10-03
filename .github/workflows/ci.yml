@@ -118,7 +118,6 @@ jobs:
           cd build 
           make
           make hnz_coverage_sonar
-
       - name: Run sonar-scanner
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

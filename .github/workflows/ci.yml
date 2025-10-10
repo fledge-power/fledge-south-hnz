@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - v*
   pull_request:
     types: [opened, synchronize, reopened]
     
@@ -13,6 +15,15 @@ on:
         description: 'Branch to use for libhnz'
         required: true
         default: 'main'
+      tags:
+        description: 'Define the tag'
+        required: false
+        type: choice
+        options:
+          - v4.0.0
+          - v3.1.0
+          - v3.0.1
+          - v3.0.0
   
 jobs:
   build:
@@ -27,6 +38,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
+          ref: ${{ github.event.inputs.tags || github.ref }}
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
@@ -111,4 +123,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          sonar-scanner --define sonar.host.url="${{ env.SONAR_SERVER_URL }}" --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}" --define sonar.organization="fledge-power" --define sonar.projectKey="fledge-power_fledge-south-hnz" --define sonar.inclusions="src/*,include/*" --define sonar.coverageReportPaths="build/hnz_coverage_sonar-sonarqube.xml"
+          sonar-scanner -X \
+            --define sonar.host.url="${{ env.SONAR_SERVER_URL }}" \
+            --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}" \
+            --define sonar.organization="fledge-power" \
+            --define sonar.projectKey="fledge-power_fledge-south-hnz" \
+            --define sonar.inclusions="src/*,include/*" \
+            --define sonar.coverageReportPaths="build/hnz_coverage_sonar-sonarqube.xml" \
+            --define sonar.branch.name="${{ github.event.inputs.tags || github.ref_name }}"

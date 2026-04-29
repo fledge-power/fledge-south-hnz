@@ -403,6 +403,7 @@ vector<vector<unsigned char>> HNZPath::getData() {
     } else {
       HnzUtility::log_warn(beforeLog + " The CRC does not match"); //LCOV_EXCL_LINE
     }
+    delete(frReceived);
   }
 
   return messages;
